@@ -1,0 +1,55 @@
+# === Confidencialidad MINSUR ===============================================
+# Nada del subárbol de gestión ni datos reales del cliente entra a este repo.
+# Estas reglas son una red de seguridad, no la política: ver ../CLAUDE.md.
+**/insumos-minsur/
+**/evaluaciones-historicas/
+**/modelo-referencia/
+*.xlsm
+fixtures/certificados/**/*.xlsx
+fixtures/certificados/**/*.csv
+fixtures/certificados/**/*.json
+!fixtures/certificados/**/manifiesto.json
+!fixtures/certificados/README.md
+
+# === Secretos ==============================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.key
+local.settings.json
+
+# === Python ================================================================
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# === Node / frontend =======================================================
+node_modules/
+.pnpm-store/
+apps/web/dist/
+apps/web/.vite/
+playwright-report/
+test-results/
+
+# === Azure / IaC ===========================================================
+*.tfstate
+*.tfstate.*
+.terraform/
+infra/**/*.parameters.local.json
+
+# === Sistema ===============================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*
