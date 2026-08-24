@@ -564,31 +564,78 @@ cuatro días hábiles por el feriado del 8 y no admite reprogramación.
 El consumo de Azure corre por cuenta de MINSUR conforme al alcance. Estimación mensual a precios de
 lista, sin descuentos de acuerdo empresarial. **Valores referenciales, no compromisos.**
 
+### Línea base
+
 | Componente | Producción | Calidad | Desarrollo |
 |---|---|---|---|
-| API Management | ~700 (Standard v2) | ~50 (Developer) | ~50 (Developer) |
-| Plan de funciones EP1 | ~150 | ~150 | ~150 |
-| Azure SQL | ~380 (aprovisionada) | ~120 (serverless) | ~60 (serverless con pausa) |
-| Front Door Premium | ~330 | ~330 | ~330 |
-| Almacenamiento | ~50 | ~30 | ~20 |
-| Puntos de conexión privados (4) | ~30 | ~30 | ~30 |
-| Observabilidad | ~100 | ~50 | ~30 |
-| Static Web Apps | ~9 | ~9 | ~9 |
-| Key Vault | ~3 | ~3 | ~3 |
-| **Total aproximado (USD)** | **~1 750** | **~770** | **~680** |
+| API Management | 700 · Standard v2 | 50 · Developer | 50 · Developer |
+| Plan de funciones EP1 | 150 | 150 | 150 |
+| Azure SQL | 380 · aprovisionada | 120 · serverless | 30 · serverless con pausa |
+| Front Door Premium | 330 | 330 | 330 |
+| Puntos de conexión privados (4) | 30 | 30 | 30 |
+| Observabilidad | 25 | 15 | 10 |
+| Almacenamiento | 10 | 8 | 5 |
+| Static Web Apps | 9 | 9 | 9 |
+| Key Vault | 3 | 3 | 3 |
+| **Total mensual (USD)** | **~1 637** | **~715** | **~617** |
 
-### Tres oportunidades de optimización que el comité puede decidir
+**Total de los tres entornos: ~US$ 2 970/mes · ~US$ 35 600/año.**
 
-1. **Front Door Premium en desarrollo y calidad** representa cerca de la mitad del costo de esos
-   entornos. Front Door Standard cuesta ~US$35/mes pero no ofrece Private Link al origen. Si la
-   política de seguridad lo admite fuera de producción, el ahorro es de ~US$590/mes.
-2. **API Management Developer en producción** cuesta US$650/mes menos que Standard v2, pero **no
-   tiene acuerdo de nivel de servicio**. Es incompatible con el compromiso de disponibilidad
-   superior al 99 %.
-3. **El entorno de desarrollo puede apagarse** fuera de horario. La base de datos serverless ya
-   pausa automáticamente a los 60 minutos.
+> **El volumen de datos es marginal.** Cien evaluaciones al año de hasta 10 MB acumulan **4,9 GB en
+> cinco años**. El almacenamiento, que en un servicio de este tipo suele ser el rubro dominante,
+> aquí cuesta menos que el Key Vault. El costo está concentrado en tres servicios: API Management,
+> Front Door y Azure SQL suman el 80 %.
 
----
+### Optimizaciones sin implicación de seguridad
+
+Aplicables por INVA sin decisión del comité. **Ya incorporadas a la infraestructura como código.**
+
+| # | Medida | Ahorro/mes | Efecto |
+|---|---|---|---|
+| 1 | Sin Front Door en desarrollo | 330 | A ese entorno solo acceden el equipo de INVA y los homologadores, no usuarios finales. El WAF se evalúa en calidad, que es donde corre el ethical hacking |
+| 2 | Static Web Apps Free en desarrollo | 9 | No hay dominio corporativo ni red privada que justifiquen Standard |
+| 3 | Plan de funciones Flex Consumption en desarrollo ▸ | 135 | Conserva integración con red virtual. Pierde las ranuras de despliegue, que solo usa producción. Requiere ajuste del módulo de cómputo |
+| | **Subtotal** | **~474** | |
+
+### Decisiones que corresponden al comité
+
+Cada una reduce costo a cambio de algo. **No son recomendaciones automáticas.**
+
+| # | Medida | Ahorro/mes | Qué se cede |
+|---|---|---|---|
+| 4 | **API Management Basic v2 en producción**, en lugar de Standard v2 | **550** | Basic v2 conserva el acuerdo de nivel de servicio de 99,95 %, suficiente para el compromiso de >99 % del alcance. Cede la **integración con red virtual**: API Management alcanzaría el backend por red pública, protegido por la restricción de etiqueta de servicio `ApiManagement` ya implementada, en lugar de por red privada |
+| 5 | **Front Door Standard en calidad**, en lugar de Premium | 295 | Cede el enlace privado al origen. El entorno de calidad es el que se somete a ethical hacking, por lo que la diferencia de superficie es relevante para esa evaluación |
+| 6 | **Azure SQL serverless en producción**, sin pausa automática | 190 | Cede predictibilidad: el costo pasa a variar con el uso. Con siete usuarios concurrentes el consumo real sería bajo, pero deja de ser una cifra fija |
+| 7 | Reservas de capacidad a un año sobre el plan de funciones | ~100 | Compromiso de permanencia de doce meses |
+| | **Subtotal** | **~1 135** | |
+
+### Escenarios
+
+| Escenario | Producción | Calidad | Desarrollo | Mensual | Anual |
+|---|---|---|---|---|---|
+| Línea base | 1 637 | 715 | 617 | **~2 970** | ~35 600 |
+| Con medidas 1 a 3 | 1 637 | 715 | 143 | **~2 495** | ~29 900 |
+| Con todas las medidas | 897 | 420 | 143 | **~1 460** | **~17 500** |
+
+**La diferencia entre el primer escenario y el último es de aproximadamente US$ 18 000 al año**, en
+torno al 51 %.
+
+### Recomendación de INVA
+
+Las medidas 1 a 3 ya están aplicadas y no requieren decisión.
+
+De las restantes, **la medida 4 es la más significativa y la que INVA sugiere evaluar con más
+detenimiento**: US$ 6 600 al año a cambio de que el tráfico entre la puerta de enlace y el backend
+deje de circular por red privada. El backend permanece cerrado a todo origen distinto de API
+Management, pero por etiqueta de servicio y no por topología. Si la política corporativa exige
+tráfico privado extremo a extremo, la medida no aplica y Standard v2 es la opción correcta.
+
+La medida 5 conviene descartarla: el entorno de calidad es el que se somete al ethical hacking, y
+homologar sobre una configuración de borde distinta de la productiva reduce el valor de esa
+evaluación.
+
+La medida 6 es razonable si MINSUR acepta costo variable. La medida 7 depende de la vigencia
+prevista de la plataforma más allá del periodo de estabilización.
 
 ## 12. Riesgos de arquitectura
 

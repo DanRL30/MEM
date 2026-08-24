@@ -17,11 +17,17 @@ param ubicacion = 'eastus2'
 // y se completan idSubredIntegracion e idSubredPrivada (R-22).
 param crearRedVirtual = true
 param espacioDirecciones = '10.60.0.0/22'
-param patronPublicacion = 'frontDoor'
+// Sin borde en desarrollo. A este entorno solo accede el equipo de INVA y los
+// homologadores, no usuarios finales, y Front Door Premium cuesta ~US$ 330/mes:
+// mas de la mitad del costo del entorno. El WAF si se evalua en calidad, que es
+// donde corre el ethical hacking.
+param patronPublicacion = 'ninguno'
 
 param skuFunciones = 'EP1'
 param skuApim = 'Developer'
-param skuSwa = 'Standard'
+// Free basta: en desarrollo no hay dominio corporativo ni red privada que
+// justifiquen Standard.
+param skuSwa = 'Free'
 param redundanciaAlmacenamiento = 'Standard_LRS'
 param skuBaseDatos = 'GP_S_Gen5_1'
 
