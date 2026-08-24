@@ -15,7 +15,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
-    "api:schema": "python -m minsur_api.openapi > packages/contracts/openapi.json",
+    "api:schema": "python -m minsur_api.openapi --salida packages/contracts/openapi.json",
     "api:types": "pnpm --filter @minsur/contracts generate",
     "contracts": "pnpm api:schema && pnpm api:types",
     "format": "prettier --write \"**/*.{ts,tsx,json,css,md}\""
