@@ -114,7 +114,7 @@ param correoAlertas string
 // Convenciones derivadas
 // -----------------------------------------------------------------------------
 
-var sufijoEntorno = replace(entorno, 'minsur-', '')
+var sufijoEntorno = last(split(entorno, '-'))
 var nombreBase = '${prefijoNombre}-${sufijoEntorno}'
 // Los nombres de almacenamiento no admiten guiones ni mayúsculas.
 var nombreBaseCompacto = toLower(replace(nombreBase, '-', ''))
