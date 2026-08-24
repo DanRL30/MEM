@@ -76,7 +76,7 @@ class CargaDirecta:
         self._url_cuenta = f"https://{cuenta}.blob.core.windows.net"
         self._cliente = BlobServiceClient(self._url_cuenta, credential=credencial)
 
-    # ── Clave de delegación ───────────────────────────────────────────────
+    # --- Clave de delegación -------------------------------------------------
 
     def _clave_delegacion(self, desde: datetime, hasta: datetime):
         """Clave firmada por Entra ID, no por una clave de cuenta.
@@ -89,7 +89,7 @@ class CargaDirecta:
             key_expiry_time=hasta,
         )
 
-    # ── Carga ─────────────────────────────────────────────────────────────
+    # --- Carga ---------------------------------------------------------------
 
     def autorizar_carga(
         self,
@@ -134,7 +134,7 @@ class CargaDirecta:
             metodo="PUT",
         )
 
-    # ── Descarga ──────────────────────────────────────────────────────────
+    # --- Descarga ------------------------------------------------------------
 
     def autorizar_descarga(self, ruta_blob: str) -> Autorizacion:
         """Autoriza la lectura de un blob ya existente.
@@ -163,7 +163,7 @@ class CargaDirecta:
             metodo="GET",
         )
 
-    # ── Confirmación ──────────────────────────────────────────────────────
+    # --- Confirmación --------------------------------------------------------
 
     def confirmar_carga(self, ruta_blob: str) -> int:
         """Verifica que el archivo llegó y devuelve su tamaño en bytes.

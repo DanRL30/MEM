@@ -27,7 +27,7 @@ from minsur_domain.estados import (
 MOMENTO = datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc)
 
 
-# ── Máquina de estados ────────────────────────────────────────────────────
+# --- Máquina de estados ------------------------------------------------------
 
 
 class TestTransiciones:
@@ -89,7 +89,7 @@ class TestPermisos:
             verificar(Estado.CALCULADA, Accion.CONGELAR, Perfil.INGENIERO_DE_PROYECTO)
 
 
-# ── Bitácora ──────────────────────────────────────────────────────────────
+# --- Bitácora ----------------------------------------------------------------
 
 
 def _bitacora_con_tres_entradas() -> Bitacora:

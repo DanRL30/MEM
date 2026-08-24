@@ -7,11 +7,11 @@ y cuáles no tienen retorno. La segunda mitad —que ni un administrador de la
 suscripción pueda alterar lo congelado— la sostiene la política de
 inmutabilidad del almacenamiento, no el código.
 
-    ┌───────────┐  ejecutar   ┌────────────┐  congelar   ┌───────────┐
-    │ BORRADOR  │────────────▶│ CALCULADA  │────────────▶│ CONGELADA │
-    └───────────┘             └────────────┘             └───────────┘
-          ▲   editar insumos        │                          │
-          └─────────────────────────┘                     (terminal)
+    +-----------+  ejecutar   +------------+  congelar   +-----------+
+    | BORRADOR  |------------>| CALCULADA  |------------>| CONGELADA |
+    +-----------+             +------------+             +-----------+
+          ^   editar insumos        |                          |
+          +-------------------------+                     (terminal)
 
 Recalcular una corrida congelada **no la modifica**: crea una corrida nueva
 en estado CALCULADA que apunta a la anterior como origen. Es la única forma de

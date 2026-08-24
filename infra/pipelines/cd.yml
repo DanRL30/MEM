@@ -2,7 +2,7 @@
 #
 # Servicio INVA-01-2026-182 · PT6.8, PT6.12, PT6.15
 #
-# Dev → QA → Producción, con aprobaciones entre etapas. Lo que viaja entre
+# Dev -> QA -> Producción, con aprobaciones entre etapas. Lo que viaja entre
 # entornos es el artefacto versionado que construyó CI, nunca un servidor ni
 # una base en operación.
 #

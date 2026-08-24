@@ -19,7 +19,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 
-# ── Dimensionamiento declarado en el alcance ──────────────────────────────
+# --- Dimensionamiento declarado en el alcance --------------------------------
 USUARIOS_NOMINALES = 17
 USUARIOS_CONCURRENTES = 7
 EVALUACIONES_ANIO = 100
@@ -28,7 +28,7 @@ ANIOS_RETENCION = 5
 HORAS_LABORALES_MES = 22 * 9  # 198 h · lunes a viernes, 9 h
 HORAS_MES = 730
 
-# ── Precios unitarios · East US 2 · lista ─────────────────────────────────
+# --- Precios unitarios · East US 2 · lista -----------------------------------
 P = {
     "apim_consumption_millon": 3.50,      # primer millón de llamadas sin costo
     "apim_developer_mes": 48.36,
@@ -72,7 +72,7 @@ class Entorno:
         return sum(l.mensual for l in self.lineas)
 
 
-# ── Componentes ───────────────────────────────────────────────────────────
+# --- Componentes -------------------------------------------------------------
 
 def costo_almacenamiento() -> float:
     """El volumen del alcance es minúsculo; domina el costo de transacción."""
@@ -137,7 +137,7 @@ def costo_observabilidad(gb_mes: float) -> float:
     return gb_mes * P["log_analytics_gb"]
 
 
-# ── Escenarios ────────────────────────────────────────────────────────────
+# --- Escenarios --------------------------------------------------------------
 
 def escenario_a() -> list[Entorno]:
     """Línea base. Todas las garantías, sin optimizar."""

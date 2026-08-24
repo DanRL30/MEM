@@ -57,7 +57,7 @@ class ErrorSellado(Exception):
     """La imagen no puede sellarse o su verificación falló."""
 
 
-# ── Serialización canónica ────────────────────────────────────────────────
+# --- Serialización canónica --------------------------------------------------
 
 
 def _normalizar(valor: Any) -> Any:
@@ -129,7 +129,7 @@ def sha256(datos: Any) -> str:
     return hashlib.sha256(canonicalizar(datos)).hexdigest()
 
 
-# ── La imagen ─────────────────────────────────────────────────────────────
+# --- La imagen ---------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -263,7 +263,7 @@ def sellar(
     )
 
 
-# ── Verificación ──────────────────────────────────────────────────────────
+# --- Verificación ------------------------------------------------------------
 
 
 @dataclass(frozen=True)

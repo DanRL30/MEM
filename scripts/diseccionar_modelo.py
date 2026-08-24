@@ -311,7 +311,7 @@ def escribir_informe(informe: Informe, salida: Path) -> None:
 
     lineas += ["## Funciones utilizadas", "", "| Función | Usos |", "|---|---|"]
     for fn, n in informe.funciones.most_common(30):
-        marca = " ⚠" if fn in FUNCIONES_DE_INTERES else ""
+        marca = " Atencion:" if fn in FUNCIONES_DE_INTERES else ""
         lineas.append(f"| {fn}{marca} | {n:,} |")
 
     if informe.tiene_macros:

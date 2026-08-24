@@ -37,7 +37,7 @@ def documento() -> dict:
     return esquema()
 
 
-# ── Contrato ya comprometido con otros artefactos ─────────────────────────
+# --- Contrato ya comprometido con otros artefactos ---------------------------
 
 
 class TestContratoYaComprometido:
@@ -75,7 +75,7 @@ class TestContratoYaComprometido:
         assert "python -m minsur_api.openapi" in paquete
 
 
-# ── Salud ─────────────────────────────────────────────────────────────────
+# --- Salud -------------------------------------------------------------------
 
 
 class TestSalud:
@@ -95,7 +95,7 @@ def respuesta_motor(cliente: TestClient):
     return cliente.get("/api/salud").json()["version_motor"]
 
 
-# ── Autenticación ─────────────────────────────────────────────────────────
+# --- Autenticación -----------------------------------------------------------
 
 
 class TestAutenticacion:
@@ -117,7 +117,7 @@ class TestAutenticacion:
         assert respuesta.json()["perfil"] == Perfil.ADMINISTRADOR
 
 
-# ── Mapeo de grupos a perfiles ────────────────────────────────────────────
+# --- Mapeo de grupos a perfiles ----------------------------------------------
 
 
 class TestPerfiles:
@@ -144,7 +144,7 @@ class TestPerfiles:
         assert a is b is Perfil.LIDER_DE_ESTUDIO
 
 
-# ── Operaciones pendientes de un insumo ───────────────────────────────────
+# --- Operaciones pendientes de un insumo -------------------------------------
 
 
 class TestPendientes:
@@ -168,7 +168,7 @@ class TestPendientes:
         assert respuesta.json()["detail"]["restriccion"] == restriccion
 
 
-# ── Esquema ───────────────────────────────────────────────────────────────
+# --- Esquema -----------------------------------------------------------------
 
 
 class TestEsquema:

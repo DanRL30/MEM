@@ -19,21 +19,21 @@ class Config(BaseSettings):
 
     entorno: str = Field(default="local", alias="ENTORNO")
 
-    # ── Identidad ─────────────────────────────────────────────────────────
+    # --- Identidad -----------------------------------------------------------
     tenant_id: str = Field(default="", alias="AZURE_TENANT_ID")
     id_aplicacion: str = Field(default="", alias="AZURE_CLIENT_ID")
 
-    # ── Datos ─────────────────────────────────────────────────────────────
+    # --- Datos ---------------------------------------------------------------
     cuenta_almacenamiento: str = Field(default="", alias="ALMACENAMIENTO_CUENTA")
     servidor_sql: str = Field(default="", alias="SQL_SERVIDOR")
     base_datos: str = Field(default="", alias="SQL_BASE_DATOS")
     uri_boveda: str = Field(default="", alias="KEY_VAULT_URI")
 
-    # ── Publicación documental ────────────────────────────────────────────
+    # --- Publicación documental ----------------------------------------------
     sitio_sharepoint: str = Field(default="", alias="SHAREPOINT_SITIO")
     biblioteca_sharepoint: str = Field(default="", alias="SHAREPOINT_BIBLIOTECA")
 
-    # ── Nivel de servicio ─────────────────────────────────────────────────
+    # --- Nivel de servicio ---------------------------------------------------
     # El alcance compromete apertura del tablero por debajo de 5 s. La cifra
     # de la evaluación estándar la fija MINSUR (R-51).
     slo_tablero_ms: int = Field(default=5000, alias="SLO_TABLERO_MS")

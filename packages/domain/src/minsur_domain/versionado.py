@@ -37,7 +37,7 @@ class ErrorVersionado(ValueError):
     """La terna de versiones es inválida o su uso viola una regla del alcance."""
 
 
-# ── Eje 1 · versión del motor ─────────────────────────────────────────────
+# --- Eje 1 · versión del motor -----------------------------------------------
 
 
 @dataclass(frozen=True, order=True)
@@ -86,7 +86,7 @@ class VersionMotor:
         return self.mayor == otra.mayor
 
 
-# ── Eje 2 · versión de los datos maestros ─────────────────────────────────
+# --- Eje 2 · versión de los datos maestros -----------------------------------
 
 
 @dataclass(frozen=True)
@@ -112,7 +112,7 @@ class VersionDatosMaestros:
         return self.id_comite
 
 
-# ── Eje 3 · versión de los inputs del caso ────────────────────────────────
+# --- Eje 3 · versión de los inputs del caso ----------------------------------
 
 
 @dataclass(frozen=True)
@@ -143,7 +143,7 @@ class VersionInputs:
         return replace(self, revision=self.revision + 1, huella=huella)
 
 
-# ── La terna ──────────────────────────────────────────────────────────────
+# --- La terna ----------------------------------------------------------------
 
 
 @dataclass(frozen=True)

@@ -54,7 +54,7 @@ def contenido(terna: TernaVersion) -> Contenido:
     )
 
 
-# ── Canonicalización ──────────────────────────────────────────────────────
+# --- Canonicalización --------------------------------------------------------
 
 
 class TestCanonicalizacion:
@@ -110,7 +110,7 @@ class TestCanonicalizacion:
         assert "ó".encode() in canonicalizar({"linea": "Producción"})
 
 
-# ── Sellado ───────────────────────────────────────────────────────────────
+# --- Sellado -----------------------------------------------------------------
 
 
 class TestSellado:
@@ -140,7 +140,7 @@ class TestSellado:
         assert imagen.serializar() == imagen.serializar()
 
 
-# ── Integridad ────────────────────────────────────────────────────────────
+# --- Integridad --------------------------------------------------------------
 
 
 class TestIntegridad:
@@ -187,7 +187,7 @@ class TestIntegridad:
         assert "contenido está intacto" in veredicto.detalle
 
 
-# ── Reproducibilidad ──────────────────────────────────────────────────────
+# --- Reproducibilidad --------------------------------------------------------
 
 
 class TestReproducibilidad:

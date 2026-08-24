@@ -21,7 +21,7 @@ class Base(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
-# ── Identidad ─────────────────────────────────────────────────────────────
+# --- Identidad ---------------------------------------------------------------
 
 
 class UsuarioActual(Base):
@@ -37,7 +37,7 @@ class UsuarioActual(Base):
     )
 
 
-# ── Versionado ────────────────────────────────────────────────────────────
+# --- Versionado --------------------------------------------------------------
 
 
 class Terna(Base):
@@ -52,7 +52,7 @@ class Terna(Base):
     huella_inputs: str = Field(min_length=64, max_length=64)
 
 
-# ── Casos ─────────────────────────────────────────────────────────────────
+# --- Casos -------------------------------------------------------------------
 
 
 class ResumenCaso(Base):
@@ -82,7 +82,7 @@ class DetalleCaso(ResumenCaso):
     acciones_disponibles: list[Accion]
 
 
-# ── Plantillas ────────────────────────────────────────────────────────────
+# --- Plantillas --------------------------------------------------------------
 
 
 class SolicitudCarga(Base):
@@ -129,7 +129,7 @@ class ResultadoValidacion(Base):
     huella: str = Field(default="", description="SHA-256 del contenido admitido")
 
 
-# ── Evaluación ────────────────────────────────────────────────────────────
+# --- Evaluación --------------------------------------------------------------
 
 
 class Indicadores(Base):
@@ -174,7 +174,7 @@ class CorridaCongelada(Base):
     ruta_imagen: str = Field(description="Ubicación de la imagen sellada")
 
 
-# ── Fidelidad ─────────────────────────────────────────────────────────────
+# --- Fidelidad ---------------------------------------------------------------
 
 
 class DesviacionLinea(Base):
@@ -199,7 +199,7 @@ class ResultadoFidelidad(Base):
     desviaciones: list[DesviacionLinea] = Field(default_factory=list)
 
 
-# ── Tablero e historial ───────────────────────────────────────────────────
+# --- Tablero e historial -----------------------------------------------------
 
 
 class Tablero(Base):
@@ -238,7 +238,7 @@ class PaginaHistorial(Base):
     continuacion: str | None = None
 
 
-# ── Exportación ───────────────────────────────────────────────────────────
+# --- Exportación -------------------------------------------------------------
 
 
 class ResultadoExportacion(Base):
@@ -251,7 +251,7 @@ class ResultadoExportacion(Base):
     expira: datetime
 
 
-# ── Operación ─────────────────────────────────────────────────────────────
+# --- Operación ---------------------------------------------------------------
 
 
 class Salud(Base):

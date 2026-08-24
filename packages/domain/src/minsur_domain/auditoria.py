@@ -186,7 +186,7 @@ class Bitacora:
         self._entradas.append(entrada)
         return entrada
 
-    # ── Consulta ──────────────────────────────────────────────────────────
+    # --- Consulta ------------------------------------------------------------
 
     def de_corrida(self, id_corrida: str) -> list[Entrada]:
         return [e for e in self._entradas if e.id_corrida == id_corrida]
@@ -202,7 +202,7 @@ class Bitacora:
             if e.valor_anterior is not None or e.valor_posterior is not None
         ]
 
-    # ── Verificación de la cadena ─────────────────────────────────────────
+    # --- Verificación de la cadena -------------------------------------------
 
     def verificar(self) -> None:
         """Recorre la cadena y lanza si alguna entrada fue alterada o suprimida.
@@ -227,7 +227,7 @@ class Bitacora:
             anterior = entrada.huella
 
 
-# ── Cobertura de los requisitos del alcance ───────────────────────────────
+# --- Cobertura de los requisitos del alcance ---------------------------------
 
 COBERTURA: dict[int, tuple[str, str]] = {
     1: ("Versionado de insumos", "Entrada.valor_anterior / valor_posterior + VersionInputs.revision"),
