@@ -38,6 +38,7 @@ P = {
     "flex_alwaysready_gb_s": 0.0000173,   # instancia siempre lista
     "flex_ejecucion_gb_s": 0.0000173,
     "sql_serverless_vcore_s": 0.000145,
+    "sql_gp_gen5_1_hora": 0.2522,         # aprovisionada, 1 vCore
     "sql_gp_gen5_2_hora": 0.5044,         # aprovisionada, 2 vCore
     "sql_almacenamiento_gb": 0.115,
     "frontdoor_premium_mes": 330.00,
@@ -86,10 +87,16 @@ def costo_sql(modo: str) -> float:
     if modo == "aprovisionada_2vcore":
         return P["sql_gp_gen5_2_hora"] * HORAS_MES + 32 * P["sql_almacenamiento_gb"]
     if modo == "serverless_sin_pausa":
-        # 0.5 vCore mínimo continuo, picos a 1.
-        return 0.5 * HORAS_MES * 3600 * P["sql_serverless_vcore_s"] + 32 * P["sql_almacenamiento_gb"]
+        # Sin pausa se factura el mínimo de 0.5 vCore las 730 horas del mes,
+        # MÁS el consumo por encima de ese mínimo durante el uso. Omitir el
+        # segundo término subestima el costo y hace que serverless parezca más
+        # barato que la capacidad aprovisionada, que es justo lo contrario.
+        minimo = 0.5 * HORAS_MES * 3600 * P["sql_serverless_vcore_s"]
+        sobre_minimo = 0.5 * HORAS_LABORALES_MES * 3600 * P["sql_serverless_vcore_s"]
+        return minimo + sobre_minimo + 32 * P["sql_almacenamiento_gb"]
     if modo == "serverless_con_pausa":
-        # Activa solo en horario laboral, promedio 0.75 vCore.
+        # Pausa a los 60 minutos, con calentamiento programado que la mantiene
+        # activa en horario laboral. Promedio 0.75 vCore mientras está activa.
         return 0.75 * HORAS_LABORALES_MES * 3600 * P["sql_serverless_vcore_s"] + 32 * P["sql_almacenamiento_gb"]
     if modo == "serverless_dev":
         # Uso esporádico del equipo: unas 40 h al mes.
@@ -254,8 +261,8 @@ def escenario_d() -> list[Entorno]:
     prod = Entorno("Producción")
     prod.agregar("API Management Consumption", costo_apim("consumption"), "SLA 99,95 % · escala a cero")
     prod.agregar("Cómputo Elastic Premium EP1", costo_computo("ep1"), "Se conservan las ranuras de despliegue")
-    prod.agregar("Azure SQL serverless sin pausa", costo_sql("serverless_sin_pausa"), "Sin latencia de reanudación")
-    prod.agregar("Front Door Standard", P["frontdoor_standard_mes"], "WAF con reglas propias · pendiente de TI")
+    prod.agregar("Azure SQL serverless con pausa y calentamiento", costo_sql("serverless_con_pausa"), "Activa de 07 a 18 en días hábiles")
+    prod.agregar("Front Door Standard", P["frontdoor_standard_mes"], "WAF con reglas propias · origen restringido a Front Door")
     prod.agregar("Puntos de conexión privados (4)", costo_pe(4))
     prod.agregar("Observabilidad con tope diario", costo_observabilidad(4))
     prod.agregar("Almacenamiento", costo_almacenamiento())

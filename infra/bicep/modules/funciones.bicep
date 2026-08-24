@@ -29,6 +29,9 @@ param baseDatos string
 @description('Instancias siempre listas en Flex Consumption. Cero deja arranque en frio.')
 param instanciasSiempreListas int = 0
 
+@description('Cadena NCRONTAB del calentamiento de la base serverless. Vacio lo desactiva.')
+param cronCalentamiento string = ''
+
 param crearSlot bool
 param etiquetas object
 
@@ -111,6 +114,14 @@ var configuracionComun = concat(configuracionMotor, [
   {
     name: 'SQL_BASE_DATOS'
     value: baseDatos
+  }
+  // Calentamiento de la base serverless. Un disparador de tiempo ejecuta una
+  // consulta trivial dentro de esta ventana para que la base no pause durante
+  // el horario de uso. Sin él, el primer acceso del día esperaría entre 30 y
+  // 60 segundos y rompería el objetivo de 5 s del tablero.
+  {
+    name: 'CALENTAMIENTO_CRON'
+    value: cronCalentamiento
   }
   // Todo el tráfico de salida atraviesa la red virtual, incluido el que va a
   // los servicios de Azure. Sin esto, los puntos de conexión privados quedan

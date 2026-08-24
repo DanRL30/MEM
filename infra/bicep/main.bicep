@@ -280,6 +280,8 @@ module funciones 'modules/funciones.bicep' = {
     baseDatos: baseDatos.outputs.nombreBaseDatos
     crearSlot: esProduccion
     instanciasSiempreListas: esProduccion ? 1 : 0
+    // Cada 20 minutos, de 07:00 a 18:00, de lunes a viernes.
+    cronCalentamiento: minutosPausaSql > 0 ? '0 */20 7-18 * * 1-5' : ''
     etiquetas: etiquetas
   }
 }

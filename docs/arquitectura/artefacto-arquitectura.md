@@ -344,6 +344,8 @@ a lo previsto originalmente en el Plan de Trabajo.
 | Acceso público a Key Vault | Deshabilitado |
 | Acceso público a Azure SQL | Deshabilitado |
 | Backend accesible solo desde APIM | Restricción por etiqueta de servicio `ApiManagement` |
+| Origen accesible solo desde el borde | Restricción por `AzureFrontDoor.Backend` en `staticwebapp.config.json` |
+| Cabeceras de seguridad del contenido | CSP, HSTS, `X-Frame-Options: DENY`, `nosniff` |
 | Todo el tráfico de salida por la red virtual | `WEBSITE_VNET_ROUTE_ALL = 1` |
 | TLS mínimo | 1.2 en todos los servicios |
 | Cifrado de infraestructura en almacenamiento | Habilitado |
@@ -580,15 +582,15 @@ descuentos de acuerdo empresarial.
 |---|---|---|---|
 | API Management `Consumption` | 0 | 0 | 0 |
 | Cómputo | 150 · EP1 | 1 · Flex | 0 · Flex |
-| Azure SQL serverless | 194 · sin pausa | 81 · con pausa | 5 · esporádica |
+| Azure SQL serverless | 81 · con pausa | 81 · con pausa | 5 · esporádica |
 | Front Door `Standard` | 35 | 35 | 0 · sin borde |
 | Puntos de conexión privados (4) | 29 | 29 | 12 |
 | Observabilidad con tope diario | 11 | 6 | 2 |
 | Static Web Apps | 9 | 9 | 0 · Free |
 | Almacenamiento y Key Vault | 2 | 1 | 1 |
-| **Total mensual (USD)** | **430** | **162** | **19** |
+| **Total mensual (USD)** | **317** | **162** | **19** |
 
-**Total de los tres entornos del cliente: ~US$ 611/mes · ~US$ 7 333/año.** El entorno de
+**Total de los tres entornos del cliente: ~US$ 498/mes · ~US$ 5 977/año.** El entorno de
 construcción de INVA no se incluye: lo asume el proveedor.
 
 ### Las cuatro decisiones que producen esa cifra
@@ -597,7 +599,7 @@ construcción de INVA no se incluye: lo asume el proveedor.
 |---|---|---|
 | 1 | **API Management Consumption** en los cuatro entornos | Escala a cero, factura por llamada y no cobra el primer millón mensual. Conserva el acuerdo de nivel de servicio de **99,95 %**, con holgura sobre el compromiso de >99 % en horario laboral del alcance. Con diecisiete usuarios, ese primer millón no se alcanza |
 | 2 | **Cómputo Flex**, salvo en producción | Flex cubre de sobra a siete usuarios concurrentes. Producción se mantiene en Elastic Premium porque Flex no ofrece ranuras de despliegue, y sin ellas revertir el pase deja de ser un intercambio de segundos dentro de una ventana de seis horas |
-| 3 | **Azure SQL serverless** en los cuatro entornos | La base está inactiva la mayor parte del tiempo. Producción opera sin pausa automática, para que no exista latencia de reanudación en el primer acceso del día; calidad y desarrollo sí pausan |
+| 3 | **Azure SQL serverless con pausa** y calentamiento programado | La base está inactiva la mayor parte del tiempo. Sin pausa, serverless factura el mínimo de 0,5 vCore las 730 horas del mes *más* el consumo por encima de ese mínimo, y resulta más caro que la capacidad aprovisionada equivalente. Con pausa a los 60 minutos y un calentamiento que la mantiene activa de 07:00 a 18:00 en días hábiles, no hay latencia de reanudación dentro del horario de uso |
 | 4 | **Entorno de desarrollo efímero** | La infraestructura como código es idempotente y los insumos de ese entorno son sintéticos. Se crea cuando hay un ciclo de cambio y se destruye al terminar. Con la puerta de enlace en Consumption el ciclo toma minutos; con el SKU Developer tardaba entre 30 y 45 |
 
 ### El requisito que lo habilita
@@ -623,6 +625,11 @@ El borde de la plataforma es **Front Door Standard**, con cortafuegos de aplicac
 mediante reglas propias: limitación de tasa por origen y bloqueo de los métodos HTTP que la interfaz
 no utiliza.
 
+El origen no queda expuesto: `staticwebapp.config.json` restringe el acceso al Static Web App a la
+etiqueta de servicio `AzureFrontDoor.Backend`, de modo que el hostname `*.azurestaticapps.net` no
+responde a tráfico que no venga del borde. Sin esa restricción, cualquiera podría alcanzar el origen
+directamente y saltarse el cortafuegos.
+
 Lo sostienen dos hechos sobre lo que ese borde publica. El contenido servido es **estático**
 —JavaScript y HTML compilados, sin datos ni secretos—, y los datos no pasan por ahí: viajan por la
 puerta de enlace, donde el token de Entra ID se valida antes de alcanzar el backend y la tasa está
@@ -642,7 +649,7 @@ vectores que aplican a una aplicación que sirve contenido dinámico desde el bo
 Una configuración construida con los SKU por defecto de cada servicio —API Management Standard v2,
 cómputo Elastic Premium en los cuatro entornos, base de datos aprovisionada, Front Door Premium y
 desarrollo permanente— costaría **~US$ 2 518/mes · ~US$ 30 210/año**. La configuración desplegada
-representa **US$ 22 900 menos al año**, un 76 %, sin ceder ninguna garantía del alcance.
+representa **US$ 24 200 menos al año**, un 80 %, sin ceder ninguna garantía del alcance.
 
 ## 12. Riesgos de arquitectura
 

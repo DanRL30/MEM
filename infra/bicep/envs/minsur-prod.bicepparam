@@ -38,11 +38,19 @@ param skuApim = 'Consumption'
 // Para bajar al mínimo absoluto: cambiar a 'FC1'.
 param skuFunciones = 'EP1'
 
-// Serverless en lugar de capacidad aprovisionada: ~US$ 291 menos al mes.
-// Sin pausa automática, para que no exista latencia de reanudación en el
-// primer acceso del día.
+// Serverless CON pausa automática y calentamiento programado.
+//
+// Sin pausa, serverless factura el mínimo de 0,5 vCore las 730 horas del mes
+// más el consumo por encima de ese mínimo durante el uso: ~US$ 246. Resulta
+// más caro que la capacidad aprovisionada equivalente, que es lo contrario de
+// lo que se busca al elegir serverless.
+//
+// Con pausa a los 60 minutos y un calentamiento programado que mantiene la
+// base activa de 07:00 a 18:00 en días hábiles, el costo baja a ~US$ 81 y no
+// hay latencia de reanudación dentro del horario de uso. Fuera de esa ventana
+// el primer acceso espera entre 30 y 60 segundos.
 param skuBaseDatos = 'GP_S_Gen5_2'
-param minutosPausaSql = -1
+param minutosPausaSql = 60
 
 // Standard en lugar de Premium: ~US$ 295 menos al mes. Cede el conjunto de
 // reglas gestionado y el enlace privado al origen; a cambio se aplican reglas
