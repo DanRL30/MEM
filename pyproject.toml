@@ -1,0 +1,99 @@
+# Raíz virtual del workspace uv — no es un paquete distribuible.
+# Los miembros publicables están en packages/ y la aplicación en apps/api.
+
+[tool.uv.workspace]
+members = [
+    "apps/api",
+    "packages/engine",
+    "packages/ingest",
+    "packages/domain",
+    "packages/risk",
+    "packages/reporting",
+]
+
+# Los paquetes internos se resuelven desde el workspace, nunca desde PyPI.
+[tool.uv.sources]
+minsur-engine = { workspace = true }
+minsur-domain = { workspace = true }
+minsur-ingest = { workspace = true }
+minsur-risk = { workspace = true }
+minsur-reporting = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "types-openpyxl>=3.1",
+    "pandas-stubs>=2.2",
+]
+security = [
+    "bandit>=1.7",
+    "pip-audit>=2.7",
+]
+
+# ---------------------------------------------------------------------------
+# Pruebas
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["packages", "apps/api/tests", "tests/fidelidad"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "tenant_minsur: requiere datos reales de MINSUR; solo corre dentro del tenant del cliente",
+    "fidelidad: contraste contra el modelo de referencia (N0-N3)",
+    "lento: simulación de Montecarlo u otras corridas largas",
+]
+
+[tool.coverage.run]
+source = ["packages"]
+branch = true
+
+[tool.coverage.report]
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]
+
+# ---------------------------------------------------------------------------
+# Estilo y tipos
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["apps/api/src", "packages/*/src"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "N",        # pep8-naming
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "S",        # bandit
+    "PD",       # pandas-vet
+    "NPY",      # numpy
+    "RUF",
+]
+ignore = [
+    "E501",     # la longitud la gobierna el formateador
+    "PD901",    # `df` es un nombre aceptable en el motor
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]  # assert es el mecanismo de pytest
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+mypy_path = ["packages/engine/src", "packages/domain/src", "packages/ingest/src", "packages/risk/src", "packages/reporting/src", "apps/api/src"]
+
+# El motor es el núcleo del contraste de fidelidad: no admite tipos implícitos.
+[[tool.mypy.overrides]]
+module = "minsur_engine.*"
+disallow_any_explicit = true
+
+[[tool.mypy.overrides]]
+module = ["numpy_financial.*", "reportlab.*"]
+ignore_missing_imports = true

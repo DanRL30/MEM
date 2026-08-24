@@ -1,0 +1,18 @@
+[project]
+name = "minsur-risk"
+version = "0.1.0"
+description = "Sensibilidad, escenarios y simulacion de Montecarlo sobre el motor."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "minsur-engine",
+    "numpy>=2.1",
+    "pandas>=2.2",
+    "scipy>=1.14",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/minsur_risk"]

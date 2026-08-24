@@ -1,0 +1,17 @@
+[project]
+name = "minsur-engine"
+version = "0.1.0"
+description = "Motor de calculo economico. Puro: sin I/O, sin red, sin persistencia."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy>=2.1",
+    "numpy-financial>=1.0",
+    "pandas>=2.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/minsur_engine"]

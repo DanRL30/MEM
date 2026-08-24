@@ -1,0 +1,28 @@
+{
+  "name": "minsur-plataforma",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma de Evaluación Económica · Modelo MINSUR — servicio INVA-01-2026-182",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @minsur/web dev",
+    "build": "pnpm --filter @minsur/contracts build && pnpm --filter @minsur/web build",
+    "preview": "pnpm --filter @minsur/web preview",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
+    "api:schema": "python -m minsur_api.openapi > packages/contracts/openapi.json",
+    "api:types": "pnpm --filter @minsur/contracts generate",
+    "contracts": "pnpm api:schema && pnpm api:types",
+    "format": "prettier --write \"**/*.{ts,tsx,json,css,md}\""
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.6.0"
+  }
+}
