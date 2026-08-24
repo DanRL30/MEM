@@ -644,13 +644,6 @@ vectores que aplican a una aplicación que sirve contenido dinámico desde el bo
 > conjunto de reglas gestionado sobre todo contenido publicado (`R-22`), el cambio a Premium es una
 > línea y no toca la aplicación.
 
-### Referencia
-
-Una configuración construida con los SKU por defecto de cada servicio —API Management Standard v2,
-cómputo Elastic Premium en los cuatro entornos, base de datos aprovisionada, Front Door Premium y
-desarrollo permanente— costaría **~US$ 2 518/mes · ~US$ 30 210/año**. La configuración desplegada
-representa **US$ 24 200 menos al año**, un 80 %, sin ceder ninguna garantía del alcance.
-
 ## 12. Riesgos de arquitectura
 
 | Riesgo | Prob. | Impacto | Control gestionado por INVA |
@@ -704,3 +697,82 @@ Cada afirmación de este documento es verificable contra la infraestructura como
 
 Estado a la fecha de emisión: **compila sin advertencias** con Bicep 0.46.1, los cuatro archivos de
 parámetros validan, y `what-if` se ejecutó contra la suscripción de INVA sin errores de API.
+
+## 15. Conformidad con el estándar de MINSUR
+
+Esta sección contrasta la arquitectura propuesta con el estándar corporativo comunicado por el área
+de Arquitectura y Desarrollo en la reunión de arranque del 24 de agosto. Su propósito es que el
+comité no encuentre sorpresas y que INVA no descubra una incompatibilidad en septiembre, cuando la
+cadena de infraestructura ya no tiene holgura.
+
+### Lo comunicado, y cómo se atiende
+
+| # | Indicación del área de TI | Cómo se atiende | Estado |
+|---|---|---|---|
+| 1 | El estándar tecnológico corporativo es .NET/C#. Se consultó por su uso y se confirmó Python | La plataforma se construye sobre Python 3.12. Se solicita constancia formal de la excepción (`SOL-05` · `R-14`) | ⧗ Constancia |
+| 2 | Frontend como Static Web App, API Management entre frontend y backend, Azure SQL y almacenamiento blob y table, secretos en Key Vault | Los cinco componentes están implementados en ese orden y con esas funciones. API Management es la única vía al backend, restringida por etiqueta de servicio | ✔ Conforme |
+| 3 | Azure DevOps para repositorio y versionamiento, Sonar para calidad, canalizaciones entre Dev, QA y producción con aprobaciones | Cinco canalizaciones con Sonar y compuerta de calidad. Las aprobaciones se configuran en los entornos de Azure DevOps; producción exige doble aprobación, TI y Product Owner | ✔ Conforme |
+| 4 | Elaborar y aprobar un artefacto de arquitectura antes de que INVA trabaje sobre la infraestructura | Este documento. El contenido técnico está completo y espera el formato corporativo (`SOL-01` · `R-03`). Ningún despliegue en el tenant precede a su aprobación | ⧗ Formato |
+| 5 | Todo desarrollo pasa por ethical hacking antes de la salida en vivo, con acuerdo de dos semanas | Ventana del 21 de septiembre al 2 de octubre sobre el entorno de calidad, reservada desde la semana 2 (`SOL-17`). El entorno se libera el 18 de septiembre | ✔ En cronograma |
+| 6 | Con Python y librerías de terceros es común que aparezcan vulnerabilidades; priorizar críticas y altas antes de la salida y postergar medias y bajas | La compuerta de las canalizaciones aplica exactamente ese criterio desde la semana del 7 de septiembre, con paquete de autoevaluación entregado por adelantado (`SOL-18`, `SOL-19`) | ✔ Implementado |
+| 7 | La salida podría realizarse primero en calidad mientras se completa la evaluación de seguridad | Es la secuencia del cronograma: calidad liberado el 18 de septiembre, evaluación hasta el 2 de octubre, remediación del 5 al 7, homologación el 9 y pase el 12 | ✔ Conforme |
+
+### Tres puntos que pueden generar observación
+
+Las decisiones de dimensionamiento del capítulo 11 son conformes con el patrón que indicó el área de
+TI, pero **el patrón describe los componentes, no sus niveles de servicio**. Tres elecciones de
+nivel podrían no satisfacer un estándar corporativo que INVA no conoce en detalle. Se declaran aquí,
+con su alternativa y su costo, para que el comité decida en una sola sesión y no en dos.
+
+| # | Punto | Por qué podría objetarse | Alternativa | Costo mensual |
+|---|---|---|---|---|
+| 1 | **API Management en nivel Consumption** | No admite integración con red virtual. Si el estándar exige que la puerta de enlace opere en modo interno dentro de la red, este nivel no lo permite. Es el punto de mayor exposición de los tres | Standard v2, único nivel con integración de red virtual saliente | +701 |
+| 2 | **Front Door en nivel Standard** | El cortafuegos opera con reglas propias y no con el conjunto gestionado. Si la línea base de aseguramiento exige conjunto gestionado sobre todo contenido publicado, no se satisface | Premium, con conjunto gestionado y enlace privado al origen | +295 por entorno |
+| 3 | **Base de datos con pausa automática** | Introduce una latencia de reanudación de 30 a 60 segundos fuera de la ventana de calentamiento. Si el estándar exige disponibilidad sin latencia variable, no se satisface | Capacidad aprovisionada de 1 vCore, con reserva anual | +42 |
+
+> **Los tres cambios son parámetros de la plantilla y ninguno toca la aplicación.** Adoptarlos
+> después de aprobado el artefacto, en cambio, obliga a volver al comité, y esa cadena tiene holgura
+> cero.
+>
+> Por eso se solicita resolverlos en la misma sesión de presentación. Si el comité objetara los tres,
+> el costo mensual pasaría de ~US$ 498 a ~US$ 1 790: la optimización desaparecería casi por completo,
+> pero la arquitectura seguiría siendo la misma y el cronograma no se movería.
+
+### Una asimetría que INVA declara por cuenta propia
+
+El entorno de calidad usa cómputo Flex y producción usa Elastic Premium. Es una diferencia
+deliberada —producción necesita las ranuras de despliegue que hacen reversible el pase— pero
+introduce una asimetría con el principio que este documento sostiene en otros puntos: **el ethical
+hacking debe evaluar la configuración que va a producción**.
+
+El alcance de esa asimetría es acotado. La evaluación de seguridad examina la aplicación, el borde y
+la superficie expuesta, y los tres son idénticos en ambos entornos. Lo que difiere es el plan de
+hospedaje, cuya superficie administrativa no es la que se somete a la evaluación.
+
+Aun así, si Seguridad de la Información prefiere entornos idénticos, igualar calidad a Elastic
+Premium cuesta **US$ 149 al mes** y es un parámetro. INVA lo señala en lugar de esperar a que
+aparezca como observación.
+
+### Lo que no depende de esta arquitectura
+
+Cuatro definiciones siguen abiertas del lado de MINSUR y ninguna se resuelve con una decisión de
+diseño. Están detalladas en el documento de solicitudes formales `INVA-01-2026-182-SOL`:
+
+| Definición pendiente | Referencia | Qué bloquea |
+|---|---|---|
+| Estándar de nomenclatura y etiquetado | `SOL-06` · `R-21` | Un etiquetado obligatorio faltante hace que la política corporativa rechace el despliegue completo |
+| Topología de red: dedicada o integrada a la corporativa | `SOL-10` · `R-22` | Determina si INVA crea la red o consume subredes existentes |
+| Identificador del grupo administrador de la base de datos | `SOL-21` · `R-25` | Sin él la base se despliega con un administrador inexistente |
+| Definiciones de Azure Policy sobre la suscripción destino | `SOL-02` · `R-04` | Permite validar la plantilla antes de solicitar aprovisionamiento |
+
+### Conclusión
+
+**La arquitectura satisface el patrón de componentes que indicó el área de TI en su totalidad:**
+Static Web App, API Management entre frontend y backend, Azure SQL, almacenamiento blob y table,
+Key Vault, Azure DevOps con Sonar y aprobaciones por ambiente, artefacto previo al aprovisionamiento,
+ethical hacking con acuerdo de dos semanas y criterio escalonado por severidad.
+
+Lo que no puede confirmarse sin la línea base de aseguramiento técnico (`SOL-22` · `R-42`) son los
+tres niveles de servicio declarados arriba. **Los tres se resuelven con un parámetro y ninguno
+afecta al cronograma si se decide en la sesión de presentación del artefacto.** Decidirlos después
+es lo que sí lo afectaría.
