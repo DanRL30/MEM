@@ -23,12 +23,16 @@ param etiquetas object
 @description('Bloquea la política de inmutabilidad. IRREVERSIBLE: una vez bloqueada no se puede reducir ni eliminar durante el periodo de retención. Se activa como paso deliberado del pase a producción, nunca en dev ni en calidad.')
 param bloquearInmutabilidad bool = false
 
+@description('Orígenes autorizados a cargar plantillas directamente. La interfaz de cada entorno.')
+param origenesPermitidos array = []
+
 var contenedores = [
   { nombre: 'evaluaciones', inmutable: false }
   { nombre: 'plantillas', inmutable: false }
   { nombre: 'evidencias', inmutable: false }
   { nombre: 'selladas', inmutable: true } // imágenes selladas de corridas congeladas
   { nombre: 'contraste', inmutable: false } // casos certificados de fidelidad
+  { nombre: 'despliegue', inmutable: false } // artefactos de Flex Consumption
 ]
 
 resource cuenta 'Microsoft.Storage/storageAccounts@2023-05-01' = {
@@ -69,6 +73,20 @@ resource servicioBlob 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01
   parent: cuenta
   name: 'default'
   properties: {
+    // La interfaz sube las plantillas directamente al almacenamiento con una
+    // firma de corta vigencia. Sin estas reglas el navegador rechaza la
+    // solicitud antes de emitirla.
+    cors: {
+      corsRules: [
+        {
+          allowedOrigins: origenesPermitidos
+          allowedMethods: ['PUT', 'GET', 'HEAD', 'OPTIONS']
+          allowedHeaders: ['x-ms-blob-type', 'x-ms-blob-content-type', 'content-type']
+          exposedHeaders: ['x-ms-request-id']
+          maxAgeInSeconds: 3600
+        }
+      ]
+    }
     isVersioningEnabled: true
     changeFeed: {
       enabled: true
@@ -168,6 +186,10 @@ resource tabla 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-0
 
 var rolBlobContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var rolTableContributor = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
+// Necesario para emitir firmas de acceso compartido de delegacion de usuario.
+// Sin este rol la aplicacion no puede autorizar la carga directa de plantillas
+// al almacenamiento, y los archivos tendrian que atravesar la puerta de enlace.
+var rolBlobDelegator = 'db58b8e5-c6ad-4a2a-8342-4190687cbf4a'
 
 resource accesoBlob 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: cuenta
@@ -184,6 +206,16 @@ resource accesoTabla 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(cuenta.id, idPrincipalIdentidad, rolTableContributor)
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', rolTableContributor)
+    principalId: idPrincipalIdentidad
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource accesoDelegacion 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: cuenta
+  name: guid(cuenta.id, idPrincipalIdentidad, rolBlobDelegator)
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', rolBlobDelegator)
     principalId: idPrincipalIdentidad
     principalType: 'ServicePrincipal'
   }
@@ -225,4 +257,5 @@ module puntoTabla 'punto-privado.bicep' = if (!empty(idSubredPrivada)) {
 
 output nombre string = cuenta.name
 output id string = cuenta.id
+output uriContenedorDespliegue string = '${cuenta.properties.primaryEndpoints.blob}despliegue'
 output inmutabilidadBloqueada bool = bloquearInmutabilidad

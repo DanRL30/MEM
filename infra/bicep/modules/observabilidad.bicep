@@ -8,6 +8,10 @@
 param nombreBase string
 param ubicacion string
 param diasRetencion int
+
+@description('Tope diario de ingesta en GB. La ingesta se detiene al alcanzarlo, no se factura de mas.')
+param topeDiarioGb int = 2
+
 param correoAlertas string
 param etiquetas object
 
@@ -23,6 +27,12 @@ resource areaTrabajo 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
       name: 'PerGB2018'
     }
     retentionInDays: diasRetencion
+    // Con siete usuarios concurrentes la ingesta real es de pocos GB al mes.
+    // El tope es una salvaguarda contra un bucle de registro, no una
+    // restriccion operativa.
+    workspaceCapping: {
+      dailyQuotaGb: topeDiarioGb
+    }
     features: {
       enableLogAccessUsingOnlyResourcePermissions: true
     }

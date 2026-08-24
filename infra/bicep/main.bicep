@@ -66,8 +66,23 @@ param patronPublicacion string = 'frontDoor'
 param skuFunciones string = 'EP1'
 
 @description('SKU de API Management. Developer no tiene acuerdo de nivel de servicio y no debe usarse en producción.')
-@allowed(['Developer', 'Basic', 'Standard', 'StandardV2', 'Premium'])
-param skuApim string = 'Developer'
+@allowed(['Consumption', 'Developer', 'Basic', 'BasicV2', 'Standard', 'StandardV2', 'Premium'])
+param skuApim string = 'Consumption'
+
+@description('SKU del borde. Standard no ofrece enlace privado al origen ni conjunto de reglas gestionado.')
+@allowed(['Standard_AzureFrontDoor', 'Premium_AzureFrontDoor'])
+param skuBorde string = 'Standard_AzureFrontDoor'
+
+@description('Minutos de inactividad antes de pausar la base de datos. -1 la mantiene siempre activa.')
+param minutosPausaSql int = -1
+
+@description('Tope diario de ingesta de registros, en GB. Evita sorpresas de facturación.')
+param topeDiarioLogsGb int = 2
+
+@description('Porcentaje de muestreo de las trazas de la puerta de enlace.')
+@minValue(1)
+@maxValue(100)
+param muestreoApim int = 25
 
 @description('SKU de Static Web Apps. Standard es necesario para dominio propio y redes privadas.')
 @allowed(['Free', 'Standard'])
@@ -109,6 +124,9 @@ param nombreAdminSql string
 
 @description('Correo para las alertas de disponibilidad y latencia.')
 param correoAlertas string
+
+@description('Orígenes autorizados a cargar plantillas directamente al almacenamiento.')
+param origenesCarga array = []
 
 // -----------------------------------------------------------------------------
 // Convenciones derivadas
@@ -161,6 +179,7 @@ module observabilidad 'modules/observabilidad.bicep' = {
     nombreBase: nombreBase
     ubicacion: ubicacion
     diasRetencion: diasRetencionLogs
+    topeDiarioGb: topeDiarioLogsGb
     correoAlertas: correoAlertas
     etiquetas: etiquetas
   }
@@ -213,6 +232,7 @@ module almacenamiento 'modules/almacenamiento.bicep' = {
     idSubredPrivada: subredPrivada
     idRedVirtual: idRedVirtual
     crearZonaDns: crearRedVirtual
+    origenesPermitidos: origenesCarga
     etiquetas: etiquetas
   }
 }
@@ -233,6 +253,7 @@ module baseDatos 'modules/base-datos.bicep' = {
     idSubredPrivada: subredPrivada
     idRedVirtual: idRedVirtual
     crearZonaDns: crearRedVirtual
+    minutosPausa: minutosPausaSql
     diasRetencionCopias: esProduccion ? 35 : 7
     etiquetas: etiquetas
   }
@@ -252,11 +273,13 @@ module funciones 'modules/funciones.bicep' = {
     idClienteIdentidad: identidad.properties.clientId
     idSubredIntegracion: subredIntegracion
     nombreAlmacenamiento: almacenamiento.outputs.nombre
+    uriDespliegue: almacenamiento.outputs.uriContenedorDespliegue
     uriBoveda: boveda.outputs.uri
     cadenaAppInsights: observabilidad.outputs.cadenaConexion
     servidorSql: baseDatos.outputs.nombreServidor
     baseDatos: baseDatos.outputs.nombreBaseDatos
     crearSlot: esProduccion
+    instanciasSiempreListas: esProduccion ? 1 : 0
     etiquetas: etiquetas
   }
 }
@@ -278,6 +301,7 @@ module apim 'modules/apim.bicep' = {
     urlBackend: 'https://${funciones.outputs.hostname}'
     idAppInsights: observabilidad.outputs.idAppInsights
     claveAppInsights: observabilidad.outputs.claveInstrumentacion
+    muestreo: muestreoApim
     etiquetas: etiquetas
   }
 }
@@ -310,6 +334,7 @@ module publicacionFrontDoor 'modules/publicacion-frontdoor.bicep' = if (patronPu
     nombreBase: nombreBase
     hostnameOrigen: interfaz.outputs.hostname
     idSitioEstatico: interfaz.outputs.id
+    sku: skuBorde
     modoWaf: esProduccion ? 'Prevention' : 'Detection'
     etiquetas: etiquetas
   }

@@ -243,10 +243,55 @@ def escenario_c() -> list[Entorno]:
     return [prod, qa, dev]
 
 
+def escenario_d() -> list[Entorno]:
+    """Implementado. El mínimo que conserva las garantías del alcance.
+
+    Es el escenario C con una sola excepción: producción mantiene Elastic
+    Premium. Flex Consumption ahorraría 59 al mes pero no ofrece ranuras de
+    despliegue, y sin ellas revertir el pase deja de ser un intercambio de
+    segundos dentro de una ventana de seis horas.
+    """
+    prod = Entorno("Producción")
+    prod.agregar("API Management Consumption", costo_apim("consumption"), "SLA 99,95 % · escala a cero")
+    prod.agregar("Cómputo Elastic Premium EP1", costo_computo("ep1"), "Se conservan las ranuras de despliegue")
+    prod.agregar("Azure SQL serverless sin pausa", costo_sql("serverless_sin_pausa"), "Sin latencia de reanudación")
+    prod.agregar("Front Door Standard", P["frontdoor_standard_mes"], "WAF con reglas propias · pendiente de TI")
+    prod.agregar("Puntos de conexión privados (4)", costo_pe(4))
+    prod.agregar("Observabilidad con tope diario", costo_observabilidad(4))
+    prod.agregar("Almacenamiento", costo_almacenamiento())
+    prod.agregar("Static Web Apps Standard", P["swa_standard_mes"])
+    prod.agregar("Key Vault", 1.0)
+
+    qa = Entorno("Calidad")
+    qa.agregar("API Management Consumption", costo_apim("consumption"))
+    qa.agregar("Cómputo Flex bajo demanda", costo_computo("flex_bajo_demanda"))
+    qa.agregar("Azure SQL serverless con pausa", costo_sql("serverless_con_pausa"))
+    qa.agregar("Front Door Standard", P["frontdoor_standard_mes"], "Igual a producción: se homologa lo que se despliega")
+    qa.agregar("Puntos de conexión privados (4)", costo_pe(4))
+    qa.agregar("Observabilidad", costo_observabilidad(2))
+    qa.agregar("Almacenamiento", costo_almacenamiento() * 0.6)
+    qa.agregar("Static Web Apps Standard", P["swa_standard_mes"])
+    qa.agregar("Key Vault", 1.0)
+
+    dev = Entorno("Desarrollo · efímero")
+    dev.agregar("Recreado por IaC bajo demanda", 0.0, "~12 días al mes de vigencia media")
+    dev.agregar("API Management Consumption", costo_apim("consumption"))
+    dev.agregar("Cómputo Flex bajo demanda", costo_computo("flex_bajo_demanda") * 0.4)
+    dev.agregar("Azure SQL serverless esporádica", costo_sql("serverless_dev") * 0.4)
+    dev.agregar("Sin borde", 0.0)
+    dev.agregar("Puntos de conexión privados (4)", costo_pe(4) * 0.4)
+    dev.agregar("Observabilidad", costo_observabilidad(0.6))
+    dev.agregar("Almacenamiento", costo_almacenamiento() * 0.3)
+    dev.agregar("Static Web Apps Free", 0.0)
+    dev.agregar("Key Vault", 1.0)
+    return [prod, qa, dev]
+
+
 ESCENARIOS = {
     "A · Línea base": escenario_a,
     "B · Equilibrado": escenario_b,
     "C · Mínimo": escenario_c,
+    "D · Implementado": escenario_d,
 }
 
 

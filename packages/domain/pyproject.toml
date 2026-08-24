@@ -7,6 +7,8 @@ dependencies = [
     "minsur-engine",
     "pydantic>=2.9",
     "sqlalchemy>=2.0",
+    "azure-storage-blob>=12.24",
+    "azure-core>=1.32",
 ]
 
 [build-system]

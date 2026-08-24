@@ -14,6 +14,12 @@ param idSitioEstatico string
 param modoWaf string
 param etiquetas object
 
+@description('SKU del perfil. Standard no ofrece enlace privado al origen ni conjunto de reglas gestionado.')
+@allowed(['Standard_AzureFrontDoor', 'Premium_AzureFrontDoor'])
+param sku string = 'Standard_AzureFrontDoor'
+
+var esPremium = sku == 'Premium_AzureFrontDoor'
+
 @description('Region del origen para el enlace privado. Debe coincidir con la de Static Web Apps.')
 param ubicacionOrigen string = 'eastus2'
 
@@ -22,9 +28,11 @@ resource perfil 'Microsoft.Cdn/profiles@2024-02-01' = {
   location: 'global'
   tags: etiquetas
   sku: {
-    // Premium habilita Private Link hacia el origen y el conjunto de reglas
-    // gestionadas del cortafuegos.
-    name: 'Premium_AzureFrontDoor'
+    // Premium habilita el enlace privado hacia el origen y el conjunto de
+    // reglas gestionado. Standard cubre el resto por una décima parte del
+    // costo: el contenido servido es estático, sin datos ni secretos, y los
+    // datos viajan por la puerta de enlace con el token ya validado.
+    name: sku
   }
 }
 
@@ -68,14 +76,15 @@ resource origen 'Microsoft.Cdn/profiles/originGroups/origins@2024-02-01' = {
     weight: 1000
     enabledState: 'Enabled'
     enforceCertificateNameCheck: true
-    sharedPrivateLinkResource: {
+    // El enlace privado al origen solo existe en Premium.
+    sharedPrivateLinkResource: esPremium ? {
       privateLink: {
         id: idSitioEstatico
       }
       groupId: 'staticSites'
       privateLinkLocation: ubicacionOrigen
       requestMessage: 'Front Door del servicio INVA-01-2026-182'
-    }
+    } : null
   }
 }
 
@@ -100,7 +109,7 @@ resource waf 'Microsoft.Network/FrontDoorWebApplicationFirewallPolicies@2024-02-
   location: 'global'
   tags: etiquetas
   sku: {
-    name: 'Premium_AzureFrontDoor'
+    name: sku
   }
   properties: {
     policySettings: {
@@ -108,8 +117,13 @@ resource waf 'Microsoft.Network/FrontDoorWebApplicationFirewallPolicies@2024-02-
       // Detección en entornos no productivos: bloquear durante la construcción
       // genera falsos positivos que el equipo no puede distinguir de defectos.
       mode: modoWaf
+      requestBodyCheck: 'Enabled'
     }
-    managedRules: {
+    // El conjunto de reglas gestionado requiere Premium. En Standard se
+    // sustituye por reglas propias sobre los vectores que aplican a una
+    // aplicación de página única: limitación de tasa y bloqueo de métodos
+    // que la interfaz no usa.
+    managedRules: esPremium ? {
       managedRuleSets: [
         {
           ruleSetType: 'Microsoft_DefaultRuleSet'
@@ -119,6 +133,41 @@ resource waf 'Microsoft.Network/FrontDoorWebApplicationFirewallPolicies@2024-02-
         {
           ruleSetType: 'Microsoft_BotManagerRuleSet'
           ruleSetVersion: '1.0'
+        }
+      ]
+    } : null
+    customRules: esPremium ? null : {
+      rules: [
+        {
+          name: 'limitarTasaPorOrigen'
+          priority: 100
+          enabledState: 'Enabled'
+          ruleType: 'RateLimitRule'
+          rateLimitDurationInMinutes: 1
+          rateLimitThreshold: 600
+          action: 'Block'
+          matchConditions: [
+            {
+              matchVariable: 'RequestUri'
+              operator: 'Any'
+              matchValue: []
+            }
+          ]
+        }
+        {
+          name: 'bloquearMetodosNoUsados'
+          priority: 200
+          enabledState: 'Enabled'
+          ruleType: 'MatchRule'
+          action: 'Block'
+          matchConditions: [
+            {
+              matchVariable: 'RequestMethod'
+              operator: 'Equal'
+              negateCondition: false
+              matchValue: ['PUT', 'DELETE', 'PATCH', 'TRACE']
+            }
+          ]
         }
       ]
     }

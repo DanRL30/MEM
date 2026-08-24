@@ -18,14 +18,32 @@ param idIdentidad string
 param idClienteIdentidad string
 param idSubredIntegracion string
 param nombreAlmacenamiento string
+
+@description('Contenedor donde Flex Consumption deposita el artefacto desplegado.')
+param uriDespliegue string
+
 param uriBoveda string
 param cadenaAppInsights string
 param servidorSql string
 param baseDatos string
+@description('Instancias siempre listas en Flex Consumption. Cero deja arranque en frio.')
+param instanciasSiempreListas int = 0
+
 param crearSlot bool
 param etiquetas object
 
 var esElastico = startsWith(sku, 'EP')
+var esFlex = sku == 'FC1'
+
+// Flex Consumption factura por ejecucion y escala a cero. Cubre de sobra a
+// siete usuarios concurrentes, y con una instancia siempre lista evita el
+// arranque en frio que romperia el objetivo de 5 s del tablero.
+//
+// Lo que no ofrece son ranuras de despliegue. Por eso produccion se mantiene
+// en Elastic Premium: sin ranuras, revertir el pase deja de ser un
+// intercambio de segundos y pasa a ser un redespliegue, dentro de una ventana
+// de seis horas. Esa diferencia cuesta unos 59 dolares al mes y protege el
+// hito de mayor riesgo del servicio.
 
 resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: '${nombreBase}-plan'
@@ -33,16 +51,18 @@ resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
   tags: etiquetas
   sku: {
     name: sku
-    tier: esElastico ? 'ElasticPremium' : 'Dynamic'
+    tier: esFlex ? 'FlexConsumption' : (esElastico ? 'ElasticPremium' : 'Dynamic')
   }
-  kind: esElastico ? 'elastic' : 'functionapp'
+  kind: esFlex ? 'functionapp' : (esElastico ? 'elastic' : 'functionapp')
   properties: {
     reserved: true // Linux
     maximumElasticWorkerCount: esElastico ? 3 : null
   }
 }
 
-var configuracionComun = [
+// Flex declara el motor en functionAppConfig, no en la configuracion de la
+// aplicacion; repetirlo alli provoca un despliegue rechazado.
+var configuracionMotor = esFlex ? [] : [
   {
     name: 'FUNCTIONS_EXTENSION_VERSION'
     value: '~4'
@@ -51,6 +71,9 @@ var configuracionComun = [
     name: 'FUNCTIONS_WORKER_RUNTIME'
     value: 'python'
   }
+]
+
+var configuracionComun = concat(configuracionMotor, [
   // Almacenamiento por identidad, no por cadena de conexión: la cuenta tiene
   // deshabilitado el acceso por clave compartida.
   {
@@ -100,7 +123,7 @@ var configuracionComun = [
     name: 'WEBSITE_CONTENTOVERVNET'
     value: '1'
   }
-]
+])
 
 resource funciones 'Microsoft.Web/sites@2023-12-01' = {
   name: '${nombreBase}-func'
@@ -118,10 +141,38 @@ resource funciones 'Microsoft.Web/sites@2023-12-01' = {
     httpsOnly: true
     virtualNetworkSubnetId: empty(idSubredIntegracion) ? null : idSubredIntegracion
     keyVaultReferenceIdentity: idIdentidad
+    functionAppConfig: esFlex ? {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: uriDespliegue
+          authentication: {
+            type: 'UserAssignedIdentity'
+            userAssignedIdentityResourceId: idIdentidad
+          }
+        }
+      }
+      scaleAndConcurrency: {
+        maximumInstanceCount: 40
+        instanceMemoryMB: 2048
+        // Una instancia permanentemente lista elimina el arranque en frio en
+        // el entorno donde el objetivo de 5 s es contractual.
+        alwaysReady: instanciasSiempreListas > 0 ? [
+          {
+            name: 'http'
+            instanceCount: instanciasSiempreListas
+          }
+        ] : []
+      }
+      runtime: {
+        name: 'python'
+        version: '3.12'
+      }
+    } : null
     siteConfig: {
-      linuxFxVersion: 'Python|3.12'
-      // alwaysOn no aplica a Elastic Premium: alli el calentamiento se
-      // controla con instancias siempre listas.
+      linuxFxVersion: esFlex ? null : 'Python|3.12'
+      // alwaysOn no aplica a Elastic Premium ni a Flex: en ambos el
+      // calentamiento se controla con instancias siempre listas.
       alwaysOn: false
       minimumElasticInstanceCount: esElastico ? 1 : null
       functionAppScaleLimit: esElastico ? 5 : null
@@ -153,7 +204,7 @@ resource funciones 'Microsoft.Web/sites@2023-12-01' = {
 
 // Ranura de preparación: el pase despliega aquí, se verifica y recién entonces
 // se intercambia. Revertir es volver a intercambiar.
-resource slot 'Microsoft.Web/sites/slots@2023-12-01' = if (crearSlot) {
+resource slot 'Microsoft.Web/sites/slots@2023-12-01' = if (crearSlot && !esFlex) {
   parent: funciones
   name: 'preparacion'
   location: ubicacion
@@ -171,7 +222,7 @@ resource slot 'Microsoft.Web/sites/slots@2023-12-01' = if (crearSlot) {
     virtualNetworkSubnetId: empty(idSubredIntegracion) ? null : idSubredIntegracion
     keyVaultReferenceIdentity: idIdentidad
     siteConfig: {
-      linuxFxVersion: 'Python|3.12'
+      linuxFxVersion: esFlex ? null : 'Python|3.12'
       alwaysOn: false
       minimumElasticInstanceCount: esElastico ? 1 : null
       minTlsVersion: '1.2'
@@ -186,3 +237,4 @@ output nombre string = funciones.name
 output id string = funciones.id
 output hostname string = funciones.properties.defaultHostName
 output idPrincipal string = idClienteIdentidad
+output tieneRanura bool = crearSlot && !esFlex

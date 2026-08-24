@@ -16,6 +16,9 @@ param nombreAdmin string
 param idSubredPrivada string
 param idRedVirtual string
 param crearZonaDns bool
+@description('Minutos de inactividad antes de pausar. -1 mantiene la base siempre activa.')
+param minutosPausa int = -1
+
 param diasRetencionCopias int
 param etiquetas object
 
@@ -54,9 +57,11 @@ resource baseDatos 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
     collation: 'SQL_Latin1_General_CP1_CI_AS'
     // Zona redundante solo donde el SKU y la región lo permiten.
     zoneRedundant: false
-    // Pausa automática en entornos que no son productivos: siete usuarios
-    // concurrentes no justifican cómputo encendido de noche.
-    autoPauseDelay: startsWith(sku, 'GP_S_') ? 60 : -1
+    // La pausa automática la gobierna el entorno. Siete usuarios concurrentes
+    // no justifican cómputo encendido de noche, pero reanudar toma entre 30 y
+    // 60 segundos: en producción eso rompería el objetivo de 5 s del tablero
+    // si el primer acceso del día cae antes del calentamiento programado.
+    autoPauseDelay: startsWith(sku, 'GP_S_') ? minutosPausa : -1
     requestedBackupStorageRedundancy: 'Zone'
   }
 }

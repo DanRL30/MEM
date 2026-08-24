@@ -1,0 +1,183 @@
+# Entorno efímero — crear y destruir bajo demanda
+#
+# Servicio INVA-01-2026-182
+#
+# El entorno de desarrollo no se mantiene encendido de forma permanente. Se crea
+# cuando hay un ciclo de cambio y se destruye al terminar. La infraestructura
+# como código es idempotente y los insumos son sintéticos: no hay dato
+# persistente que perder.
+#
+# Con la configuración actual —API Management Consumption y cómputo Flex, ambos
+# de creación rápida y facturación por uso— el ciclo completo toma unos minutos.
+# El SKU Developer de API Management tardaba entre 30 y 45 minutos y hacía
+# impracticable este patrón; ese fue uno de los motivos del cambio.
+#
+# Costo del entorno encendido: ~US$ 28/mes. Con una vigencia media de doce días
+# al mes, el costo efectivo baja a ~US$ 8.
+
+name: EFIMERO-$(Date:yyyyMMdd)-$(Rev:r)
+
+trigger: none
+pr: none
+
+parameters:
+  - name: accion
+    displayName: "Acción"
+    type: string
+    default: crear
+    values: [crear, destruir, estado]
+
+  - name: entorno
+    displayName: "Entorno"
+    type: string
+    default: minsur-dev
+    values: [minsur-dev, inva-build]
+
+  - name: confirmarDestruccion
+    displayName: "Escriba DESTRUIR para confirmar la eliminación"
+    type: string
+    default: "no"
+
+variables:
+  - group: minsur-comun
+
+stages:
+  - stage: crear
+    displayName: "Crear entorno"
+    condition: eq('${{ parameters.accion }}', 'crear')
+    jobs:
+      - deployment: aprovisionar
+        environment: ${{ parameters.entorno }}
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: AzureCLI@2
+                  displayName: "Aprovisionar por IaC"
+                  inputs:
+                    azureSubscription: "$(serviceConnection-${{ parameters.entorno }})"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      rg="$(rg-${{ parameters.entorno }})"
+
+                      if ! az group show -n "$rg" >/dev/null 2>&1; then
+                        echo "El grupo de recursos $rg no existe."
+                        echo "Su creación corresponde a TI (SOL-09). No se crea desde aquí."
+                        exit 1
+                      fi
+
+                      az deployment group create \
+                        --resource-group "$rg" \
+                        --template-file infra/bicep/main.bicep \
+                        --parameters "infra/bicep/envs/${{ parameters.entorno }}.bicepparam" \
+                        --name "efimero-$(Build.BuildId)"
+
+                - task: AzureCLI@2
+                  displayName: "Registrar la marca de creación"
+                  inputs:
+                    azureSubscription: "$(serviceConnection-${{ parameters.entorno }})"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      # La etiqueta permite auditar cuánto tiempo lleva encendido
+                      # y detectar entornos olvidados.
+                      az group update -n "$(rg-${{ parameters.entorno }})" \
+                        --tags CreadoPor="pipeline-$(Build.BuildId)" \
+                               Vigencia="Efimero" \
+                               Servicio="INVA-01-2026-182"
+
+  - stage: destruir
+    displayName: "Destruir entorno"
+    condition: eq('${{ parameters.accion }}', 'destruir')
+    jobs:
+      - deployment: eliminar
+        environment: ${{ parameters.entorno }}
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - script: |
+                    set -euo pipefail
+                    if [ "${{ parameters.confirmarDestruccion }}" != "DESTRUIR" ]; then
+                      echo "Confirmación no recibida. Escriba DESTRUIR en el parámetro."
+                      exit 1
+                    fi
+                    if [ "${{ parameters.entorno }}" != "minsur-dev" ] && [ "${{ parameters.entorno }}" != "inva-build" ]; then
+                      echo "Este pipeline solo destruye entornos efímeros."
+                      exit 1
+                    fi
+                  displayName: "Verificar la confirmación"
+
+                - task: AzureCLI@2
+                  displayName: "Eliminar los recursos del grupo"
+                  inputs:
+                    azureSubscription: "$(serviceConnection-${{ parameters.entorno }})"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      rg="$(rg-${{ parameters.entorno }})"
+
+                      # Salvaguarda: si el grupo tiene la etiqueta de un entorno
+                      # con datos reales, no se toca. Vale la comprobación
+                      # redundante: este pipeline borra sin retorno.
+                      clasificacion=$(az group show -n "$rg" --query "tags.Clasificacion" -o tsv 2>/dev/null || echo "")
+                      if [ "$clasificacion" = "Financiera-Confidencial" ]; then
+                        echo "El grupo está marcado como Financiera-Confidencial. Se detiene."
+                        exit 1
+                      fi
+
+                      # Se eliminan los recursos, no el grupo: el grupo lo creó
+                      # TI y su recreación exige una solicitud nueva.
+                      ids=$(az resource list -g "$rg" --query "[].id" -o tsv)
+                      if [ -z "$ids" ]; then
+                        echo "El grupo ya está vacío."
+                        exit 0
+                      fi
+                      echo "$ids" | while read -r id; do echo "  $id"; done
+                      az resource delete --ids $ids --verbose || true
+
+                      # Key Vault conserva borrado lógico noventa días; sin purga
+                      # el nombre queda tomado y la recreación falla.
+                      for kv in $(az keyvault list-deleted --query "[?properties.vaultId!=null].name" -o tsv 2>/dev/null || true); do
+                        case "$kv" in
+                          *${{ parameters.entorno }}*|*dev*)
+                            echo "Purgando bóveda $kv"
+                            az keyvault purge --name "$kv" --no-wait || true
+                            ;;
+                        esac
+                      done
+
+  - stage: estado
+    displayName: "Estado del entorno"
+    condition: eq('${{ parameters.accion }}', 'estado')
+    jobs:
+      - job: consultar
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: AzureCLI@2
+            displayName: "Inventario y antigüedad"
+            inputs:
+              azureSubscription: "$(serviceConnection-${{ parameters.entorno }})"
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                rg="$(rg-${{ parameters.entorno }})"
+                echo "Recursos en $rg"
+                az resource list -g "$rg" --query "[].{Nombre:name, Tipo:type}" -o table
+                echo
+                echo "Etiquetas del grupo"
+                az group show -n "$rg" --query tags -o json

@@ -19,8 +19,19 @@ param idAppInsights string
 param claveAppInsights string
 param etiquetas object
 
-@description('Unidades de capacidad. Developer y Consumption solo admiten una.')
+@description('Unidades de capacidad. Consumption escala a cero y no las usa.')
 param capacidad int = 1
+
+@description('Porcentaje de muestreo de trazas. Reducirlo baja la ingesta de registros.')
+param muestreo int = 25
+
+// Consumption escala a cero y factura por llamada, con el primer millon
+// mensual sin costo. Conserva el acuerdo de nivel de servicio de 99,95 % que
+// necesita el alcance. Lo que cede es la integracion con red virtual y el
+// tamano del cuerpo que las politicas pueden almacenar: por eso la carga de
+// plantillas se resuelve con firma de acceso compartido directo al
+// almacenamiento, sin atravesar la puerta.
+var esConsumption = sku == 'Consumption'
 
 resource apim 'Microsoft.ApiManagement/service@2023-05-01-preview' = {
   name: '${nombreBase}-apim'
@@ -28,7 +39,7 @@ resource apim 'Microsoft.ApiManagement/service@2023-05-01-preview' = {
   tags: etiquetas
   sku: {
     name: sku
-    capacity: sku == 'Consumption' ? 0 : capacidad
+    capacity: esConsumption ? 0 : capacidad
   }
   identity: {
     type: 'SystemAssigned'
@@ -36,7 +47,8 @@ resource apim 'Microsoft.ApiManagement/service@2023-05-01-preview' = {
   properties: {
     publisherEmail: correoPublicador
     publisherName: 'INVA · Servicio INVA-01-2026-182'
-    customProperties: {
+    // Consumption no expone customProperties: ya impone TLS 1.2 como mínimo.
+    customProperties: esConsumption ? null : {
       'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls10': 'False'
       'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls11': 'False'
       'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls10': 'False'
@@ -65,7 +77,7 @@ resource diagnostico 'Microsoft.ApiManagement/service/diagnostics@2023-05-01-pre
     alwaysLog: 'allErrors'
     sampling: {
       samplingType: 'fixed'
-      percentage: 100
+      percentage: muestreo
     }
     httpCorrelationProtocol: 'W3C'
   }
@@ -94,7 +106,8 @@ var plantillaPolitica = '''
   <inbound>
     <validate-azure-ad-token tenant-id="TENANT_ID" failed-validation-httpcode="401"
                              failed-validation-error-message="Token no valido para el tenant corporativo." />
-    <rate-limit calls="120" renewal-period="60" />
+    <rate-limit-by-key calls="120" renewal-period="60"
+                       counter-key="@(context.Request.Headers.GetValueOrDefault(&quot;Authorization&quot;,&quot;anonimo&quot;))" />
     <set-header name="X-Servicio" exists-action="override">
       <value>INVA-01-2026-182</value>
     </set-header>
