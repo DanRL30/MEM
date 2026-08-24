@@ -15,9 +15,9 @@
 
 | Marca | Significado |
 |---|---|
-| ✔ **Definido por MINSUR** | Estándar corporativo comunicado en la reunión de arranque |
-| ▸ **Propuesta de INVA** | Sujeto a confirmación del comité |
-| ⧗ **Pendiente** | Requiere decisión de MINSUR antes del despliegue |
+| **Definido por MINSUR** | Estándar corporativo comunicado en la reunión de arranque |
+| **Propuesta de INVA** | Sujeto a confirmación del comité |
+| **Pendiente** | Requiere decisión de MINSUR antes del despliegue |
 
 ---
 
@@ -58,7 +58,7 @@ Alineada al estándar `DM-STD-PE-27` de Evaluación de la Inversión.
 | Indicador | Objetivo |
 |---|---|
 | Apertura del tablero | < 5 segundos |
-| Evaluación estándar | ⧗ Cifra única pendiente de MINSUR (`R-51`) |
+| Evaluación estándar | Pendiente Cifra única pendiente de MINSUR (`R-51`) |
 | Disponibilidad en horario laboral | > 99 % |
 
 ---
@@ -107,7 +107,7 @@ graph TB
     U["Navegador del usuario"]
 
     subgraph BORDE["Borde"]
-        AFD["Front Door o Application Gateway<br/>con WAF · ⧗ patrón por confirmar"]
+        AFD["Front Door o Application Gateway<br/>con WAF · Pendiente patrón por confirmar"]
     end
 
     subgraph APP["Aplicación"]
@@ -156,7 +156,7 @@ graph TB
 ### Regla de dependencia del backend
 
 ```
-apps/api  →  domain, ingest, risk, reporting  →  engine  →  (nada interno)
+apps/api  ->  domain, ingest, risk, reporting  ->  engine  ->  (nada interno)
 ```
 
 **El motor no importa nada del resto del árbol.** No lee Excel, no toca red, no consulta la base de
@@ -271,7 +271,7 @@ sequenceDiagram
     A->>A: validate-azure-ad-token
     Note over A: Sin token válido del tenant,<br/>la solicitud nunca llega al backend
     A->>F: Reenvía con el token
-    F->>F: Mapea grupo → perfil → permisos
+    F->>F: Mapea grupo -> perfil -> permisos
     F->>K: Identidad administrada
     K-->>F: Secreto
     F-->>U: Respuesta
@@ -279,7 +279,7 @@ sequenceDiagram
 
 ### Los seis perfiles
 
-| Perfil | Grupo de seguridad ▸ | Alcance funcional |
+| Perfil | Grupo de seguridad > | Alcance funcional |
 |---|---|---|
 | Administrador | `SG-MINSUR-EVALECO-ADMIN` | Configuración, parámetros maestros, usuarios |
 | Finanzas | `SG-MINSUR-EVALECO-FINANZAS` | Versión del motor, Comités de Precios, certificación |
@@ -290,7 +290,7 @@ sequenceDiagram
 
 ### Permisos solicitados a Microsoft Graph
 
-▸ **Propuesta de INVA:** un solo permiso delegado, `User.Read`.
+> **Propuesta de INVA:** un solo permiso delegado, `User.Read`.
 
 | Enfoque | Permiso | Superficie de acceso |
 |---|---|---|
@@ -350,7 +350,7 @@ a lo previsto originalmente en el Plan de Trabajo.
 | TLS mínimo | 1.2 en todos los servicios |
 | Cifrado de infraestructura en almacenamiento | Habilitado |
 
-### Direccionamiento ▸
+### Direccionamiento >
 
 ```
 Desarrollo  10.60.0.0/22    Calidad  10.61.0.0/22    Producción  10.62.0.0/22
@@ -361,10 +361,10 @@ Cada red se divide en tres subredes /24:
   puerta        reservada para Application Gateway
 ```
 
-⧗ **Decisión pendiente.** La subred `puerta` se reserva aunque el patrón elegido sea Front Door.
+Pendiente **Decisión pendiente.** La subred `puerta` se reserva aunque el patrón elegido sea Front Door.
 Cambiar de patrón después no debe obligar a redireccionar espacio ya en uso.
 
-### Patrón de publicación ⧗
+### Patrón de publicación Pendiente
 
 La infraestructura soporta **ambos patrones sin modificar la aplicación**:
 
@@ -484,7 +484,7 @@ Cualquier divergencia se reporta como incidente.
 | Respaldo de base de datos, largo plazo | 4 semanas · 12 meses · **5 años** | — |
 | Restauración de blobs a un punto en el tiempo | 89 días | 89 días |
 
-⧗ Se solicita al comité confirmar los objetivos de punto de recuperación (RPO) y de tiempo de
+Pendiente Se solicita al comité confirmar los objetivos de punto de recuperación (RPO) y de tiempo de
 recuperación (RTO) acordes a la criticidad media declarada.
 
 ### Estrategia de pase y reversión
@@ -492,8 +492,8 @@ recuperación (RTO) acordes a la criticidad media declarada.
 ```mermaid
 graph LR
     A["Despliegue al<br/>slot preparacion"] --> B["Cinco comprobaciones<br/>obligatorias"]
-    B -->|todas pasan| C["Intercambio de slot<br/>→ producción"]
-    B -->|alguna falla| D["Intercambio inverso<br/>→ reversión"]
+    B -->|todas pasan| C["Intercambio de slot<br/>-> producción"]
+    B -->|alguna falla| D["Intercambio inverso<br/>-> reversión"]
     C --> E["Acta de pase"]
     D --> F["Reprogramar a la<br/>ventana siguiente"]
 ```
@@ -531,7 +531,7 @@ Los controles corren **desde la semana del 7 de septiembre**, no en la homologac
 que los hallazgos aparezcan durante la construcción y no en la semana del 5 de octubre, que tiene
 cuatro días hábiles por el feriado del 8 y no admite reprogramación.
 
-### Criterio de salida propuesto ▸
+### Criterio de salida propuesto >
 
 | Severidad | Tratamiento |
 |---|---|
@@ -548,15 +548,15 @@ cuatro días hábiles por el feriado del 8 y no admite reprogramación.
 
 | # | Decisión | Alternativa descartada | Razón |
 |---|---|---|---|
-| 1 | Python 3.12 | .NET/C# (estándar corporativo) | ✔ Confirmado en el KOM. Madurez del ecosistema numérico para cálculo financiero y simulación. Requiere constancia de excepción (`R-14`) |
+| 1 | Python 3.12 | .NET/C# (estándar corporativo) | Sí Confirmado en el KOM. Madurez del ecosistema numérico para cálculo financiero y simulación. Requiere constancia de excepción (`R-14`) |
 | 2 | Elastic Premium **solo en producción** | Flex Consumption en los cuatro entornos | Flex cubre de sobra a siete usuarios y cuesta una fracción, pero no ofrece ranuras de despliegue. Sin ellas, revertir el pase deja de ser un intercambio de segundos dentro de una ventana de seis horas |
-| 3 | Azure Functions | Container Apps | ▸ Integración nativa con identidad administrada; el patrón de carga son ráfagas de cómputo, no carga sostenida |
-| 4 | API Management **Consumption** | Standard v2 · Basic v2 · Developer | ✔ La puerta es estándar de MINSUR y permite validar el token antes del backend. El nivel Consumption conserva el SLA de 99,95 %, escala a cero y no factura el primer millón de llamadas. Requiere la carga directa al almacenamiento |
+| 3 | Azure Functions | Container Apps | > Integración nativa con identidad administrada; el patrón de carga son ráfagas de cómputo, no carga sostenida |
+| 4 | API Management **Consumption** | Standard v2 · Basic v2 · Developer | Sí La puerta es estándar de MINSUR y permite validar el token antes del backend. El nivel Consumption conserva el SLA de 99,95 %, escala a cero y no factura el primer millón de llamadas. Requiere la carga directa al almacenamiento |
 | 5 | Solo Entra ID en Azure SQL | Usuario administrador con contraseña | Elimina un secreto que custodiar |
 | 6 | Sin clave compartida en almacenamiento | Cadena de conexión | Fuerza el acceso por identidad; hace verificable la ausencia de credenciales |
 | 7 | Motor puro, sin E/S | Motor con acceso a datos | Condición para que una corrida sea función de sus entradas, y por tanto reproducible |
 | 8 | Inmutabilidad a nivel de contenedor | Atributo de solo lectura en la aplicación | El alcance exige que ni un administrador de suscripción pueda alterar una evaluación congelada |
-| 9 | Bicep | Terraform | ▸ Sin estado externo que custodiar; soporte nativo de Azure y de `what-if` contra Azure Policy |
+| 9 | Bicep | Terraform | > Sin estado externo que custodiar; soporte nativo de Azure y de `what-if` contra Azure Policy |
 | 10 | Carga y descarga directas al almacenamiento | Archivos que atraviesan la puerta y el cómputo | Firma de delegación de usuario de corta vigencia. Evita ocupar memoria con megabytes de Excel, elimina un límite de tamaño en la puerta y reduce la latencia. El nombre del blob lo fija el servidor, nunca el cliente |
 | 11 | Federación de identidades | Secreto de cliente | No hay secreto de despliegue que rotar o filtrar |
 
@@ -709,13 +709,13 @@ cadena de infraestructura ya no tiene holgura.
 
 | # | Indicación del área de TI | Cómo se atiende | Estado |
 |---|---|---|---|
-| 1 | El estándar tecnológico corporativo es .NET/C#. Se consultó por su uso y se confirmó Python | La plataforma se construye sobre Python 3.12. Se solicita constancia formal de la excepción (`SOL-05` · `R-14`) | ⧗ Constancia |
-| 2 | Frontend como Static Web App, API Management entre frontend y backend, Azure SQL y almacenamiento blob y table, secretos en Key Vault | Los cinco componentes están implementados en ese orden y con esas funciones. API Management es la única vía al backend, restringida por etiqueta de servicio | ✔ Conforme |
-| 3 | Azure DevOps para repositorio y versionamiento, Sonar para calidad, canalizaciones entre Dev, QA y producción con aprobaciones | Cinco canalizaciones con Sonar y compuerta de calidad. Las aprobaciones se configuran en los entornos de Azure DevOps; producción exige doble aprobación, TI y Product Owner | ✔ Conforme |
-| 4 | Elaborar y aprobar un artefacto de arquitectura antes de que INVA trabaje sobre la infraestructura | Este documento. El contenido técnico está completo y espera el formato corporativo (`SOL-01` · `R-03`). Ningún despliegue en el tenant precede a su aprobación | ⧗ Formato |
-| 5 | Todo desarrollo pasa por ethical hacking antes de la salida en vivo, con acuerdo de dos semanas | Ventana del 21 de septiembre al 2 de octubre sobre el entorno de calidad, reservada desde la semana 2 (`SOL-17`). El entorno se libera el 18 de septiembre | ✔ En cronograma |
-| 6 | Con Python y librerías de terceros es común que aparezcan vulnerabilidades; priorizar críticas y altas antes de la salida y postergar medias y bajas | La compuerta de las canalizaciones aplica exactamente ese criterio desde la semana del 7 de septiembre, con paquete de autoevaluación entregado por adelantado (`SOL-18`, `SOL-19`) | ✔ Implementado |
-| 7 | La salida podría realizarse primero en calidad mientras se completa la evaluación de seguridad | Es la secuencia del cronograma: calidad liberado el 18 de septiembre, evaluación hasta el 2 de octubre, remediación del 5 al 7, homologación el 9 y pase el 12 | ✔ Conforme |
+| 1 | El estándar tecnológico corporativo es .NET/C#. Se consultó por su uso y se confirmó Python | La plataforma se construye sobre Python 3.12. Se solicita constancia formal de la excepción (`SOL-05` · `R-14`) | Pendiente: constancia |
+| 2 | Frontend como Static Web App, API Management entre frontend y backend, Azure SQL y almacenamiento blob y table, secretos en Key Vault | Los cinco componentes están implementados en ese orden y con esas funciones. API Management es la única vía al backend, restringida por etiqueta de servicio | Conforme |
+| 3 | Azure DevOps para repositorio y versionamiento, Sonar para calidad, canalizaciones entre Dev, QA y producción con aprobaciones | Cinco canalizaciones con Sonar y compuerta de calidad. Las aprobaciones se configuran en los entornos de Azure DevOps; producción exige doble aprobación, TI y Product Owner | Conforme |
+| 4 | Elaborar y aprobar un artefacto de arquitectura antes de que INVA trabaje sobre la infraestructura | Este documento. El contenido técnico está completo y espera el formato corporativo (`SOL-01` · `R-03`). Ningún despliegue en el tenant precede a su aprobación | Pendiente: formato |
+| 5 | Todo desarrollo pasa por ethical hacking antes de la salida en vivo, con acuerdo de dos semanas | Ventana del 21 de septiembre al 2 de octubre sobre el entorno de calidad, reservada desde la semana 2 (`SOL-17`). El entorno se libera el 18 de septiembre | En cronograma |
+| 6 | Con Python y librerías de terceros es común que aparezcan vulnerabilidades; priorizar críticas y altas antes de la salida y postergar medias y bajas | La compuerta de las canalizaciones aplica exactamente ese criterio desde la semana del 7 de septiembre, con paquete de autoevaluación entregado por adelantado (`SOL-18`, `SOL-19`) | Implementado |
+| 7 | La salida podría realizarse primero en calidad mientras se completa la evaluación de seguridad | Es la secuencia del cronograma: calidad liberado el 18 de septiembre, evaluación hasta el 2 de octubre, remediación del 5 al 7, homologación el 9 y pase el 12 | Conforme |
 
 ### Tres puntos que pueden generar observación
 

@@ -57,11 +57,11 @@ produce una diferencia que no es atribuible al proyecto.
 ## 2. Máquina de estados
 
 ```
-    ┌───────────┐  ejecutar   ┌────────────┐  congelar   ┌───────────┐
-    │ BORRADOR  │────────────▶│ CALCULADA  │────────────▶│ CONGELADA │
-    └───────────┘             └────────────┘             └───────────┘
-          ▲   editar insumos        │                          │
-          └─────────────────────────┘                     (terminal)
+    +-----------+  ejecutar   +------------+  congelar   +-----------+
+    | BORRADOR  |------------>| CALCULADA  |------------>| CONGELADA |
+    +-----------+             +------------+             +-----------+
+          ^   editar insumos        |                          |
+          +-------------------------+                     (terminal)
 ```
 
 | Desde | Acción | Hasta | Perfiles autorizados |

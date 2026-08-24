@@ -2,7 +2,8 @@
 
 Monorepo de la solución. **Esta carpeta es la raíz del repositorio en Azure DevOps Repos.**
 
-Contexto del servicio: [../README.md](../README.md) · Reglas de trabajo: [CLAUDE.md](CLAUDE.md)
+Contexto del servicio: [../README.md](../README.md)
+Convenciones de ingenieria: [docs/convenciones.md](docs/convenciones.md)
 
 ## Stack
 
@@ -22,7 +23,7 @@ Contexto del servicio: [../README.md](../README.md) · Reglas de trabajo: [CLAUD
 ## Estructura
 
 ```
-apps/         api (FastAPI) · web (React)
+apps/         api (FastAPI) y web (React)
 packages/     engine · ingest · domain · risk · reporting · contracts
 infra/        bicep/{modules,envs} · policy · pipelines
 tests/        fidelidad/{casos,niveles} · e2e · rendimiento

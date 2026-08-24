@@ -1,6 +1,6 @@
 # === Confidencialidad MINSUR ===============================================
 # Nada del subárbol de gestión ni datos reales del cliente entra a este repo.
-# Estas reglas son una red de seguridad, no la política: ver ../CLAUDE.md.
+# Estas reglas son una red de seguridad, no la politica: ver docs/convenciones.md.
 **/insumos-minsur/
 **/evaluaciones-historicas/
 **/modelo-referencia/
@@ -10,6 +10,13 @@ fixtures/certificados/**/*.csv
 fixtures/certificados/**/*.json
 !fixtures/certificados/**/manifiesto.json
 !fixtures/certificados/README.md
+
+# === Notas y configuracion local ===========================================
+# Archivos de trabajo individual. No forman parte del entregable.
+*.local.md
+NOTAS.md
+.vscode/
+.idea/
 
 # === Secretos ==============================================================
 .env

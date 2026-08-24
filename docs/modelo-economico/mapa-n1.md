@@ -1,4 +1,4 @@
-# Mapa N1 — correspondencia bloque de contraste ↔ módulo del motor
+# Mapa N1 — correspondencia bloque de contraste a módulo del motor
 
 El contraste de nivel N1 verifica los bloques intermedios año a año. Cada bloque tiene **un solo**
 módulo responsable, de modo que una discrepancia se localiza en un archivo.

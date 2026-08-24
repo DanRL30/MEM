@@ -7,7 +7,7 @@ Servicio `INVA-01-2026-182` · PT6.8 · Depende de `R-24` (Azure DevOps habilita
 | Pipeline | Disparo | Propósito |
 |---|---|---|
 | `ci.yml` | PR y push a `main` | Lint, tipos, pruebas, build, Sonar, SAST y SCA |
-| `cd.yml` | Al completar CI en `main` | Dev → QA → Producción, con aprobaciones y verificación de pase |
+| `cd.yml` | Al completar CI en `main` | Dev -> QA -> Producción, con aprobaciones y verificación de pase |
 | `iac-validate.yml` | Cambios en `infra/` · manual | Compila Bicep, `what-if`, Azure Policy y aprovisionamiento |
 | `security-dast.yml` | Nocturno · manual | OWASP ZAP y paquete de evidencia para SecOps (PT6.10) |
 | `fidelidad-tenant.yml` | Cambios en el motor · diario | Regresión N0–N3 contra los casos certificados (PT4.5) |
@@ -44,7 +44,7 @@ Contributor **acotado al grupo de recursos del servicio**, nunca a la suscripci�
 ### Entornos y aprobaciones
 
 **Las aprobaciones no viven en el YAML.** Se configuran en el Environment, en la UI de Azure DevOps:
-*Pipelines → Environments → [entorno] → Approvals and checks*.
+*Pipelines -> Environments -> [entorno] -> Approvals and checks*.
 
 | Environment | Aprobadores | Verificaciones |
 |---|---|---|
@@ -66,9 +66,9 @@ urlDev / urlQa / urlProd
 functionApp-minsur-dev / -qa / -prod
 apim-minsur-dev / -qa / -prod
 backendUrl-minsur-dev / -qa / -prod
-swaToken-minsur-dev / -qa / -prod     ← secretos
+swaToken-minsur-dev / -qa / -prod     <- secretos
 sonarServiceConnection / sonarProjectKey
-ghazdoHabilitado                      ← "true" solo si TI licencia GHAzDO
+ghazdoHabilitado                      <- "true" solo si TI licencia GHAzDO
 ```
 
 `minsur-fidelidad`, solo para el agente dentro del tenant:
@@ -79,7 +79,7 @@ cuentaContraste         cuenta de almacenamiento de los casos certificados
 muestraCongeladas       cuántas corridas congeladas se reverifican por corrida
 CASO_BASE_ID            identificador del caso base de contraste
 SLO_EVALUACION_S        umbral de la evaluación estándar (pendiente, R-51)
-TOKEN_ADMINISTRADOR … TOKEN_AUDITOR   ← seis tokens de prueba, uno por perfil
+TOKEN_ADMINISTRADOR … TOKEN_AUDITOR   <- seis tokens de prueba, uno por perfil
 ```
 
 ### Extensiones del Marketplace
