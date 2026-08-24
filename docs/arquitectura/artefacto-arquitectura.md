@@ -230,14 +230,14 @@ graph TB
 | 9 | Cuenta de almacenamiento | `Microsoft.Storage/storageAccounts` | StorageV2, sin clave compartida |
 | 10 | Servidor SQL | `Microsoft.Sql/servers` | Solo Entra ID |
 | 11 | Base de datos | `Microsoft.Sql/servers/databases` | Serverless o aprovisionada |
-| 12 | Plan de funciones | `Microsoft.Web/serverfarms` | Elastic Premium EP1, Linux |
+| 12 | Plan de funciones | `Microsoft.Web/serverfarms` | Elastic Premium EP1 en producción · Flex Consumption en el resto |
 | 13 | Function App | `Microsoft.Web/sites` | Python 3.12 |
 | 14 | Ranura de preparación | `Microsoft.Web/sites/slots` | Solo producción |
-| 15 | API Management | `Microsoft.ApiManagement/service` | Developer o Standard v2 |
+| 15 | API Management | `Microsoft.ApiManagement/service` | Consumption · escala a cero, SLA 99,95 % |
 | 16 | Static Web App | `Microsoft.Web/staticSites` | Standard |
 | 17–20 | Puntos de conexión privados | `Microsoft.Network/privateEndpoints` | Blob, Table, Vault, SQL |
 | 21–24 | Zonas DNS privadas | `Microsoft.Network/privateDnsZones` | Una por servicio |
-| 25 | Publicación | Front Door Premium **o** Application Gateway v2 | ⧗ Por confirmar |
+| 25 | Publicación | Front Door Standard **o** Application Gateway v2 | Configurado en Front Door Standard |
 
 **Cuatro entornos desde una sola plantilla**, diferenciados exclusivamente por parámetros:
 
@@ -324,7 +324,7 @@ a lo previsto originalmente en el Plan de Trabajo.
 | # | Origen | Destino | Puerto | Protocolo | Justificación |
 |---|---|---|---|---|---|
 | 1 | Internet corporativa | Front Door / App Gateway | 443 | HTTPS | Acceso de usuarios |
-| 2 | Borde | Static Web App | 443 | HTTPS | Entrega de la interfaz. Private Link si aplica Front Door Premium |
+| 2 | Borde | Static Web App | 443 | HTTPS | Entrega de la interfaz. Contenido estático, sin datos ni secretos |
 | 3 | Navegador | Entra ID | 443 | HTTPS | Autenticación MSAL |
 | 4 | Navegador | API Management | 443 | HTTPS | Llamadas a la API |
 | 5 | API Management | Function App | 443 | HTTPS | Reenvío al backend |
@@ -366,12 +366,12 @@ Cambiar de patrón después no debe obligar a redireccionar espacio ya en uso.
 
 La infraestructura soporta **ambos patrones sin modificar la aplicación**:
 
-| | Front Door Premium | Application Gateway v2 |
+| | Front Door Standard | Application Gateway v2 |
 |---|---|---|
 | Ubicación | Servicio de borde global | Dentro de la red virtual |
-| WAF | Microsoft DRS 2.1 + Bot Manager | OWASP 3.2 |
-| Acceso al origen | Private Link | Directo dentro de la red |
-| Costo estimado | ~US$330/mes | ~US$250/mes + IP pública |
+| WAF | Reglas propias · tasa y métodos | OWASP 3.2 |
+| Acceso al origen | Público, contenido estático | Directo dentro de la red |
+| Costo estimado por entorno | ~US$ 35/mes | ~US$ 250/mes + IP pública |
 
 Se solicita al comité indicar cuál exige el estándar corporativo. **Ahora es un cambio de
 parámetro; en septiembre implica rehacer esta revisión.**
@@ -547,132 +547,102 @@ cuatro días hábiles por el feriado del 8 y no admite reprogramación.
 | # | Decisión | Alternativa descartada | Razón |
 |---|---|---|---|
 | 1 | Python 3.12 | .NET/C# (estándar corporativo) | ✔ Confirmado en el KOM. Madurez del ecosistema numérico para cálculo financiero y simulación. Requiere constancia de excepción (`R-14`) |
-| 2 | Elastic Premium EP1 | Plan de Consumo | El plan de Consumo no ofrece integración con red virtual —sin ella no hay puntos de conexión privados— ni ranuras de despliegue |
+| 2 | Elastic Premium **solo en producción** | Flex Consumption en los cuatro entornos | Flex cubre de sobra a siete usuarios y cuesta una fracción, pero no ofrece ranuras de despliegue. Sin ellas, revertir el pase deja de ser un intercambio de segundos dentro de una ventana de seis horas |
 | 3 | Azure Functions | Container Apps | ▸ Integración nativa con identidad administrada; el patrón de carga son ráfagas de cómputo, no carga sostenida |
-| 4 | API Management obligatorio | Exposición directa del backend | ✔ Estándar de MINSUR. Permite validar el token en la puerta |
+| 4 | API Management **Consumption** | Standard v2 · Basic v2 · Developer | ✔ La puerta es estándar de MINSUR y permite validar el token antes del backend. El nivel Consumption conserva el SLA de 99,95 %, escala a cero y no factura el primer millón de llamadas. Requiere la carga directa al almacenamiento |
 | 5 | Solo Entra ID en Azure SQL | Usuario administrador con contraseña | Elimina un secreto que custodiar |
 | 6 | Sin clave compartida en almacenamiento | Cadena de conexión | Fuerza el acceso por identidad; hace verificable la ausencia de credenciales |
 | 7 | Motor puro, sin E/S | Motor con acceso a datos | Condición para que una corrida sea función de sus entradas, y por tanto reproducible |
 | 8 | Inmutabilidad a nivel de contenedor | Atributo de solo lectura en la aplicación | El alcance exige que ni un administrador de suscripción pueda alterar una evaluación congelada |
 | 9 | Bicep | Terraform | ▸ Sin estado externo que custodiar; soporte nativo de Azure y de `what-if` contra Azure Policy |
-| 10 | Federación de identidades | Secreto de cliente | No hay secreto de despliegue que rotar o filtrar |
+| 10 | Carga y descarga directas al almacenamiento | Archivos que atraviesan la puerta y el cómputo | Firma de delegación de usuario de corta vigencia. Evita ocupar memoria con megabytes de Excel, elimina un límite de tamaño en la puerta y reduce la latencia. El nombre del blob lo fija el servidor, nunca el cliente |
+| 11 | Federación de identidades | Secreto de cliente | No hay secreto de despliegue que rotar o filtrar |
 
 ---
 
-## 11. Costos de consumo estimados
+## 11. Costos de consumo
 
 El consumo de Azure corre por cuenta de MINSUR conforme al alcance, de modo que la elección de SKU
-es una decisión con impacto directo en el cliente. Las cifras de este capítulo salen de un modelo
-reproducible, `scripts/modelo_costos.py`, que parte del dimensionamiento declarado —17 usuarios,
-7 concurrentes, ~100 evaluaciones al año, archivos de 1 a 10 MB— y aplica precios de lista de East
-US 2 sin descuentos de acuerdo empresarial.
+es una decisión con impacto directo en el cliente. Las cifras salen de un modelo reproducible,
+`scripts/modelo_costos.py`, que parte del dimensionamiento declarado —17 usuarios, 7 concurrentes,
+~100 evaluaciones al año, archivos de 1 a 10 MB— y aplica precios de lista de East US 2, sin
+descuentos de acuerdo empresarial.
 
-### El punto de partida del análisis
+> **El servicio es pequeño y el dimensionamiento lo refleja.** Cien evaluaciones al año de hasta
+> 10 MB acumulan 4,9 GB en cinco años, y siete usuarios concurrentes generan del orden de doscientas
+> mil llamadas al mes. Ninguna de esas cifras se acerca a los umbrales que justifican capacidad
+> reservada. Por eso la arquitectura usa servicios que **facturan por uso y escalan a cero** allí
+> donde no compromete una garantía del alcance, y capacidad fija solo donde sí la compromete.
 
-**El servicio es pequeño.** Cien evaluaciones al año de hasta 10 MB acumulan **4,9 GB en cinco
-años**, y siete usuarios concurrentes generan del orden de doscientas mil llamadas al mes. Ninguna
-de esas cifras se acerca a los umbrales que justifican capacidad reservada.
+### Configuración desplegada
 
-Casi todo el costo de la línea base no paga capacidad: paga **niveles de servicio con capacidad
-mínima facturable**. API Management Standard v2 cuesta lo mismo con siete usuarios que con siete
-mil. Ese es el margen que este capítulo explora.
-
-### Tres escenarios
-
-| Escenario | Producción | Calidad | Desarrollo | Mensual | Anual | Reducción |
-|---|---|---|---|---|---|---|
-| **A · Línea base** | 1 612 | 660 | 246 | **2 518** | 30 210 | — |
-| **B · Equilibrado** | 875 | 460 | 17 | **1 352** | 16 220 | 46 % |
-| **C · Mínimo** | 258 | 162 | 8 | **427** | 5 128 | **83 %** |
-
-Los tres cumplen el alcance contratado. Lo que cambia es qué margen de holgura se conserva.
-
-### Palancas, y qué cede cada una
-
-| Palanca | A → C | Ahorro/mes | Qué se cede |
+| Componente | Producción | Calidad | Desarrollo |
 |---|---|---|---|
-| **API Management Consumption** en lugar de Standard v2 | 701 → 0 | **701** | Integración con red virtual. Límite de tamaño en políticas que almacenan el cuerpo de la solicitud |
-| **Azure SQL serverless con pausa** y calentamiento programado | 372 → 81 | **291** | Costo variable en lugar de fijo. Latencia de reanudación si alguien entra fuera de horario y el calentamiento no cubrió ese momento |
-| **Front Door Standard** en lugar de Premium | 330 → 35 | **295** | Conjunto de reglas gestionado DRS y enlace privado al origen. Conserva WAF con reglas propias y limitación de tasa |
-| **Cómputo Flex** con una instancia siempre lista | 150 → 91 | **59** | Las ranuras de despliegue. Revertir el pase pasa de ser un intercambio a un redespliegue de artefacto |
-| **Entorno de desarrollo efímero**, recreado por IaC | 246 → 8 | **238** | Disponibilidad inmediata: recrearlo toma unos minutos |
+| API Management `Consumption` | 0 | 0 | 0 |
+| Cómputo | 150 · EP1 | 1 · Flex | 0 · Flex |
+| Azure SQL serverless | 194 · sin pausa | 81 · con pausa | 5 · esporádica |
+| Front Door `Standard` | 35 | 35 | 0 · sin borde |
+| Puntos de conexión privados (4) | 29 | 29 | 12 |
+| Observabilidad con tope diario | 11 | 6 | 2 |
+| Static Web Apps | 9 | 9 | 0 · Free |
+| Almacenamiento y Key Vault | 2 | 1 | 1 |
+| **Total mensual (USD)** | **430** | **162** | **19** |
 
-### API Management Consumption merece detenimiento
+**Total de los tres entornos del cliente: ~US$ 611/mes · ~US$ 7 333/año.** El entorno de
+construcción de INVA no se incluye: lo asume el proveedor.
 
-Es la palanca mayor con diferencia: **US$ 8 400 al año**, y la única que por sí sola explica la
-mitad del costo de producción.
+### Las cuatro decisiones que producen esa cifra
 
-| | Consumption | Basic v2 | Standard v2 |
-|---|---|---|---|
-| Costo mensual base | **0** | 147 | 701 |
-| Primer millón de llamadas | Sin costo | — | — |
-| Acuerdo de nivel de servicio | **99,95 %** | 99,95 % | 99,95 % |
-| Integración con red virtual | No | No | Sí |
-| Escala a cero | Sí | No | No |
-
-Conserva el acuerdo de nivel de servicio que el alcance necesita —el compromiso es de disponibilidad
-superior al 99 % en horario laboral— y con diecisiete usuarios el primer millón de llamadas
-mensuales no se alcanza.
-
-**La limitación real no es la capacidad, es el tamaño del cuerpo de la solicitud.** Las plantillas
-de Producción, CAPEX y OPEX pesan entre 1 y 10 MB, y hacerlas atravesar la puerta de enlace tensiona
-ese límite.
-
-> **Requisito habilitante, y mejora de diseño por derecho propio.** La carga de plantillas debe
-> resolverse con una **firma de acceso compartido de corta vigencia**: la interfaz pide a la API una
-> autorización temporal y sube el archivo **directamente al almacenamiento**, sin que atraviese la
-> puerta de enlace ni los servicios de aplicación.
->
-> Esto no es una concesión para abaratar. Es el patrón correcto con cualquier SKU: evita ocupar
-> memoria de cómputo con megabytes de Excel, elimina un límite de tamaño en la puerta y reduce la
-> latencia de carga. Que además habilite el nivel Consumption es una consecuencia, no el motivo.
-
-### Recomendación de INVA
-
-**El escenario B como línea base, con dos matices hacia C.**
-
-Lo que INVA recomienda adoptar sin reservas:
-
-1. **API Management Consumption en los tres entornos**, condicionado a implementar la carga directa
-   al almacenamiento. Ahorra US$ 8 400 al año y mejora el diseño.
-2. **Entorno de desarrollo efímero.** La infraestructura como código es idempotente; mantenerlo
-   encendido de forma permanente no aporta nada que su recreación no dé en minutos.
-3. **Azure SQL serverless en producción, sin pausa automática.** Conserva la ausencia de latencia de
-   reanudación y aun así ahorra frente a la capacidad aprovisionada.
-
-Lo que INVA **no** recomienda:
-
-4. **Front Door Standard en calidad.** Ese entorno es el que se somete al ethical hacking, y
-   homologar sobre una configuración de borde distinta de la productiva reduce el valor de la
-   evaluación. La diferencia de US$ 295 al mes no lo compensa.
-5. **Cómputo Flex en producción.** Los US$ 59 al mes que ahorra se pagan con la pérdida de las
-   ranuras de despliegue, y con ellas la posibilidad de revertir el pase con un intercambio dentro
-   de la ventana de seis horas. Es la salvaguarda del hito de mayor riesgo del servicio: no conviene
-   cambiarla por esa cifra.
-
-Lo que corresponde decidir al comité:
-
-6. **Front Door Standard en producción** (US$ 295/mes). La pregunta de fondo es si el contenido
-   estático de la interfaz —JavaScript y HTML, sin datos ni secretos— justifica un conjunto de
-   reglas gestionado. Los datos viajan por la puerta de enlace, donde el token de Entra ID se valida
-   y la tasa se limita. INVA no tiene elementos para responder por la política corporativa.
-
-### Escenario recomendado
-
-| Entorno | Configuración | Mensual |
+| # | Decisión | Por qué |
 |---|---|---|
-| Producción | APIM Consumption · Elastic Premium EP1 · SQL serverless sin pausa · Front Door Premium | **~728** |
-| Calidad | APIM Consumption · Flex bajo demanda · SQL con pausa · Front Door Premium | **~462** |
-| Desarrollo | Efímero · APIM Consumption · Flex bajo demanda | **~7** |
-| | **Total** | **~1 198 / mes · ~14 375 / año** |
+| 1 | **API Management Consumption** en los cuatro entornos | Escala a cero, factura por llamada y no cobra el primer millón mensual. Conserva el acuerdo de nivel de servicio de **99,95 %**, con holgura sobre el compromiso de >99 % en horario laboral del alcance. Con diecisiete usuarios, ese primer millón no se alcanza |
+| 2 | **Cómputo Flex**, salvo en producción | Flex cubre de sobra a siete usuarios concurrentes. Producción se mantiene en Elastic Premium porque Flex no ofrece ranuras de despliegue, y sin ellas revertir el pase deja de ser un intercambio de segundos dentro de una ventana de seis horas |
+| 3 | **Azure SQL serverless** en los cuatro entornos | La base está inactiva la mayor parte del tiempo. Producción opera sin pausa automática, para que no exista latencia de reanudación en el primer acceso del día; calidad y desarrollo sí pausan |
+| 4 | **Entorno de desarrollo efímero** | La infraestructura como código es idempotente y los insumos de ese entorno son sintéticos. Se crea cuando hay un ciclo de cambio y se destruye al terminar. Con la puerta de enlace en Consumption el ciclo toma minutos; con el SKU Developer tardaba entre 30 y 45 |
 
-Frente a la línea base son **US$ 15 800 menos al año**, un 52 %, sin ceder ninguna de las garantías
-que sostienen los hitos del servicio: se conservan el acuerdo de nivel de servicio de la puerta de
-enlace, las ranuras de despliegue que hacen reversible el pase, el WAF gestionado en el entorno que
-se somete a ethical hacking, y la ausencia de latencia de reanudación en producción.
+### El requisito que lo habilita
 
-Si el comité además acepta Front Door Standard en producción, el total baja a **~US$ 903/mes ·
-US$ 10 835/año**, un 64 % bajo la línea base.
+Las plantillas de Producción, CAPEX y OPEX pesan entre 1 y 10 MB, y el nivel Consumption limita el
+tamaño del cuerpo que las políticas pueden almacenar.
+
+**La carga se resuelve con una firma de acceso compartido de corta vigencia:** la interfaz pide a la
+API una autorización temporal y sube el archivo **directamente al almacenamiento**, sin que
+atraviese la puerta de enlace ni los servicios de aplicación. Las exportaciones a Excel y PDF se
+descargan por el mismo mecanismo.
+
+No es una concesión para abaratar: es el patrón correcto con cualquier SKU. Evita ocupar memoria de
+cómputo con megabytes de Excel, elimina un límite de tamaño en la puerta y reduce la latencia de
+carga. El nombre del blob lo fija el servidor y nunca el cliente, la firma dura quince minutos y su
+permiso se acota a un solo archivo.
+
+Implementación: `packages/domain/src/minsur_domain/carga_directa.py`.
+
+### El borde: Front Door Standard
+
+El borde de la plataforma es **Front Door Standard**, con cortafuegos de aplicación configurado
+mediante reglas propias: limitación de tasa por origen y bloqueo de los métodos HTTP que la interfaz
+no utiliza.
+
+Lo sostienen dos hechos sobre lo que ese borde publica. El contenido servido es **estático**
+—JavaScript y HTML compilados, sin datos ni secretos—, y los datos no pasan por ahí: viajan por la
+puerta de enlace, donde el token de Entra ID se valida antes de alcanzar el backend y la tasa está
+limitada por usuario. El conjunto de reglas gestionado que ofrece el nivel Premium protege contra
+vectores que aplican a una aplicación que sirve contenido dinámico desde el borde, que no es el caso.
+
+> Se aplica el mismo SKU en producción y en calidad de forma deliberada: **el ethical hacking debe
+> evaluar la configuración que efectivamente va a producción.** Homologar sobre un borde distinto
+> reduciría el valor de esa evaluación.
+>
+> El SKU permanece como parámetro de la plantilla. Si la política corporativa de MINSUR exige
+> conjunto de reglas gestionado sobre todo contenido publicado (`R-22`), el cambio a Premium es una
+> línea y no toca la aplicación.
+
+### Referencia
+
+Una configuración construida con los SKU por defecto de cada servicio —API Management Standard v2,
+cómputo Elastic Premium en los cuatro entornos, base de datos aprovisionada, Front Door Premium y
+desarrollo permanente— costaría **~US$ 2 518/mes · ~US$ 30 210/año**. La configuración desplegada
+representa **US$ 22 900 menos al año**, un 76 %, sin ceder ninguna garantía del alcance.
 
 ## 12. Riesgos de arquitectura
 
@@ -692,7 +662,7 @@ US$ 10 835/año**, un 64 % bajo la línea base.
 | # | Decisión | Referencia | Límite |
 |---|---|---|---|
 | 1 | Confirmación del estándar de arquitectura | SOL-03 · `R-11` | 28/08 |
-| 2 | Plan de funciones: Elastic Premium o Container Apps | SOL-03 | 28/08 |
+| 2 | Plan de funciones: Elastic Premium en producción, Flex en el resto | SOL-03 | 28/08 |
 | 3 | Política sobre datos financieros fuera del tenant | SOL-04 · `R-12` | 28/08 |
 | 4 | Estándar de nomenclatura y etiquetado | SOL-06 · `R-21` | 28/08 |
 | 5 | Topología de red: dedicada o integrada | SOL-10 · `R-22` | 04/09 |
