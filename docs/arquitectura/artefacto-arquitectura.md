@@ -561,81 +561,118 @@ cuatro días hábiles por el feriado del 8 y no admite reprogramación.
 
 ## 11. Costos de consumo estimados
 
-El consumo de Azure corre por cuenta de MINSUR conforme al alcance. Estimación mensual a precios de
-lista, sin descuentos de acuerdo empresarial. **Valores referenciales, no compromisos.**
+El consumo de Azure corre por cuenta de MINSUR conforme al alcance, de modo que la elección de SKU
+es una decisión con impacto directo en el cliente. Las cifras de este capítulo salen de un modelo
+reproducible, `scripts/modelo_costos.py`, que parte del dimensionamiento declarado —17 usuarios,
+7 concurrentes, ~100 evaluaciones al año, archivos de 1 a 10 MB— y aplica precios de lista de East
+US 2 sin descuentos de acuerdo empresarial.
 
-### Línea base
+### El punto de partida del análisis
 
-| Componente | Producción | Calidad | Desarrollo |
+**El servicio es pequeño.** Cien evaluaciones al año de hasta 10 MB acumulan **4,9 GB en cinco
+años**, y siete usuarios concurrentes generan del orden de doscientas mil llamadas al mes. Ninguna
+de esas cifras se acerca a los umbrales que justifican capacidad reservada.
+
+Casi todo el costo de la línea base no paga capacidad: paga **niveles de servicio con capacidad
+mínima facturable**. API Management Standard v2 cuesta lo mismo con siete usuarios que con siete
+mil. Ese es el margen que este capítulo explora.
+
+### Tres escenarios
+
+| Escenario | Producción | Calidad | Desarrollo | Mensual | Anual | Reducción |
+|---|---|---|---|---|---|---|
+| **A · Línea base** | 1 612 | 660 | 246 | **2 518** | 30 210 | — |
+| **B · Equilibrado** | 875 | 460 | 17 | **1 352** | 16 220 | 46 % |
+| **C · Mínimo** | 258 | 162 | 8 | **427** | 5 128 | **83 %** |
+
+Los tres cumplen el alcance contratado. Lo que cambia es qué margen de holgura se conserva.
+
+### Palancas, y qué cede cada una
+
+| Palanca | A → C | Ahorro/mes | Qué se cede |
 |---|---|---|---|
-| API Management | 700 · Standard v2 | 50 · Developer | 50 · Developer |
-| Plan de funciones EP1 | 150 | 150 | 150 |
-| Azure SQL | 380 · aprovisionada | 120 · serverless | 30 · serverless con pausa |
-| Front Door Premium | 330 | 330 | 330 |
-| Puntos de conexión privados (4) | 30 | 30 | 30 |
-| Observabilidad | 25 | 15 | 10 |
-| Almacenamiento | 10 | 8 | 5 |
-| Static Web Apps | 9 | 9 | 9 |
-| Key Vault | 3 | 3 | 3 |
-| **Total mensual (USD)** | **~1 637** | **~715** | **~617** |
+| **API Management Consumption** en lugar de Standard v2 | 701 → 0 | **701** | Integración con red virtual. Límite de tamaño en políticas que almacenan el cuerpo de la solicitud |
+| **Azure SQL serverless con pausa** y calentamiento programado | 372 → 81 | **291** | Costo variable en lugar de fijo. Latencia de reanudación si alguien entra fuera de horario y el calentamiento no cubrió ese momento |
+| **Front Door Standard** en lugar de Premium | 330 → 35 | **295** | Conjunto de reglas gestionado DRS y enlace privado al origen. Conserva WAF con reglas propias y limitación de tasa |
+| **Cómputo Flex** con una instancia siempre lista | 150 → 91 | **59** | Las ranuras de despliegue. Revertir el pase pasa de ser un intercambio a un redespliegue de artefacto |
+| **Entorno de desarrollo efímero**, recreado por IaC | 246 → 8 | **238** | Disponibilidad inmediata: recrearlo toma unos minutos |
 
-**Total de los tres entornos: ~US$ 2 970/mes · ~US$ 35 600/año.**
+### API Management Consumption merece detenimiento
 
-> **El volumen de datos es marginal.** Cien evaluaciones al año de hasta 10 MB acumulan **4,9 GB en
-> cinco años**. El almacenamiento, que en un servicio de este tipo suele ser el rubro dominante,
-> aquí cuesta menos que el Key Vault. El costo está concentrado en tres servicios: API Management,
-> Front Door y Azure SQL suman el 80 %.
+Es la palanca mayor con diferencia: **US$ 8 400 al año**, y la única que por sí sola explica la
+mitad del costo de producción.
 
-### Optimizaciones sin implicación de seguridad
-
-Aplicables por INVA sin decisión del comité. **Ya incorporadas a la infraestructura como código.**
-
-| # | Medida | Ahorro/mes | Efecto |
+| | Consumption | Basic v2 | Standard v2 |
 |---|---|---|---|
-| 1 | Sin Front Door en desarrollo | 330 | A ese entorno solo acceden el equipo de INVA y los homologadores, no usuarios finales. El WAF se evalúa en calidad, que es donde corre el ethical hacking |
-| 2 | Static Web Apps Free en desarrollo | 9 | No hay dominio corporativo ni red privada que justifiquen Standard |
-| 3 | Plan de funciones Flex Consumption en desarrollo ▸ | 135 | Conserva integración con red virtual. Pierde las ranuras de despliegue, que solo usa producción. Requiere ajuste del módulo de cómputo |
-| | **Subtotal** | **~474** | |
+| Costo mensual base | **0** | 147 | 701 |
+| Primer millón de llamadas | Sin costo | — | — |
+| Acuerdo de nivel de servicio | **99,95 %** | 99,95 % | 99,95 % |
+| Integración con red virtual | No | No | Sí |
+| Escala a cero | Sí | No | No |
 
-### Decisiones que corresponden al comité
+Conserva el acuerdo de nivel de servicio que el alcance necesita —el compromiso es de disponibilidad
+superior al 99 % en horario laboral— y con diecisiete usuarios el primer millón de llamadas
+mensuales no se alcanza.
 
-Cada una reduce costo a cambio de algo. **No son recomendaciones automáticas.**
+**La limitación real no es la capacidad, es el tamaño del cuerpo de la solicitud.** Las plantillas
+de Producción, CAPEX y OPEX pesan entre 1 y 10 MB, y hacerlas atravesar la puerta de enlace tensiona
+ese límite.
 
-| # | Medida | Ahorro/mes | Qué se cede |
-|---|---|---|---|
-| 4 | **API Management Basic v2 en producción**, en lugar de Standard v2 | **550** | Basic v2 conserva el acuerdo de nivel de servicio de 99,95 %, suficiente para el compromiso de >99 % del alcance. Cede la **integración con red virtual**: API Management alcanzaría el backend por red pública, protegido por la restricción de etiqueta de servicio `ApiManagement` ya implementada, en lugar de por red privada |
-| 5 | **Front Door Standard en calidad**, en lugar de Premium | 295 | Cede el enlace privado al origen. El entorno de calidad es el que se somete a ethical hacking, por lo que la diferencia de superficie es relevante para esa evaluación |
-| 6 | **Azure SQL serverless en producción**, sin pausa automática | 190 | Cede predictibilidad: el costo pasa a variar con el uso. Con siete usuarios concurrentes el consumo real sería bajo, pero deja de ser una cifra fija |
-| 7 | Reservas de capacidad a un año sobre el plan de funciones | ~100 | Compromiso de permanencia de doce meses |
-| | **Subtotal** | **~1 135** | |
-
-### Escenarios
-
-| Escenario | Producción | Calidad | Desarrollo | Mensual | Anual |
-|---|---|---|---|---|---|
-| Línea base | 1 637 | 715 | 617 | **~2 970** | ~35 600 |
-| Con medidas 1 a 3 | 1 637 | 715 | 143 | **~2 495** | ~29 900 |
-| Con todas las medidas | 897 | 420 | 143 | **~1 460** | **~17 500** |
-
-**La diferencia entre el primer escenario y el último es de aproximadamente US$ 18 000 al año**, en
-torno al 51 %.
+> **Requisito habilitante, y mejora de diseño por derecho propio.** La carga de plantillas debe
+> resolverse con una **firma de acceso compartido de corta vigencia**: la interfaz pide a la API una
+> autorización temporal y sube el archivo **directamente al almacenamiento**, sin que atraviese la
+> puerta de enlace ni los servicios de aplicación.
+>
+> Esto no es una concesión para abaratar. Es el patrón correcto con cualquier SKU: evita ocupar
+> memoria de cómputo con megabytes de Excel, elimina un límite de tamaño en la puerta y reduce la
+> latencia de carga. Que además habilite el nivel Consumption es una consecuencia, no el motivo.
 
 ### Recomendación de INVA
 
-Las medidas 1 a 3 ya están aplicadas y no requieren decisión.
+**El escenario B como línea base, con dos matices hacia C.**
 
-De las restantes, **la medida 4 es la más significativa y la que INVA sugiere evaluar con más
-detenimiento**: US$ 6 600 al año a cambio de que el tráfico entre la puerta de enlace y el backend
-deje de circular por red privada. El backend permanece cerrado a todo origen distinto de API
-Management, pero por etiqueta de servicio y no por topología. Si la política corporativa exige
-tráfico privado extremo a extremo, la medida no aplica y Standard v2 es la opción correcta.
+Lo que INVA recomienda adoptar sin reservas:
 
-La medida 5 conviene descartarla: el entorno de calidad es el que se somete al ethical hacking, y
-homologar sobre una configuración de borde distinta de la productiva reduce el valor de esa
-evaluación.
+1. **API Management Consumption en los tres entornos**, condicionado a implementar la carga directa
+   al almacenamiento. Ahorra US$ 8 400 al año y mejora el diseño.
+2. **Entorno de desarrollo efímero.** La infraestructura como código es idempotente; mantenerlo
+   encendido de forma permanente no aporta nada que su recreación no dé en minutos.
+3. **Azure SQL serverless en producción, sin pausa automática.** Conserva la ausencia de latencia de
+   reanudación y aun así ahorra frente a la capacidad aprovisionada.
 
-La medida 6 es razonable si MINSUR acepta costo variable. La medida 7 depende de la vigencia
-prevista de la plataforma más allá del periodo de estabilización.
+Lo que INVA **no** recomienda:
+
+4. **Front Door Standard en calidad.** Ese entorno es el que se somete al ethical hacking, y
+   homologar sobre una configuración de borde distinta de la productiva reduce el valor de la
+   evaluación. La diferencia de US$ 295 al mes no lo compensa.
+5. **Cómputo Flex en producción.** Los US$ 59 al mes que ahorra se pagan con la pérdida de las
+   ranuras de despliegue, y con ellas la posibilidad de revertir el pase con un intercambio dentro
+   de la ventana de seis horas. Es la salvaguarda del hito de mayor riesgo del servicio: no conviene
+   cambiarla por esa cifra.
+
+Lo que corresponde decidir al comité:
+
+6. **Front Door Standard en producción** (US$ 295/mes). La pregunta de fondo es si el contenido
+   estático de la interfaz —JavaScript y HTML, sin datos ni secretos— justifica un conjunto de
+   reglas gestionado. Los datos viajan por la puerta de enlace, donde el token de Entra ID se valida
+   y la tasa se limita. INVA no tiene elementos para responder por la política corporativa.
+
+### Escenario recomendado
+
+| Entorno | Configuración | Mensual |
+|---|---|---|
+| Producción | APIM Consumption · Elastic Premium EP1 · SQL serverless sin pausa · Front Door Premium | **~728** |
+| Calidad | APIM Consumption · Flex bajo demanda · SQL con pausa · Front Door Premium | **~462** |
+| Desarrollo | Efímero · APIM Consumption · Flex bajo demanda | **~7** |
+| | **Total** | **~1 198 / mes · ~14 375 / año** |
+
+Frente a la línea base son **US$ 15 800 menos al año**, un 52 %, sin ceder ninguna de las garantías
+que sostienen los hitos del servicio: se conservan el acuerdo de nivel de servicio de la puerta de
+enlace, las ranuras de despliegue que hacen reversible el pase, el WAF gestionado en el entorno que
+se somete a ethical hacking, y la ausencia de latencia de reanudación en producción.
+
+Si el comité además acepta Front Door Standard en producción, el total baja a **~US$ 903/mes ·
+US$ 10 835/año**, un 64 % bajo la línea base.
 
 ## 12. Riesgos de arquitectura
 
