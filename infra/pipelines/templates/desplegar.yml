@@ -1,0 +1,89 @@
+# Despliegue de un entorno: interfaz, servicios y configuración de APIM.
+#
+# Lo que se despliega es el artefacto que produjo CI. Nunca se reconstruye por
+# entorno: el mismo binario que pasó calidad es el que llega a producción.
+
+parameters:
+  - name: entorno
+    type: string
+  - name: conexion
+    type: string
+  - name: grupoRecursos
+    type: string
+  - name: urlBase
+    type: string
+
+steps:
+  # Los deployment jobs no hacen checkout automático: solo descargan
+  # artefactos. Sin esto no existirían ni el OpenAPI que importa APIM ni los
+  # scripts de verificación del pase.
+  - checkout: self
+
+  - download: ci
+    artifact: web-dist
+    displayName: "Descargar interfaz"
+
+  - download: ci
+    artifact: paquetes-python
+    displayName: "Descargar paquetes"
+
+  - task: AzureStaticWebApp@0
+    displayName: "Static Web Apps · ${{ parameters.entorno }}"
+    inputs:
+      app_location: $(Pipeline.Workspace)/ci/web-dist
+      skip_app_build: true
+      skip_api_build: true
+      azure_static_web_apps_api_token: $(swaToken-${{ parameters.entorno }})
+
+  - task: AzureFunctionApp@2
+    displayName: "Servicios de aplicación · ${{ parameters.entorno }}"
+    inputs:
+      azureSubscription: ${{ parameters.conexion }}
+      appType: functionAppLinux
+      appName: $(functionApp-${{ parameters.entorno }})
+      package: $(Pipeline.Workspace)/ci/paquetes-python
+      runtimeStack: "PYTHON|3.12"
+      deploymentMethod: zipDeploy
+      # En producción se despliega al slot de preparación y se intercambia
+      # después de la verificación, para que revertir sea un swap y no un
+      # redespliegue dentro de la ventana de mantenimiento.
+      deployToSlotOrASE: ${{ eq(parameters.entorno, 'minsur-prod') }}
+      resourceGroupName: ${{ parameters.grupoRecursos }}
+      slotName: ${{ iif(eq(parameters.entorno, 'minsur-prod'), 'preparacion', 'production') }}
+
+  - task: AzureCLI@2
+    displayName: "API Management · publicar definición"
+    inputs:
+      azureSubscription: ${{ parameters.conexion }}
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        set -euo pipefail
+        # APIM es la única puerta al backend. La definición se importa desde el
+        # OpenAPI que genera FastAPI, de modo que la puerta no pueda divergir
+        # de los servicios que expone.
+        az apim api import \
+          --resource-group "${{ parameters.grupoRecursos }}" \
+          --service-name "$(apim-${{ parameters.entorno }})" \
+          --api-id minsur-evaluacion \
+          --path evaluacion \
+          --specification-format OpenApiJson \
+          --specification-path packages/contracts/openapi.json \
+          --service-url "$(backendUrl-${{ parameters.entorno }})" \
+          --subscription-required true
+
+  - script: |
+      set -euo pipefail
+      echo "Comprobando disponibilidad de ${{ parameters.urlBase }}"
+      for intento in $(seq 1 20); do
+        codigo=$(curl -s -o /dev/null -w "%{http_code}" "${{ parameters.urlBase }}/api/salud" || echo 000)
+        if [ "$codigo" = "200" ]; then
+          echo "Servicio disponible tras $intento intento(s)."
+          exit 0
+        fi
+        echo "  intento $intento: HTTP $codigo"
+        sleep 15
+      done
+      echo "El servicio no respondió tras 20 intentos."
+      exit 1
+    displayName: "Verificación de humo"

@@ -1,0 +1,34 @@
+# Prepara Node y el workspace pnpm.
+
+parameters:
+  - name: filtro
+    type: string
+    default: ""
+
+steps:
+  - task: NodeTool@0
+    displayName: "Node 22"
+    inputs:
+      versionSpec: "22.x"
+
+  - script: |
+      set -euo pipefail
+      corepack enable
+      corepack prepare pnpm@latest --activate
+      pnpm --version
+    displayName: "Instalar pnpm"
+
+  - task: Cache@2
+    displayName: "Caché de pnpm"
+    inputs:
+      key: 'pnpm | "$(Agent.OS)" | pnpm-lock.yaml'
+      restoreKeys: |
+        pnpm | "$(Agent.OS)"
+      path: $(Pipeline.Workspace)/.pnpm-store
+
+  - script: |
+      set -euo pipefail
+      pnpm config set store-dir $(Pipeline.Workspace)/.pnpm-store
+      pnpm install --frozen-lockfile ${{ parameters.filtro }}
+    displayName: "pnpm install"
+    workingDirectory: $(Build.SourcesDirectory)

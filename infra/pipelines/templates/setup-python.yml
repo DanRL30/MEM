@@ -1,0 +1,32 @@
+# Prepara el intérprete y el workspace uv.
+# Se usa en todos los pipelines que tocan código Python.
+
+parameters:
+  - name: instalarGrupos
+    type: string
+    default: "--all-packages"
+
+steps:
+  - task: UsePythonVersion@0
+    displayName: "Python 3.12"
+    inputs:
+      versionSpec: "3.12"
+      addToPath: true
+
+  - script: |
+      set -euo pipefail
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+      echo "##vso[task.prependpath]$HOME/.local/bin"
+    displayName: "Instalar uv"
+
+  - task: Cache@2
+    displayName: "Caché de uv"
+    inputs:
+      key: 'uv | "$(Agent.OS)" | uv.lock | pyproject.toml'
+      restoreKeys: |
+        uv | "$(Agent.OS)"
+      path: $(HOME)/.cache/uv
+
+  - script: uv sync ${{ parameters.instalarGrupos }} --frozen
+    displayName: "uv sync"
+    workingDirectory: $(Build.SourcesDirectory)

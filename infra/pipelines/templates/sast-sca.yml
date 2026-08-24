@@ -1,0 +1,60 @@
+# Analisis estatico y de dependencias.
+#
+# Corre desde la semana del 7 de setiembre en cada integracion, no en la
+# homologacion. El objetivo declarado en el plan es que los hallazgos aparezcan
+# durante la construccion y no en la semana del 5 de octubre, cuando la holgura
+# para corregir es cero.
+#
+# Politica de corte (R-29, criterio escalonado):
+#   criticos y altos -> bloquean
+#   medios y bajos   -> se registran y se difieren a una segunda fase
+
+parameters:
+  - name: fallarEnAltos
+    type: boolean
+    default: true
+
+steps:
+  - script: |
+      set -euo pipefail
+      mkdir -p $(Build.ArtifactStagingDirectory)/seguridad
+      uv run bandit -r packages apps/api/src \
+        -f json -o $(Build.ArtifactStagingDirectory)/seguridad/bandit.json \
+        --severity-level medium || true
+      uv run bandit -r packages apps/api/src -f txt --severity-level medium || true
+    displayName: "SAST · Bandit"
+
+  - script: |
+      set -euo pipefail
+      uv run pip-audit --format json \
+        --output $(Build.ArtifactStagingDirectory)/seguridad/pip-audit.json || true
+      uv run pip-audit || true
+    displayName: "SCA · pip-audit (Python)"
+
+  - script: |
+      set -euo pipefail
+      pnpm audit --json > $(Build.ArtifactStagingDirectory)/seguridad/pnpm-audit.json || true
+      pnpm audit || true
+    displayName: "SCA · pnpm audit (Node)"
+
+  # CodeQL requiere GitHub Advanced Security for Azure DevOps, que se licencia
+  # aparte. Se activa con la variable ghazdoHabilitado cuando TI lo confirme.
+  - ${{ if eq(variables['ghazdoHabilitado'], 'true') }}:
+      - task: AdvancedSecurity-Codeql-Init@1
+        displayName: "CodeQL · init"
+        inputs:
+          languages: "python,javascript"
+      - task: AdvancedSecurity-Codeql-Analyze@1
+        displayName: "CodeQL · analyze"
+
+  - script: |
+      set -euo pipefail
+      python infra/pipelines/scripts/evaluar_hallazgos.py \
+        --directorio $(Build.ArtifactStagingDirectory)/seguridad \
+        --fallar-en-altos ${{ parameters.fallarEnAltos }}
+    displayName: "Compuerta de seguridad · criticos y altos"
+
+  - publish: $(Build.ArtifactStagingDirectory)/seguridad
+    artifact: evidencia-seguridad-$(Build.BuildId)
+    displayName: "Publicar evidencia de seguridad"
+    condition: always()

@@ -1,0 +1,146 @@
+# CD — Despliegue de la aplicación
+#
+# Servicio INVA-01-2026-182 · PT6.8, PT6.12, PT6.15
+#
+# Dev → QA → Producción, con aprobaciones entre etapas. Lo que viaja entre
+# entornos es el artefacto versionado que construyó CI, nunca un servidor ni
+# una base en operación.
+#
+# La ventana de producción es el domingo entre 00:00 y 06:00. El despliegue
+# demanda ~2 horas y deja 4 de margen. Como es un despliegue inicial y no una
+# migración, no hay corte de servicio ni pérdida de datos preexistentes: el
+# riesgo está en la aplicación de las políticas de red e identidad.
+
+name: CD-$(Date:yyyyMMdd)-$(Rev:r)
+
+trigger: none
+
+resources:
+  pipelines:
+    - pipeline: ci
+      source: CI
+      trigger:
+        branches:
+          include: [main]
+
+variables:
+  - group: minsur-comun
+
+stages:
+  - stage: dev
+    displayName: "Desarrollo MINSUR"
+    jobs:
+      - deployment: desplegar
+        environment: minsur-dev
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: templates/desplegar.yml
+                  parameters:
+                    entorno: minsur-dev
+                    conexion: $(serviceConnectionDev)
+                    grupoRecursos: $(rgDev)
+                    urlBase: $(urlDev)
+
+  - stage: qa
+    displayName: "Calidad MINSUR"
+    dependsOn: dev
+    condition: succeeded()
+    jobs:
+      - deployment: desplegar
+        environment: minsur-qa
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: templates/desplegar.yml
+                  parameters:
+                    entorno: minsur-qa
+                    conexion: $(serviceConnectionQa)
+                    grupoRecursos: $(rgQa)
+                    urlBase: $(urlQa)
+
+      - job: rendimiento
+        displayName: "Rendimiento contra el SLO"
+        dependsOn: desplegar
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - script: |
+              set -euo pipefail
+              curl -fsSL https://github.com/grafana/k6/releases/latest/download/k6-linux-amd64.tar.gz \
+                | tar xz --strip-components 1 -C /usr/local/bin '*/k6'
+              k6 version
+            displayName: "Instalar k6"
+
+          - script: |
+              set -euo pipefail
+              # Umbrales: apertura del tablero por debajo de 5 s y evaluación
+              # estándar por debajo del valor que MINSUR aún debe fijar (R-51).
+              k6 run tests/rendimiento/tablero.js \
+                --env BASE_URL=$(urlQa) \
+                --summary-export=$(Build.ArtifactStagingDirectory)/k6-tablero.json
+            displayName: "k6 · tablero y evaluación estándar"
+
+          - publish: $(Build.ArtifactStagingDirectory)
+            artifact: rendimiento-$(Build.BuildId)
+            condition: always()
+
+  - stage: produccion
+    displayName: "Producción MINSUR"
+    dependsOn: qa
+    condition: succeeded()
+    jobs:
+      - deployment: desplegar
+        environment: minsur-prod
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: templates/desplegar.yml
+                  parameters:
+                    entorno: minsur-prod
+                    conexion: $(serviceConnectionProd)
+                    grupoRecursos: $(rgProd)
+                    urlBase: $(urlProd)
+
+            # Las cinco comprobaciones obligatorias de la ventana de pase.
+            # Si alguna falla y no se resuelve dentro de la ventana, se revierte
+            # el despliegue de la aplicación; la infraestructura permanece por
+            # ser idempotente y estar codificada.
+            routeTraffic:
+              steps:
+                - script: |
+                    set -euo pipefail
+                    python infra/pipelines/scripts/verificacion_pase.py \
+                      --url "$(urlProd)" \
+                      --salida "$(Build.ArtifactStagingDirectory)/verificacion-pase.json"
+                  displayName: "Verificación posterior al despliegue"
+
+            on:
+              failure:
+                steps:
+                  - task: AzureCLI@2
+                    displayName: "Revertir la aplicación"
+                    inputs:
+                      azureSubscription: $(serviceConnectionProd)
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      inlineScript: |
+                        set -euo pipefail
+                        echo "Verificación fallida. Revirtiendo al slot anterior."
+                        az functionapp deployment slot swap \
+                          -g "$(rgProd)" -n "$(functionAppProd)" \
+                          --slot anterior --target-slot production
+                        echo "##vso[task.logissue type=error]Pase revertido. Reprogramar a la ventana siguiente."
+              success:
+                steps:
+                  - script: echo "Pase completado. Suscribir el acta con TI."
+                    displayName: "Acta de pase"

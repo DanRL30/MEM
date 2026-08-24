@@ -1,0 +1,173 @@
+# IaC — Validación y aprovisionamiento
+#
+# Servicio INVA-01-2026-182 · PT6.4, PT6.5, PT6.6, PT6.7, PT6.9, PT6.12
+#
+# Toda la infraestructura del servicio se aprovisiona desde aquí. La
+# configuración manual está prohibida en cualquier entorno del cliente: es lo
+# que hace idempotente el pase y lo que permite revertir la aplicación sin
+# tocar la infraestructura.
+#
+# PT6.5 exige validar la IaC contra las políticas corporativas de Azure Policy
+# ANTES de aprovisionar. Por eso `what-if` corre siempre y su fallo detiene el
+# pipeline: si una política corporativa deniega el despliegue, se descubre aquí
+# y no en la homologación de la semana del 5 de octubre.
+
+name: IaC-$(Date:yyyyMMdd)-$(Rev:r)
+
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include: [infra/bicep/*, infra/policy/*, infra/pipelines/iac-validate.yml]
+
+pr:
+  branches:
+    include: [main]
+  paths:
+    include: [infra/bicep/*]
+
+parameters:
+  - name: entorno
+    displayName: "Entorno a aprovisionar"
+    type: string
+    default: solo-validar
+    values: [solo-validar, minsur-dev, minsur-qa, minsur-prod]
+
+variables:
+  - group: minsur-comun
+
+stages:
+  - stage: validar
+    displayName: "Validar plantillas"
+    jobs:
+      - job: lint
+        displayName: "Bicep · compilar y analizar"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: AzureCLI@2
+            displayName: "az bicep build"
+            inputs:
+              azureSubscription: $(serviceConnectionDev)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                az bicep upgrade
+                for f in infra/bicep/*.bicep; do
+                  echo "Compilando $f"
+                  az bicep build --file "$f" --stdout > /dev/null
+                done
+
+          - task: AzureCLI@2
+            displayName: "Bicep linter"
+            inputs:
+              azureSubscription: $(serviceConnectionDev)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                az bicep lint --file infra/bicep/main.bicep --diagnostics-format sarif \
+                  > $(Build.ArtifactStagingDirectory)/bicep-lint.sarif || true
+                az bicep lint --file infra/bicep/main.bicep
+
+      - job: whatif
+        displayName: "What-if contra el entorno destino"
+        dependsOn: lint
+        strategy:
+          matrix:
+            dev:
+              nombreEntorno: minsur-dev
+              conexion: $(serviceConnectionDev)
+              grupoRecursos: $(rgDev)
+            qa:
+              nombreEntorno: minsur-qa
+              conexion: $(serviceConnectionQa)
+              grupoRecursos: $(rgQa)
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: AzureCLI@2
+            displayName: "az deployment group what-if"
+            inputs:
+              azureSubscription: $(conexion)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                # what-if falla si una definición de Azure Policy deniega algún
+                # recurso. Ese fallo es el objetivo de PT6.5, no un accidente.
+                az deployment group what-if \
+                  --resource-group "$(grupoRecursos)" \
+                  --template-file infra/bicep/main.bicep \
+                  --parameters "infra/bicep/envs/$(nombreEntorno).bicepparam" \
+                  --result-format FullResourcePayloads
+
+          - task: AzureCLI@2
+            displayName: "Cumplimiento de Azure Policy"
+            inputs:
+              azureSubscription: $(conexion)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                az policy state summarize \
+                  --resource-group "$(grupoRecursos)" \
+                  --query "results.nonCompliantResources" -o tsv \
+                  | tee no_conformes.txt
+                if [ "$(cat no_conformes.txt)" != "0" ]; then
+                  echo "##vso[task.logissue type=warning]Recursos no conformes en $(nombreEntorno)"
+                fi
+
+  - stage: aprovisionar
+    displayName: "Aprovisionar ${{ parameters.entorno }}"
+    dependsOn: validar
+    condition: and(succeeded(), ne('${{ parameters.entorno }}', 'solo-validar'))
+    jobs:
+      - deployment: infra
+        displayName: "Desplegar infraestructura"
+        # Las aprobaciones viven en el Environment de Azure DevOps, no aquí.
+        environment: ${{ parameters.entorno }}
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: AzureCLI@2
+                  displayName: "az deployment group create"
+                  inputs:
+                    azureSubscription: "$(serviceConnection-${{ parameters.entorno }})"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      az deployment group create \
+                        --resource-group "$(rg-${{ parameters.entorno }})" \
+                        --template-file infra/bicep/main.bicep \
+                        --parameters "infra/bicep/envs/${{ parameters.entorno }}.bicepparam" \
+                        --name "inva-$(Build.BuildId)"
+
+                - task: AzureCLI@2
+                  displayName: "Verificar identidad, red y secretos"
+                  inputs:
+                    azureSubscription: "$(serviceConnection-${{ parameters.entorno }})"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      rg="$(rg-${{ parameters.entorno }})"
+                      echo "— Puntos de conexión privados"
+                      az network private-endpoint list -g "$rg" --query "[].name" -o tsv
+                      echo "— Key Vault con identidad administrada"
+                      az keyvault list -g "$rg" --query "[].name" -o tsv
+                      echo "— Acceso público deshabilitado en almacenamiento"
+                      az storage account list -g "$rg" \
+                        --query "[?allowBlobPublicAccess==\`true\`].name" -o tsv \
+                        | tee publicos.txt
+                      if [ -s publicos.txt ]; then
+                        echo "Hay cuentas de almacenamiento con acceso público."
+                        exit 1
+                      fi

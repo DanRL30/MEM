@@ -1,0 +1,136 @@
+# Fidelidad — Regresión contra los casos certificados
+#
+# Servicio INVA-01-2026-182 · PT4.5
+#
+# Corre EXCLUSIVAMENTE dentro del tenant de MINSUR, sobre un agente autoalojado
+# con acceso al almacenamiento donde viven los tres casos de contraste. Esos
+# casos son evaluaciones económicas reales y confidenciales: no salen del tenant
+# y no existen en el repositorio (R-13, R-35).
+#
+# Una vez conciliado, cada caso de la batería se congela como prueba de
+# regresión. Todo cambio futuro del motor —incluidas las actualizaciones que
+# Finanzas introduzca en el modelo corporativo— vuelve a verificar de forma
+# automática que los casos certificados siguen reproduciendo su resultado antes
+# de que el cambio pueda desplegarse. Este pipeline es ese mecanismo.
+
+name: FID-$(Date:yyyyMMdd)-$(Rev:r)
+
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include:
+      - packages/engine/*
+      - packages/domain/*
+      - packages/ingest/*
+      - tests/fidelidad/*
+
+schedules:
+  - cron: "0 6 * * 1-5"
+    displayName: "Cada mañana laborable"
+    branches:
+      include: [main]
+    always: true
+
+variables:
+  - group: minsur-comun
+  - group: minsur-fidelidad # secretos del almacenamiento de contraste
+
+stages:
+  - stage: contraste
+    displayName: "Contraste N0-N3"
+    jobs:
+      - job: regresion
+        displayName: "Casos certificados"
+        # Agente autoalojado dentro de la red de MINSUR. Los agentes alojados
+        # por Microsoft no alcanzan el almacenamiento tras puntos de conexión
+        # privados, y tampoco deberían: los datos no salen del perímetro.
+        pool:
+          name: $(poolMinsur)
+          demands:
+            - agent.os -equals Linux
+        timeoutInMinutes: 90
+        steps:
+          - template: templates/setup-python.yml
+
+          - task: AzureCLI@2
+            displayName: "Descargar casos certificados"
+            inputs:
+              azureSubscription: $(serviceConnectionQa)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                destino=$(Agent.TempDirectory)/contraste
+                mkdir -p "$destino"
+                # Autenticación por identidad administrada. Sin credenciales
+                # embebidas y sin claves de cuenta.
+                az storage blob download-batch \
+                  --account-name "$(cuentaContraste)" \
+                  --source contraste \
+                  --destination "$destino" \
+                  --auth-mode login
+                echo "##vso[task.setvariable variable=RUTA_CONTRASTE]$destino"
+
+          - script: |
+              set -euo pipefail
+              # Verifica que cada caso descargado corresponde a su manifiesto.
+              # Si un hash no coincide, el caso fue alterado y el contraste
+              # dejaría de ser una referencia válida.
+              uv run python infra/pipelines/scripts/verificar_manifiestos.py \
+                --manifiestos fixtures/certificados \
+                --datos "$RUTA_CONTRASTE"
+            displayName: "Verificar hashes de los manifiestos"
+
+          - script: |
+              set -euo pipefail
+              uv run pytest tests/fidelidad \
+                -m "tenant_minsur or fidelidad" \
+                --junitxml=$(Build.ArtifactStagingDirectory)/fidelidad.xml \
+                -v
+            displayName: "pytest · niveles N0 a N3"
+            env:
+              RUTA_CONTRASTE: $(RUTA_CONTRASTE)
+
+          - task: PublishTestResults@2
+            displayName: "Publicar resultados"
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: "$(Build.ArtifactStagingDirectory)/fidelidad.xml"
+              testRunTitle: "Contraste de fidelidad N0-N3"
+
+          - script: |
+              set -euo pipefail
+              # Los datos de contraste no sobreviven al job.
+              rm -rf "$RUTA_CONTRASTE"
+              echo "Datos de contraste eliminados del agente."
+            displayName: "Limpiar datos confidenciales"
+            condition: always()
+
+  - stage: reproducibilidad
+    displayName: "Verificación de corridas congeladas"
+    dependsOn: contraste
+    condition: succeeded()
+    jobs:
+      - job: recalcular
+        displayName: "Muestra de imágenes selladas"
+        pool:
+          name: $(poolMinsur)
+        steps:
+          - template: templates/setup-python.yml
+
+          - script: |
+              set -euo pipefail
+              # La reproducibilidad se verifica de forma activa, no se presume.
+              # Recalcula una muestra de corridas congeladas desde su imagen
+              # sellada y compara con el resultado sellado. Cualquier
+              # divergencia es un incidente, no una advertencia.
+              uv run python -m minsur_domain.verificacion \
+                --muestra "$(muestraCongeladas)" \
+                --salida $(Build.ArtifactStagingDirectory)/reproducibilidad.json
+            displayName: "Recalcular y comparar contra el sello"
+
+          - publish: $(Build.ArtifactStagingDirectory)/reproducibilidad.json
+            artifact: reproducibilidad-$(Build.BuildId)
+            condition: always()

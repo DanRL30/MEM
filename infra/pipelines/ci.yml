@@ -1,0 +1,155 @@
+# CI — Integración continua
+#
+# Servicio INVA-01-2026-182 · PT6.8
+# Corre en cada pull request y en cada integración a main.
+#
+# Lo que verifica, en orden de coste creciente:
+#   1. Estilo y tipos
+#   2. Pruebas unitarias
+#   3. Fidelidad N0-N3 sobre fixtures sintéticos
+#   4. Construcción de la interfaz
+#   5. Sonar, SAST y SCA
+#
+# Las pruebas de fidelidad contra los casos certificados NO corren aquí:
+# requieren datos reales de MINSUR y solo se ejecutan dentro del tenant del
+# cliente. Ver fidelidad-tenant.yml.
+
+name: CI-$(Date:yyyyMMdd)-$(Rev:r)
+
+trigger:
+  branches:
+    include: [main, release/*]
+  paths:
+    exclude: [docs/*, "**/*.md"]
+
+pr:
+  branches:
+    include: [main]
+
+variables:
+  - group: minsur-comun
+  - name: uvVersion
+    value: "latest"
+
+stages:
+  - stage: calidad
+    displayName: "Calidad y pruebas"
+    jobs:
+      - job: python
+        displayName: "Python · lint, tipos, pruebas"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - template: templates/setup-python.yml
+
+          - script: uv run ruff check --output-format=azure .
+            displayName: "ruff"
+
+          - script: uv run ruff format --check .
+            displayName: "ruff format"
+
+          - script: uv run mypy packages apps/api/src
+            displayName: "mypy"
+
+          - script: |
+              set -euo pipefail
+              uv run pytest \
+                --junitxml=$(Build.ArtifactStagingDirectory)/pruebas/unitarias.xml \
+                --cov --cov-report=xml:$(Build.ArtifactStagingDirectory)/pruebas/cobertura.xml \
+                -m "not tenant_minsur and not lento"
+            displayName: "pytest · unitarias y fidelidad sintética"
+
+          - task: PublishTestResults@2
+            displayName: "Publicar resultados"
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: "$(Build.ArtifactStagingDirectory)/pruebas/*.xml"
+              testRunTitle: "Unitarias y fidelidad sintética"
+
+          - task: PublishCodeCoverageResults@2
+            displayName: "Publicar cobertura"
+            condition: succeededOrFailed()
+            inputs:
+              summaryFileLocation: "$(Build.ArtifactStagingDirectory)/pruebas/cobertura.xml"
+
+          - script: |
+              set -euo pipefail
+              uv build --all-packages --out-dir $(Build.ArtifactStagingDirectory)/paquetes
+            displayName: "Construir paquetes"
+
+          - publish: $(Build.ArtifactStagingDirectory)/paquetes
+            artifact: paquetes-python
+            displayName: "Publicar paquetes"
+
+      - job: web
+        displayName: "Interfaz · lint, tipos, build"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - template: templates/setup-node.yml
+
+          - script: pnpm lint
+            displayName: "eslint"
+
+          - script: pnpm typecheck
+            displayName: "tsc"
+
+          - script: pnpm test
+            displayName: "vitest"
+
+          - script: pnpm build
+            displayName: "Construir"
+
+          - publish: apps/web/dist
+            artifact: web-dist
+            displayName: "Publicar interfaz"
+
+  - stage: seguridad
+    displayName: "Análisis estático y de dependencias"
+    dependsOn: calidad
+    condition: succeeded()
+    jobs:
+      - job: analisis
+        displayName: "SAST · SCA · Sonar"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - template: templates/setup-python.yml
+          - template: templates/setup-node.yml
+
+          - task: SonarQubePrepare@6
+            displayName: "Sonar · preparar"
+            inputs:
+              SonarQube: $(sonarServiceConnection)
+              scannerMode: CLI
+              configMode: manual
+              cliProjectKey: $(sonarProjectKey)
+              cliProjectName: "Plataforma Evaluacion Economica MINSUR"
+              extraProperties: |
+                sonar.sources=packages,apps
+                sonar.tests=packages/*/tests,apps/api/tests,apps/web/tests
+                sonar.python.version=3.12
+                sonar.python.coverage.reportPaths=**/cobertura.xml
+                sonar.exclusions=**/node_modules/**,**/dist/**,fixtures/**
+
+          - task: SonarQubeAnalyze@6
+            displayName: "Sonar · analizar"
+
+          - task: SonarQubePublish@6
+            displayName: "Sonar · publicar compuerta"
+            inputs:
+              pollingTimeoutSec: "300"
+
+          # La compuerta de Sonar bloquea solo en main y release.
+          # En ramas de trabajo informa, para no detener al equipo durante
+          # las ocho semanas de construcción.
+          - ${{ if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/release/')) }}:
+              - task: sonar-buildbreaker@8
+                displayName: "Sonar · romper si la compuerta falla"
+                inputs:
+                  SonarQube: $(sonarServiceConnection)
+
+          - template: templates/sast-sca.yml
+            parameters:
+              fallarEnAltos: true

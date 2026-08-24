@@ -1,0 +1,148 @@
+# Seguridad — DAST y paquete de evidencia
+#
+# Servicio INVA-01-2026-182 · PT6.10
+#
+# Este pipeline produce el paquete de autoevaluación que se entrega a Seguridad
+# de la Información de MINSUR antes del ethical hacking (H11, 18/09).
+#
+# Su razón de ser es de cronograma, no de higiene: el ethical hacking tiene un
+# SLA de dos semanas y cero holgura (PT6.11, R-46). Llegar con los hallazgos
+# evidentes ya remediados y documentados es lo único que INVA controla para que
+# ese SLA no se consuma en hallazgos que pudimos encontrar solos.
+
+name: SEG-$(Date:yyyyMMdd)-$(Rev:r)
+
+trigger: none
+
+schedules:
+  - cron: "0 3 * * 1-5"
+    displayName: "Cada noche laborable"
+    branches:
+      include: [main]
+    always: true
+
+parameters:
+  - name: objetivo
+    displayName: "Entorno objetivo del escaneo"
+    type: string
+    default: minsur-qa
+    values: [minsur-dev, minsur-qa]
+  - name: profundidad
+    displayName: "Profundidad del escaneo"
+    type: string
+    default: baseline
+    values: [baseline, full]
+
+variables:
+  - group: minsur-comun
+
+stages:
+  - stage: estatico
+    displayName: "SAST y SCA"
+    jobs:
+      - job: analisis
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - template: templates/setup-python.yml
+          - template: templates/setup-node.yml
+          - template: templates/sast-sca.yml
+            parameters:
+              fallarEnAltos: false # aquí se recolecta, no se bloquea
+
+  - stage: dinamico
+    displayName: "DAST · OWASP ZAP"
+    dependsOn: estatico
+    jobs:
+      - job: zap
+        displayName: "Escaneo contra ${{ parameters.objetivo }}"
+        pool:
+          vmImage: ubuntu-latest
+        timeoutInMinutes: 120
+        steps:
+          - script: |
+              set -euo pipefail
+              mkdir -p $(Build.ArtifactStagingDirectory)/zap
+              chmod 777 $(Build.ArtifactStagingDirectory)/zap
+            displayName: "Preparar directorio"
+
+          - script: |
+              set -euo pipefail
+              objetivo="$(url-${{ parameters.objetivo }})"
+              if [ "${{ parameters.profundidad }}" = "full" ]; then
+                script=zap-full-scan.py
+              else
+                script=zap-baseline.py
+              fi
+              # ZAP devuelve código distinto de cero cuando encuentra avisos.
+              # Eso no debe detener la recolección: la compuerta la aplica el
+              # paso siguiente, con el criterio escalonado de R-29.
+              docker run --rm \
+                -v $(Build.ArtifactStagingDirectory)/zap:/zap/wrk/:rw \
+                ghcr.io/zaproxy/zaproxy:stable \
+                $script -t "$objetivo" \
+                  -J zap.json -r zap.html \
+                  -a || true
+            displayName: "ZAP · ${{ parameters.profundidad }}"
+
+          - script: |
+              set -euo pipefail
+              python infra/pipelines/scripts/evaluar_zap.py \
+                --reporte $(Build.ArtifactStagingDirectory)/zap/zap.json \
+                --resumen $(Build.ArtifactStagingDirectory)/zap/resumen.md
+            displayName: "Clasificar hallazgos"
+
+          - publish: $(Build.ArtifactStagingDirectory)/zap
+            artifact: dast-$(Build.BuildId)
+            condition: always()
+            displayName: "Publicar reporte ZAP"
+
+  - stage: paquete
+    displayName: "Paquete de evidencia para SecOps"
+    dependsOn: dinamico
+    condition: always()
+    jobs:
+      - job: consolidar
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - download: current
+            displayName: "Recuperar reportes"
+
+          - script: |
+              set -euo pipefail
+              destino=$(Build.ArtifactStagingDirectory)/paquete-secops
+              mkdir -p "$destino"
+              cp -r $(Pipeline.Workspace)/evidencia-seguridad-*/* "$destino/" 2>/dev/null || true
+              cp -r $(Pipeline.Workspace)/dast-*/* "$destino/" 2>/dev/null || true
+              cp docs/seguridad/*.md "$destino/" 2>/dev/null || true
+
+              cat > "$destino/LEEME.md" <<EOF
+              # Paquete de autoevaluación de seguridad
+
+              Servicio INVA-01-2026-182 · Plataforma de Evaluación Económica MINSUR
+              Compilación $(Build.BuildId) · rama $(Build.SourceBranchName)
+              Entorno escaneado: ${{ parameters.objetivo }}
+
+              ## Contenido
+
+              | Archivo | Herramienta | Ámbito |
+              |---|---|---|
+              | bandit.json | Bandit | Análisis estático del código Python |
+              | pip-audit.json | pip-audit | Dependencias de Python |
+              | pnpm-audit.json | pnpm audit | Dependencias de Node |
+              | zap.json / zap.html | OWASP ZAP | Análisis dinámico de la aplicación desplegada |
+              | resumen.md | — | Clasificación de hallazgos por severidad |
+
+              ## Criterio aplicado
+
+              Críticos y altos se remedian antes del pase. Medios y bajos se
+              registran y se difieren a una segunda fase, conforme al criterio
+              escalonado acordado con MINSUR (R-29).
+              EOF
+              ls -la "$destino"
+            displayName: "Consolidar paquete"
+
+          - publish: $(Build.ArtifactStagingDirectory)/paquete-secops
+            artifact: paquete-secops-$(Build.BuildId)
+            displayName: "Publicar paquete de evidencia"
