@@ -54,7 +54,9 @@ def main() -> int:
         lineas.append("")
         for a in bloqueantes:
             instancias = len(a.get("instances", []))
-            lineas.append(f"- **{a.get('alert')}** · {instancias} instancia(s) · CWE-{a.get('cweid')}")
+            lineas.append(
+                f"- **{a.get('alert')}** · {instancias} instancia(s) · CWE-{a.get('cweid')}"
+            )
         lineas.append("")
 
     diferibles = por_severidad.get("Medium", []) + por_severidad.get("Low", [])

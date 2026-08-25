@@ -54,9 +54,7 @@ async def historial(
 async def auditoria(
     caso: str | None = Query(default=None),
     corrida: str | None = Query(default=None),
-    usuario: Usuario = Depends(
-        requiere(Perfil.ADMINISTRADOR, Perfil.AUDITOR)
-    ),
+    usuario: Usuario = Depends(requiere(Perfil.ADMINISTRADOR, Perfil.AUDITOR)),
 ) -> dict:
     """Bitacora de solo escritura, restringida al perfil Auditor.
 

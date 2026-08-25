@@ -82,9 +82,7 @@ def _normalizar(valor: Any) -> Any:
         # lugar de suponerle una zona: suponer es lo que produce divergencias
         # entre el servidor que selló y el que verifica.
         if valor.tzinfo is None:
-            raise ErrorSellado(
-                "Marca de tiempo sin zona horaria. Use UTC explícito."
-            )
+            raise ErrorSellado("Marca de tiempo sin zona horaria. Use UTC explícito.")
         return valor.astimezone(UTC).isoformat(timespec="microseconds")
 
     if isinstance(valor, date):
@@ -338,16 +336,13 @@ def verificar_reproducibilidad(
             ),
         )
 
-    divergentes = _lineas_divergentes(
-        imagen.contenido.resultados, resultados_recalculados
-    )
+    divergentes = _lineas_divergentes(imagen.contenido.resultados, resultados_recalculados)
     return Veredicto(
         integra=True,
         reproducible=False,
         detalle=(
             f"El recálculo diverge del sello en {len(divergentes)} línea(s): "
-            f"{', '.join(divergentes[:8])}"
-            + ("…" if len(divergentes) > 8 else "")
+            f"{', '.join(divergentes[:8])}" + ("…" if len(divergentes) > 8 else "")
         ),
     )
 

@@ -32,18 +32,25 @@ MOMENTO = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
 
 class TestTransiciones:
     def test_el_camino_completo(self):
-        assert verificar(Estado.BORRADOR, Accion.EJECUTAR, Perfil.INGENIERO_DE_PROYECTO) is Estado.CALCULADA
-        assert verificar(Estado.CALCULADA, Accion.CONGELAR, Perfil.LIDER_DE_ESTUDIO) is Estado.CONGELADA
+        assert (
+            verificar(Estado.BORRADOR, Accion.EJECUTAR, Perfil.INGENIERO_DE_PROYECTO)
+            is Estado.CALCULADA
+        )
+        assert (
+            verificar(Estado.CALCULADA, Accion.CONGELAR, Perfil.LIDER_DE_ESTUDIO)
+            is Estado.CONGELADA
+        )
 
     def test_editar_devuelve_a_borrador(self):
-        assert verificar(Estado.CALCULADA, Accion.EDITAR_INSUMOS, Perfil.LIDER_DE_ESTUDIO) is Estado.BORRADOR
+        assert (
+            verificar(Estado.CALCULADA, Accion.EDITAR_INSUMOS, Perfil.LIDER_DE_ESTUDIO)
+            is Estado.BORRADOR
+        )
 
     def test_congelar_es_irreversible(self):
         assert es_irreversible(Estado.CALCULADA, Accion.CONGELAR)
 
-    @pytest.mark.parametrize(
-        "accion", [Accion.EJECUTAR, Accion.EDITAR_INSUMOS, Accion.CONGELAR]
-    )
+    @pytest.mark.parametrize("accion", [Accion.EJECUTAR, Accion.EDITAR_INSUMOS, Accion.CONGELAR])
     def test_nada_modifica_una_evaluacion_congelada(self, accion: Accion):
         with pytest.raises(TransicionInvalida, match="no admite modificaciones"):
             verificar(Estado.CONGELADA, accion, Perfil.ADMINISTRADOR)
@@ -55,7 +62,10 @@ class TestTransiciones:
             verificar(Estado.CONGELADA, Accion.EDITAR_INSUMOS, Perfil.LIDER_DE_ESTUDIO)
 
     def test_recalcular_no_altera_la_corrida_congelada(self):
-        assert verificar(Estado.CONGELADA, Accion.RECALCULAR, Perfil.LIDER_DE_ESTUDIO) is Estado.CONGELADA
+        assert (
+            verificar(Estado.CONGELADA, Accion.RECALCULAR, Perfil.LIDER_DE_ESTUDIO)
+            is Estado.CONGELADA
+        )
 
     def test_recalcular_no_aplica_a_una_corrida_no_congelada(self):
         with pytest.raises(TransicionInvalida, match="solo aplica"):
@@ -94,12 +104,33 @@ class TestPermisos:
 
 def _bitacora_con_tres_entradas() -> Bitacora:
     b = Bitacora()
-    b.registrar("R1", "C1", "hugo.diaz", Perfil.LIDER_DE_ESTUDIO,
-                AccionAuditoria.CASO_CREADO, Origen.CAPTURA_WEB, momento=MOMENTO)
-    b.registrar("R1", "C1", "hugo.diaz", Perfil.LIDER_DE_ESTUDIO,
-                AccionAuditoria.INSUMOS_CARGADOS, Origen.PLANTILLA_EXCEL, momento=MOMENTO)
-    b.registrar("R1", "C1", "hugo.diaz", Perfil.LIDER_DE_ESTUDIO,
-                AccionAuditoria.EVALUACION_EJECUTADA, Origen.CALCULO, momento=MOMENTO)
+    b.registrar(
+        "R1",
+        "C1",
+        "hugo.diaz",
+        Perfil.LIDER_DE_ESTUDIO,
+        AccionAuditoria.CASO_CREADO,
+        Origen.CAPTURA_WEB,
+        momento=MOMENTO,
+    )
+    b.registrar(
+        "R1",
+        "C1",
+        "hugo.diaz",
+        Perfil.LIDER_DE_ESTUDIO,
+        AccionAuditoria.INSUMOS_CARGADOS,
+        Origen.PLANTILLA_EXCEL,
+        momento=MOMENTO,
+    )
+    b.registrar(
+        "R1",
+        "C1",
+        "hugo.diaz",
+        Perfil.LIDER_DE_ESTUDIO,
+        AccionAuditoria.EVALUACION_EJECUTADA,
+        Origen.CALCULO,
+        momento=MOMENTO,
+    )
     return b
 
 
@@ -126,9 +157,7 @@ class TestBitacora:
     def test_detecta_la_modificacion_de_una_entrada(self):
         b = _bitacora_con_tres_entradas()
         original = b._entradas[1]
-        b._entradas[1] = type(original)(
-            **{**original.__dict__, "usuario": "otro.usuario"}
-        )
+        b._entradas[1] = type(original)(**{**original.__dict__, "usuario": "otro.usuario"})
         with pytest.raises(BitacoraCorrupta, match="modificada después"):
             b.verificar()
 
@@ -141,20 +170,36 @@ class TestBitacora:
     def test_exige_identificar_al_responsable(self):
         b = Bitacora()
         with pytest.raises(ValueError, match="responsable"):
-            b.registrar("R1", "C1", "  ", Perfil.LIDER_DE_ESTUDIO,
-                        AccionAuditoria.CASO_CREADO, Origen.CAPTURA_WEB)
+            b.registrar(
+                "R1",
+                "C1",
+                "  ",
+                Perfil.LIDER_DE_ESTUDIO,
+                AccionAuditoria.CASO_CREADO,
+                Origen.CAPTURA_WEB,
+            )
 
     def test_una_modificacion_debe_registrar_ambos_valores(self):
         b = Bitacora()
         with pytest.raises(ValueError, match="anterior y posterior"):
-            b.registrar("R1", "C1", "hugo.diaz", Perfil.LIDER_DE_ESTUDIO,
-                        AccionAuditoria.PARAMETROS_CAMBIADOS, Origen.DATO_MAESTRO)
+            b.registrar(
+                "R1",
+                "C1",
+                "hugo.diaz",
+                Perfil.LIDER_DE_ESTUDIO,
+                AccionAuditoria.PARAMETROS_CAMBIADOS,
+                Origen.DATO_MAESTRO,
+            )
 
     def test_registra_el_cambio_con_sus_dos_valores(self):
         b = Bitacora()
         e = b.registrar(
-            "R1", "C1", "finanzas.minsur", Perfil.FINANZAS,
-            AccionAuditoria.COMITE_SELECCIONADO, Origen.DATO_MAESTRO,
+            "R1",
+            "C1",
+            "finanzas.minsur",
+            Perfil.FINANZAS,
+            AccionAuditoria.COMITE_SELECCIONADO,
+            Origen.DATO_MAESTRO,
             valor_anterior={"comite": "CP-2026-02"},
             valor_posterior={"comite": "CP-2026-03"},
             momento=MOMENTO,
@@ -164,10 +209,17 @@ class TestBitacora:
 
     def test_el_historial_de_cambios_omite_lo_que_no_modifica(self):
         b = _bitacora_con_tres_entradas()
-        b.registrar("R1", "C1", "hugo.diaz", Perfil.LIDER_DE_ESTUDIO,
-                    AccionAuditoria.INSUMOS_EDITADOS, Origen.CAPTURA_WEB,
-                    valor_anterior={"tms": 1200}, valor_posterior={"tms": 1300},
-                    momento=MOMENTO)
+        b.registrar(
+            "R1",
+            "C1",
+            "hugo.diaz",
+            Perfil.LIDER_DE_ESTUDIO,
+            AccionAuditoria.INSUMOS_EDITADOS,
+            Origen.CAPTURA_WEB,
+            valor_anterior={"tms": 1200},
+            valor_posterior={"tms": 1300},
+            momento=MOMENTO,
+        )
         assert len(b.de_caso("C1")) == 4
         assert len(b.historial_de_cambios("C1")) == 1
 

@@ -87,8 +87,12 @@ Espanol para el dominio, ingles para lo que el lenguaje o la libreria imponen.
 
 ```python
 def congelar_evaluacion(id_caso: str, motivo: str) -> ImagenSellada: ...
+
+
 class TernaVersion: ...
-router = APIRouter()          # el termino lo fija FastAPI
+
+
+router = APIRouter()  # el termino lo fija FastAPI
 ```
 
 Sin abreviaturas inventadas: `evaluacion`, no `eval`; `parametros`, no `params`.

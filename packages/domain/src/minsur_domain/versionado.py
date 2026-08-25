@@ -132,9 +132,7 @@ class VersionInputs:
         if self.revision < 1:
             raise ErrorVersionado("La revisión de inputs empieza en 1.")
         if len(self.huella) != 64:
-            raise ErrorVersionado(
-                "La huella de inputs debe ser un SHA-256 de 64 caracteres."
-            )
+            raise ErrorVersionado("La huella de inputs debe ser un SHA-256 de 64 caracteres.")
 
     def __str__(self) -> str:
         return f"r{self.revision}"

@@ -42,13 +42,11 @@ def documento() -> dict:
 
 class TestContratoYaComprometido:
     def test_los_endpoints_de_la_verificacion_del_pase_existen(self, documento: dict):
-        origen = (RAIZ / "infra/pipelines/scripts/verificacion_pase.py").read_text(
-            encoding="utf-8"
-        )
+        origen = (RAIZ / "infra/pipelines/scripts/verificacion_pase.py").read_text(encoding="utf-8")
         # Las rutas aparecen en el script como f-strings con {base} delante.
         esperados = {
             re.sub(r"\{[^}]+\}", "{id_caso}", ruta).split("?")[0]
-            for ruta in re.findall(r'/api/[a-z0-9{}/_-]+', origen)
+            for ruta in re.findall(r"/api/[a-z0-9{}/_-]+", origen)
         }
         expuestos = set(documento["paths"])
         faltantes = esperados - expuestos
@@ -58,16 +56,12 @@ class TestContratoYaComprometido:
         )
 
     def test_el_endpoint_de_la_verificacion_de_humo_existe(self, documento: dict):
-        plantilla = (RAIZ / "infra/pipelines/templates/desplegar.yml").read_text(
-            encoding="utf-8"
-        )
+        plantilla = (RAIZ / "infra/pipelines/templates/desplegar.yml").read_text(encoding="utf-8")
         assert "/api/salud" in plantilla
         assert "/api/salud" in documento["paths"]
 
     def test_la_ruta_del_esquema_coincide_con_la_que_importa_apim(self):
-        plantilla = (RAIZ / "infra/pipelines/templates/desplegar.yml").read_text(
-            encoding="utf-8"
-        )
+        plantilla = (RAIZ / "infra/pipelines/templates/desplegar.yml").read_text(encoding="utf-8")
         assert "packages/contracts/openapi.json" in plantilla
 
     def test_el_comando_que_invoca_el_frontend_es_este_modulo(self):
@@ -133,9 +127,7 @@ class TestPerfiles:
         assert perfil_desde_grupos([]) is None
 
     def test_con_varios_grupos_aplica_el_de_mayor_alcance(self):
-        perfil = perfil_desde_grupos(
-            ["SG-MINSUR-EVALECO-AUDITOR", "SG-MINSUR-EVALECO-ADMIN"]
-        )
+        perfil = perfil_desde_grupos(["SG-MINSUR-EVALECO-AUDITOR", "SG-MINSUR-EVALECO-ADMIN"])
         assert perfil is Perfil.ADMINISTRADOR
 
     def test_el_orden_de_los_grupos_no_influye(self):
@@ -175,9 +167,7 @@ class TestEsquema:
     def test_el_servidor_es_relativo(self, documento: dict):
         # Un servidor absoluto haría que el cliente generado apuntara siempre
         # al mismo entorno.
-        assert documento["servers"] == [
-            {"url": "/", "description": "A través de API Management"}
-        ]
+        assert documento["servers"] == [{"url": "/", "description": "A través de API Management"}]
 
     def test_toda_ruta_cuelga_de_api(self, documento: dict):
         assert all(r.startswith("/api/") for r in documento["paths"])
@@ -194,6 +184,4 @@ class TestEsquema:
     def test_es_estable_entre_generaciones(self):
         import json
 
-        assert json.dumps(esquema(), sort_keys=True) == json.dumps(
-            esquema(), sort_keys=True
-        )
+        assert json.dumps(esquema(), sort_keys=True) == json.dumps(esquema(), sort_keys=True)

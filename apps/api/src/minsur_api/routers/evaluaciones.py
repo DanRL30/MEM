@@ -78,9 +78,7 @@ async def evaluar(
 async def congelar(
     solicitud: SolicitudCongelamiento,
     id_caso: str = ID_CASO,
-    usuario: Usuario = Depends(
-        requiere(Perfil.ADMINISTRADOR, Perfil.LIDER_DE_ESTUDIO)
-    ),
+    usuario: Usuario = Depends(requiere(Perfil.ADMINISTRADOR, Perfil.LIDER_DE_ESTUDIO)),
 ) -> CorridaCongelada:
     """Transición irreversible.
 

@@ -100,9 +100,7 @@ TRANSICIONES: tuple[Transicion, ...] = (
 )
 
 # Perfiles sin capacidad de modificación en ningún estado.
-SOLO_LECTURA: frozenset[Perfil] = frozenset(
-    {Perfil.CONSULTA_EJECUTIVA, Perfil.AUDITOR}
-)
+SOLO_LECTURA: frozenset[Perfil] = frozenset({Perfil.CONSULTA_EJECUTIVA, Perfil.AUDITOR})
 
 
 def transiciones_desde(estado: Estado) -> tuple[Transicion, ...]:
@@ -118,9 +116,7 @@ def acciones_disponibles(estado: Estado, perfil: Perfil) -> tuple[Accion, ...]:
     """
     if perfil in SOLO_LECTURA:
         return ()
-    disponibles = tuple(
-        t.accion for t in transiciones_desde(estado) if perfil in t.perfiles
-    )
+    disponibles = tuple(t.accion for t in transiciones_desde(estado) if perfil in t.perfiles)
     if estado is Estado.CONGELADA:
         # Recalcular no es una transición: crea una corrida nueva. Se ofrece
         # desde el estado congelado porque es donde el usuario la necesita.
@@ -156,9 +152,7 @@ def verificar(estado: Estado, accion: Accion, perfil: Perfil) -> Estado:
                 "Para ver el efecto de un cambio, recalcúlela: se generará una "
                 "corrida nueva y esta permanecerá como sustento."
             )
-        raise TransicionInvalida(
-            f"No existe la acción {accion} desde el estado {estado}."
-        )
+        raise TransicionInvalida(f"No existe la acción {accion} desde el estado {estado}.")
 
     transicion = candidatas[0]
     if perfil not in transicion.perfiles:
@@ -170,8 +164,4 @@ def verificar(estado: Estado, accion: Accion, perfil: Perfil) -> Estado:
 
 
 def es_irreversible(estado: Estado, accion: Accion) -> bool:
-    return any(
-        t.irreversible
-        for t in TRANSICIONES
-        if t.desde == estado and t.accion == accion
-    )
+    return any(t.irreversible for t in TRANSICIONES if t.desde == estado and t.accion == accion)

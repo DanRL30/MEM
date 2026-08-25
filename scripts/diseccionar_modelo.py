@@ -47,13 +47,43 @@ except ImportError:
 # Funciones cuyo uso conviene inventariar: son las que suelen esconder reglas
 # no documentadas o comportamiento difícil de reproducir.
 FUNCIONES_DE_INTERES = [
-    "ROUND", "ROUNDUP", "ROUNDDOWN", "MROUND", "TRUNC", "INT",
-    "REDONDEAR", "REDONDEAR.MAS", "REDONDEAR.MENOS", "TRUNCAR", "ENTERO",
-    "IRR", "XIRR", "NPV", "XNPV", "TIR", "TIR.NO.PER", "VNA", "VNA.NO.PER",
-    "OFFSET", "INDIRECT", "DESREF", "INDIRECTO",
-    "IFERROR", "SI.ERROR", "NA", "ND",
-    "VLOOKUP", "BUSCARV", "INDEX", "INDICE", "MATCH", "COINCIDIR",
-    "SUMIF", "SUMIFS", "SUMAR.SI", "SUMAR.SI.CONJUNTO",
+    "ROUND",
+    "ROUNDUP",
+    "ROUNDDOWN",
+    "MROUND",
+    "TRUNC",
+    "INT",
+    "REDONDEAR",
+    "REDONDEAR.MAS",
+    "REDONDEAR.MENOS",
+    "TRUNCAR",
+    "ENTERO",
+    "IRR",
+    "XIRR",
+    "NPV",
+    "XNPV",
+    "TIR",
+    "TIR.NO.PER",
+    "VNA",
+    "VNA.NO.PER",
+    "OFFSET",
+    "INDIRECT",
+    "DESREF",
+    "INDIRECTO",
+    "IFERROR",
+    "SI.ERROR",
+    "NA",
+    "ND",
+    "VLOOKUP",
+    "BUSCARV",
+    "INDEX",
+    "INDICE",
+    "MATCH",
+    "COINCIDIR",
+    "SUMIF",
+    "SUMIFS",
+    "SUMAR.SI",
+    "SUMAR.SI.CONJUNTO",
 ]
 
 # Un número dentro de una fórmula, ignorando referencias de celda (A1, $B$2),
@@ -63,7 +93,18 @@ REFERENCIA_EXTERNA = re.compile(r"\[([^\]]+)\]")
 NOMBRE_FUNCION = re.compile(r"([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9._]*)\s*\(")
 
 # Errores de Excel que sobreviven dentro de una fórmula guardada.
-ERRORES_EXCEL = ["#REF!", "#VALUE!", "#DIV/0!", "#N/A", "#NAME?", "#NULL!", "#NUM!", "#¡REF!", "#¡VALOR!", "#¡DIV/0!"]
+ERRORES_EXCEL = [
+    "#REF!",
+    "#VALUE!",
+    "#DIV/0!",
+    "#N/A",
+    "#NAME?",
+    "#NULL!",
+    "#NUM!",
+    "#¡REF!",
+    "#¡VALOR!",
+    "#¡DIV/0!",
+]
 
 
 @dataclass
@@ -144,16 +185,22 @@ def analizar_hoja(ws, informe: Informe) -> dict:
             errores = [e for e in ERRORES_EXCEL if e in arriba]
             if errores:
                 informe.hallazgos.append(
-                    Hallazgo(ws.title, celda.coordinate, "formula-rota",
-                             f"Contiene {', '.join(errores)}", v[:160])
+                    Hallazgo(
+                        ws.title,
+                        celda.coordinate,
+                        "formula-rota",
+                        f"Contiene {', '.join(errores)}",
+                        v[:160],
+                    )
                 )
 
             # Redondeos: cambian el resultado y casi nunca están documentados.
             for fn in ("ROUND", "REDONDEAR", "TRUNC", "TRUNCAR", "MROUND", "INT(", "ENTERO("):
                 if fn in arriba:
                     informe.hallazgos.append(
-                        Hallazgo(ws.title, celda.coordinate, "redondeo",
-                                 f"Usa {fn.rstrip('(')}", v[:160])
+                        Hallazgo(
+                            ws.title, celda.coordinate, "redondeo", f"Usa {fn.rstrip('(')}", v[:160]
+                        )
                     )
                     break
 
@@ -163,29 +210,54 @@ def analizar_hoja(ws, informe: Informe) -> dict:
             numeros = [n for n in NUMERO_EN_FORMULA.findall(v) if n not in {"100", "12", "365"}]
             if numeros:
                 informe.hallazgos.append(
-                    Hallazgo(ws.title, celda.coordinate, "constante-incrustada",
-                             f"Valores: {', '.join(sorted(set(numeros))[:6])}", v[:160])
+                    Hallazgo(
+                        ws.title,
+                        celda.coordinate,
+                        "constante-incrustada",
+                        f"Valores: {', '.join(sorted(set(numeros))[:6])}",
+                        v[:160],
+                    )
                 )
 
             # Volatilidad e indirección: dificultan reproducir la cadena.
-            if "INDIRECT" in arriba or "INDIRECTO" in arriba or "OFFSET" in arriba or "DESREF" in arriba:
+            if (
+                "INDIRECT" in arriba
+                or "INDIRECTO" in arriba
+                or "OFFSET" in arriba
+                or "DESREF" in arriba
+            ):
                 informe.hallazgos.append(
-                    Hallazgo(ws.title, celda.coordinate, "referencia-indirecta",
-                             "Referencia calculada en tiempo de ejecución", v[:160])
+                    Hallazgo(
+                        ws.title,
+                        celda.coordinate,
+                        "referencia-indirecta",
+                        "Referencia calculada en tiempo de ejecución",
+                        v[:160],
+                    )
                 )
 
             # Errores silenciados: ocultan que algo no cuadra.
             if "IFERROR" in arriba or "SI.ERROR" in arriba:
                 informe.hallazgos.append(
-                    Hallazgo(ws.title, celda.coordinate, "error-silenciado",
-                             "Un fallo aquí devuelve un valor sin avisar", v[:160])
+                    Hallazgo(
+                        ws.title,
+                        celda.coordinate,
+                        "error-silenciado",
+                        "Un fallo aquí devuelve un valor sin avisar",
+                        v[:160],
+                    )
                 )
 
             for ext in REFERENCIA_EXTERNA.findall(v):
                 informe.libros_externos.add(ext)
                 informe.hallazgos.append(
-                    Hallazgo(ws.title, celda.coordinate, "libro-externo",
-                             f"Depende del libro {ext}", v[:160])
+                    Hallazgo(
+                        ws.title,
+                        celda.coordinate,
+                        "libro-externo",
+                        f"Depende del libro {ext}",
+                        v[:160],
+                    )
                 )
 
     for f, n in formulas_norm.items():
@@ -205,15 +277,16 @@ def analizar_hoja(ws, informe: Informe) -> dict:
 def analizar_nombres(wb, informe: Informe) -> None:
     for nombre, definicion in wb.defined_names.items():
         destino = str(getattr(definicion, "value", ""))
-        informe.nombres_definidos.append({
-            "nombre": nombre,
-            "destino": destino,
-            "roto": "#REF" in destino,
-        })
+        informe.nombres_definidos.append(
+            {
+                "nombre": nombre,
+                "destino": destino,
+                "roto": "#REF" in destino,
+            }
+        )
         if "#REF" in destino:
             informe.hallazgos.append(
-                Hallazgo("(libro)", nombre, "nombre-roto",
-                         f"El nombre definido apunta a {destino}")
+                Hallazgo("(libro)", nombre, "nombre-roto", f"El nombre definido apunta a {destino}")
             )
 
 
@@ -233,7 +306,8 @@ def escribir_informe(informe: Informe, salida: Path) -> None:
                 "total_reglas_unicas": len(informe.formulas_unicas),
                 "hallazgos": [h.__dict__ for h in informe.hallazgos],
             },
-            indent=2, ensure_ascii=False,
+            indent=2,
+            ensure_ascii=False,
         ),
         encoding="utf-8",
     )
@@ -285,8 +359,15 @@ def escribir_informe(informe: Informe, salida: Path) -> None:
     if not por_tipo:
         lineas.append("Ninguno.")
     else:
-        prioridad = ["formula-rota", "libro-externo", "nombre-roto", "referencia-indirecta",
-                     "constante-incrustada", "redondeo", "error-silenciado"]
+        prioridad = [
+            "formula-rota",
+            "libro-externo",
+            "nombre-roto",
+            "referencia-indirecta",
+            "constante-incrustada",
+            "redondeo",
+            "error-silenciado",
+        ]
         explicacion = {
             "formula-rota": "No calcula. Si alimenta una línea del contraste, esa línea no tiene contra qué compararse.",
             "libro-externo": "Dependencia de otro archivo. Si no se entrega, el modelo no es autocontenido.",
@@ -316,7 +397,8 @@ def escribir_informe(informe: Informe, salida: Path) -> None:
 
     if informe.tiene_macros:
         lineas += [
-            "", "## Macros",
+            "",
+            "## Macros",
             "",
             "El libro contiene un proyecto VBA. Las macros pueden alterar valores",
             "fuera de la cadena de fórmulas, así que la disección estática no basta:",
@@ -327,7 +409,8 @@ def escribir_informe(informe: Informe, salida: Path) -> None:
         ]
 
     lineas += [
-        "", "## Siguiente paso",
+        "",
+        "## Siguiente paso",
         "",
         "Llevar los hallazgos de esta lista a la sesión con el interlocutor de",
         "Finanzas (`R-01`). Cada uno se cierra de una de cuatro formas, según el",
@@ -373,7 +456,9 @@ def main() -> int:
     if informe.tiene_macros:
         print("El libro tiene macros: la disección estática no las cubre.")
     if informe.libros_externos:
-        print(f"Depende de {len(informe.libros_externos)} libro(s) externo(s): no es autocontenido.")
+        print(
+            f"Depende de {len(informe.libros_externos)} libro(s) externo(s): no es autocontenido."
+        )
     print(f"\nInforme en {args.salida}/diseccion.md")
     return 0
 

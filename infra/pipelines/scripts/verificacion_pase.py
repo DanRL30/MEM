@@ -99,14 +99,26 @@ def c1_autenticacion(base: str) -> Resultado:
         if codigo != 200:
             rechazados.append(f"{perfil} (HTTP {codigo})")
     if faltantes:
-        return Resultado(1, "Autenticación de los seis perfiles", False,
-                         f"Sin token de prueba para: {', '.join(faltantes)}. "
-                         "Cárgalos en Key Vault antes de la ventana.")
+        return Resultado(
+            1,
+            "Autenticación de los seis perfiles",
+            False,
+            f"Sin token de prueba para: {', '.join(faltantes)}. "
+            "Cárgalos en Key Vault antes de la ventana.",
+        )
     if rechazados:
-        return Resultado(1, "Autenticación de los seis perfiles", False,
-                         f"Perfiles rechazados: {', '.join(rechazados)}")
-    return Resultado(1, "Autenticación de los seis perfiles", True,
-                     "Los seis perfiles autenticaron con cuenta corporativa")
+        return Resultado(
+            1,
+            "Autenticación de los seis perfiles",
+            False,
+            f"Perfiles rechazados: {', '.join(rechazados)}",
+        )
+    return Resultado(
+        1,
+        "Autenticación de los seis perfiles",
+        True,
+        "Los seis perfiles autenticaron con cuenta corporativa",
+    )
 
 
 def c2_caso_base(base: str) -> Resultado:
@@ -114,38 +126,69 @@ def c2_caso_base(base: str) -> Resultado:
     caso = os.environ.get("CASO_BASE_ID", "CASO-BASE-SIN-PROYECTO")
     codigo, cuerpo, seg = _pedir(f"{base}/api/casos/{caso}/verificar-fidelidad", token, timeout=300)
     if codigo != 200:
-        return Resultado(2, "Caso base dentro de tolerancia", False,
-                         f"HTTP {codigo}: {cuerpo[:200].decode(errors='replace')}", seg)
+        return Resultado(
+            2,
+            "Caso base dentro de tolerancia",
+            False,
+            f"HTTP {codigo}: {cuerpo[:200].decode(errors='replace')}",
+            seg,
+        )
     try:
         d = json.loads(cuerpo)
     except json.JSONDecodeError:
         return Resultado(2, "Caso base dentro de tolerancia", False, "Respuesta no es JSON", seg)
     if not d.get("dentro_de_tolerancia"):
-        return Resultado(2, "Caso base dentro de tolerancia", False,
-                         f"Fuera de tolerancia: {d.get('desviaciones')}", seg)
-    return Resultado(2, "Caso base dentro de tolerancia", True,
-                     f"Conciliado en los cuatro niveles (motor {d.get('version_motor')})", seg)
+        return Resultado(
+            2,
+            "Caso base dentro de tolerancia",
+            False,
+            f"Fuera de tolerancia: {d.get('desviaciones')}",
+            seg,
+        )
+    return Resultado(
+        2,
+        "Caso base dentro de tolerancia",
+        True,
+        f"Conciliado en los cuatro niveles (motor {d.get('version_motor')})",
+        seg,
+    )
 
 
 def c3_tablero(base: str) -> Resultado:
     token = token_de("lider-de-estudio")
     codigo, _, seg_tab = _pedir(f"{base}/api/tablero", token)
     if codigo != 200:
-        return Resultado(3, "Tablero y estados dentro del SLO", False, f"Tablero HTTP {codigo}", seg_tab)
+        return Resultado(
+            3, "Tablero y estados dentro del SLO", False, f"Tablero HTTP {codigo}", seg_tab
+        )
     if seg_tab > SLO_TABLERO_S:
-        return Resultado(3, "Tablero y estados dentro del SLO", False,
-                         f"Tablero en {seg_tab:.2f} s, sobre el objetivo de {SLO_TABLERO_S} s", seg_tab)
+        return Resultado(
+            3,
+            "Tablero y estados dentro del SLO",
+            False,
+            f"Tablero en {seg_tab:.2f} s, sobre el objetivo de {SLO_TABLERO_S} s",
+            seg_tab,
+        )
     codigo, _, seg_eef = _pedir(f"{base}/api/estados-financieros", token)
     if codigo != 200:
-        return Resultado(3, "Tablero y estados dentro del SLO", False, f"Estados HTTP {codigo}", seg_eef)
-    return Resultado(3, "Tablero y estados dentro del SLO", True,
-                     f"Tablero {seg_tab:.2f} s · estados {seg_eef:.2f} s", seg_tab + seg_eef)
+        return Resultado(
+            3, "Tablero y estados dentro del SLO", False, f"Estados HTTP {codigo}", seg_eef
+        )
+    return Resultado(
+        3,
+        "Tablero y estados dentro del SLO",
+        True,
+        f"Tablero {seg_tab:.2f} s · estados {seg_eef:.2f} s",
+        seg_tab + seg_eef,
+    )
 
 
 def c4_exportacion(base: str) -> Resultado:
     token = token_de("lider-de-estudio")
     caso = os.environ.get("CASO_BASE_ID", "CASO-BASE-SIN-PROYECTO")
-    codigo, cuerpo, seg = _pedir(f"{base}/api/casos/{caso}/exportar?destino=sharepoint", token, timeout=180)
+    codigo, cuerpo, seg = _pedir(
+        f"{base}/api/casos/{caso}/exportar?destino=sharepoint", token, timeout=180
+    )
     if codigo not in (200, 201, 202):
         return Resultado(4, "Exportación a Excel y SharePoint", False, f"HTTP {codigo}", seg)
     try:
@@ -156,8 +199,13 @@ def c4_exportacion(base: str) -> Resultado:
         # El sitio de SharePoint es R-44. Si TI aún no lo habilitó, la
         # exportación queda limitada a descarga local y esto no debe leerse
         # como un defecto de la plataforma.
-        return Resultado(4, "Exportación a Excel y SharePoint", False,
-                         "Exportó pero no publicó en SharePoint. Verificar R-44.", seg)
+        return Resultado(
+            4,
+            "Exportación a Excel y SharePoint",
+            False,
+            "Exportó pero no publicó en SharePoint. Verificar R-44.",
+            seg,
+        )
     return Resultado(4, "Exportación a Excel y SharePoint", True, d["url_sharepoint"], seg)
 
 
@@ -172,14 +220,28 @@ def c5_historial(base: str) -> Resultado:
         return Resultado(5, "Historial y bitácora de auditoría", False, "Respuesta no es JSON", seg)
     corridas = d.get("corridas") or []
     if not corridas:
-        return Resultado(5, "Historial y bitácora de auditoría", False, "El historial está vacío", seg)
+        return Resultado(
+            5, "Historial y bitácora de auditoría", False, "El historial está vacío", seg
+        )
     ultima = corridas[0]
-    faltan = [c for c in ("id_corrida", "usuario", "marca_tiempo", "version_motor") if not ultima.get(c)]
+    faltan = [
+        c for c in ("id_corrida", "usuario", "marca_tiempo", "version_motor") if not ultima.get(c)
+    ]
     if faltan:
-        return Resultado(5, "Historial y bitácora de auditoría", False,
-                         f"Bitácora incompleta, faltan: {', '.join(faltan)}", seg)
-    return Resultado(5, "Historial y bitácora de auditoría", True,
-                     f"Corrida {ultima['id_corrida']} registrada con trazabilidad completa", seg)
+        return Resultado(
+            5,
+            "Historial y bitácora de auditoría",
+            False,
+            f"Bitácora incompleta, faltan: {', '.join(faltan)}",
+            seg,
+        )
+    return Resultado(
+        5,
+        "Historial y bitácora de auditoría",
+        True,
+        f"Corrida {ultima['id_corrida']} registrada con trazabilidad completa",
+        seg,
+    )
 
 
 def main() -> int:
@@ -208,8 +270,15 @@ def main() -> int:
     if args.salida:
         args.salida.parent.mkdir(parents=True, exist_ok=True)
         args.salida.write_text(
-            json.dumps({"url": base, "comprobaciones": [asdict(r) for r in resultados],
-                        "aprobado": not fallidas}, indent=2, ensure_ascii=False),
+            json.dumps(
+                {
+                    "url": base,
+                    "comprobaciones": [asdict(r) for r in resultados],
+                    "aprobado": not fallidas,
+                },
+                indent=2,
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
 

@@ -153,9 +153,7 @@ class Bitacora:
     ) -> Entrada:
         """Anexa una entrada. Es la única operación de escritura."""
         if not usuario.strip():
-            raise ValueError(
-                "Toda acción registrada debe identificar a su responsable."
-            )
+            raise ValueError("Toda acción registrada debe identificar a su responsable.")
 
         modifica = accion in {
             Accion.INSUMOS_EDITADOS,
@@ -181,9 +179,7 @@ class Bitacora:
             detalle=detalle,
             huella_anterior=self.ultima_huella,
         )
-        entrada = Entrada(
-            **{**parcial.__dict__, "huella": parcial.calcular_huella()}
-        )
+        entrada = Entrada(**{**parcial.__dict__, "huella": parcial.calcular_huella()})
         self._entradas.append(entrada)
         return entrada
 
@@ -231,11 +227,20 @@ class Bitacora:
 # --- Cobertura de los requisitos del alcance ---------------------------------
 
 COBERTURA: dict[int, tuple[str, str]] = {
-    1: ("Versionado de insumos", "Entrada.valor_anterior / valor_posterior + VersionInputs.revision"),
-    2: ("Parámetros efectivamente empleados", "Contenido.parametros de la imagen sellada, por valor"),
+    1: (
+        "Versionado de insumos",
+        "Entrada.valor_anterior / valor_posterior + VersionInputs.revision",
+    ),
+    2: (
+        "Parámetros efectivamente empleados",
+        "Contenido.parametros de la imagen sellada, por valor",
+    ),
     3: ("Responsable de la carga", "Entrada.usuario + Entrada.perfil"),
     4: ("Fecha y hora de creación y ejecución", "Entrada.marca_tiempo en UTC"),
-    5: ("Documentación de respaldo y aprobaciones", "ImagenSellada.respaldos + Accion.RESPALDO_ASOCIADO"),
+    5: (
+        "Documentación de respaldo y aprobaciones",
+        "ImagenSellada.respaldos + Accion.RESPALDO_ASOCIADO",
+    ),
     6: ("Historial de cambios", "Bitacora.historial_de_cambios"),
     7: ("Origen de la información", "Entrada.origen"),
     8: ("Reproducir con los mismos datos", "sellado.verificar_reproducibilidad"),

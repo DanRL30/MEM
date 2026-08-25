@@ -115,7 +115,9 @@ class TestCanonicalizacion:
 
 class TestSellado:
     def test_produce_dos_resumenes_distintos(self, contenido: Contenido):
-        imagen = sellar(contenido, "hugo.diaz", "Sustento del Comité de Inversiones", momento=MOMENTO)
+        imagen = sellar(
+            contenido, "hugo.diaz", "Sustento del Comité de Inversiones", momento=MOMENTO
+        )
         assert len(imagen.huella_contenido) == 64
         assert len(imagen.huella_sello) == 64
         assert imagen.huella_contenido != imagen.huella_sello
@@ -204,9 +206,7 @@ class TestReproducibilidad:
 
     def test_una_divergencia_se_reporta_con_su_linea(self, contenido: Contenido):
         imagen = sellar(contenido, "hugo.diaz", "m", momento=MOMENTO)
-        veredicto = verificar_reproducibilidad(
-            imagen, {**contenido.resultados, "tir": 0.2240}
-        )
+        veredicto = verificar_reproducibilidad(imagen, {**contenido.resultados, "tir": 0.2240})
         assert veredicto.reproducible is False
         assert veredicto.es_incidente
         assert "tir" in veredicto.detalle
@@ -220,8 +220,6 @@ class TestReproducibilidad:
             resultados={"flujos": {"2027": 10.0, "2028": 20.0}},
         )
         imagen = sellar(c, "hugo.diaz", "m", momento=MOMENTO)
-        veredicto = verificar_reproducibilidad(
-            imagen, {"flujos": {"2027": 10.0, "2028": 21.0}}
-        )
+        veredicto = verificar_reproducibilidad(imagen, {"flujos": {"2027": 10.0, "2028": 21.0}})
         assert veredicto.reproducible is False
         assert "flujos.2028" in veredicto.detalle

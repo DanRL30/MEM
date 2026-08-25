@@ -30,8 +30,19 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 
 EXTENSIONES = {
-    ".md", ".py", ".yml", ".yaml", ".bicep", ".bicepparam",
-    ".ts", ".tsx", ".json", ".css", ".html", ".sh", ".ps1",
+    ".md",
+    ".py",
+    ".yml",
+    ".yaml",
+    ".bicep",
+    ".bicepparam",
+    ".ts",
+    ".tsx",
+    ".json",
+    ".css",
+    ".html",
+    ".sh",
+    ".ps1",
 }
 
 DIRECTORIOS_EXCLUIDOS = {".git", "node_modules", ".venv", "__pycache__", "dist", "build"}
@@ -42,14 +53,14 @@ DIRECTORIOS_EXCLUIDOS = {".git", "node_modules", ".venv", "__pycache__", "dist",
 ARCHIVOS_EXCLUIDOS = {"CLAUDE.md"}
 
 RANGOS_DECORATIVOS = (
-    (0x2190, 0x21FF),    # flechas
-    (0x2300, 0x23FF),    # simbolos tecnicos
-    (0x2500, 0x257F),    # dibujo de caja
-    (0x2580, 0x259F),    # bloques
-    (0x25A0, 0x25FF),    # formas geometricas
-    (0x2600, 0x27BF),    # simbolos varios y dingbats
-    (0x2B00, 0x2BFF),    # flechas suplementarias
-    (0xFE0F, 0xFE0F),    # selector de variacion emoji
+    (0x2190, 0x21FF),  # flechas
+    (0x2300, 0x23FF),  # simbolos tecnicos
+    (0x2500, 0x257F),  # dibujo de caja
+    (0x2580, 0x259F),  # bloques
+    (0x25A0, 0x25FF),  # formas geometricas
+    (0x2600, 0x27BF),  # simbolos varios y dingbats
+    (0x2B00, 0x2BFF),  # flechas suplementarias
+    (0xFE0F, 0xFE0F),  # selector de variacion emoji
     (0x1F000, 0x1FAFF),  # emoji
 )
 

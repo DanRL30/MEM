@@ -55,9 +55,7 @@ class Usuario:
 
 def perfil_desde_grupos(grupos: list[str]) -> Perfil | None:
     """Deriva el perfil de mayor alcance entre los grupos del usuario."""
-    encontrados = {
-        GRUPOS_POR_PERFIL[g] for g in grupos if g in GRUPOS_POR_PERFIL
-    }
+    encontrados = {GRUPOS_POR_PERFIL[g] for g in grupos if g in GRUPOS_POR_PERFIL}
     for perfil in PRECEDENCIA:
         if perfil in encontrados:
             return perfil

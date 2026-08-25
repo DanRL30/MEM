@@ -45,9 +45,7 @@ class Terna(Base):
     """Las tres versiones que definen una corrida."""
 
     motor: str = Field(description="Versión del motor de cálculo", examples=["1.2.0"])
-    datos_maestros: str = Field(
-        description="Comité de Precios utilizado", examples=["CP-2026-03"]
-    )
+    datos_maestros: str = Field(description="Comité de Precios utilizado", examples=["CP-2026-03"])
     vigencia_datos_maestros: date
     revision_inputs: int = Field(ge=1)
     huella_inputs: str = Field(min_length=64, max_length=64)
