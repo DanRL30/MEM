@@ -18,6 +18,11 @@ NOTAS.md
 .vscode/
 .idea/
 
+# Configuracion de las herramientas de trabajo de INVA. No forma parte del
+# entregable: ver docs/convenciones.md, seccion 2.
+.claude/
+CLAUDE.md
+
 # === Secretos ==============================================================
 .env
 .env.*
