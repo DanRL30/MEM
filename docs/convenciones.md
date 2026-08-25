@@ -8,6 +8,13 @@ estilos individuales.
 
 ---
 
+> La regla no depende de la disciplina de quien escribe: `scripts/verificar_convenciones.py` la
+> comprueba en cada integracion y en local. Devuelve la ruta y la linea de cada infraccion.
+>
+> ```bash
+> python scripts/verificar_convenciones.py
+> ```
+
 ## 1. Estructura del monorepo
 
 | Ruta | Responsabilidad | Hace E/S |

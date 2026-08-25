@@ -46,11 +46,31 @@ Configuración manual prohibida en cualquier entorno del cliente.
 
 ## Puesta en marcha
 
+Requisitos previos, una sola vez por máquina:
+
+```bash
+python -m pip install --user uv
+npm install --global pnpm
+```
+
+Ambos gestionan el resto: `uv` crea y sincroniza el entorno virtual de Python 3.12 a partir de
+`pyproject.toml`, y `pnpm` resuelve el espacio de trabajo declarado en `pnpm-workspace.yaml`.
+Node 20 o superior.
+
 ```bash
 uv sync
 pnpm install
-pytest packages
+uv run pytest
 pnpm --filter web dev
+```
+
+`uv run` ejecuta dentro del entorno del proyecto sin necesidad de activarlo. Las comprobaciones que
+corren también en integración continua:
+
+```bash
+uv run ruff check .
+uv run mypy --strict packages apps/api/src
+uv run pytest --cov
 ```
 
 > El repositorio, los pipelines y Sonar se crean en Azure DevOps una vez habilitados por TI

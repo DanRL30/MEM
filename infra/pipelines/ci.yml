@@ -42,6 +42,9 @@ stages:
         steps:
           - template: templates/setup-python.yml
 
+          - script: python scripts/verificar_convenciones.py
+            displayName: "Convenciones de escritura"
+
           - script: uv run ruff check --output-format=azure .
             displayName: "ruff"
 
