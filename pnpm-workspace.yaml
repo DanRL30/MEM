@@ -1,3 +1,8 @@
 packages:
   - "apps/web"
   - "packages/contracts"
+# Vite compila con esbuild, que descarga su binario en un script de instalacion.
+# Sin esta aprobacion pnpm 11 aborta el install y ni el build ni las pruebas
+# del frontend llegan a ejecutarse.
+allowBuilds:
+  esbuild: true

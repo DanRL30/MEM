@@ -23,6 +23,10 @@ minsur-reporting = { workspace = true }
 dev = [
     "pytest>=8.3",
     "pytest-cov>=5.0",
+    # El TestClient de FastAPI delega en starlette.testclient, que desde
+    # starlette 1.6 exige httpx2. Sin el, apps/api/tests/test_contrato.py
+    # falla en la coleccion y arrastra a toda la suite.
+    "httpx2>=2.12",
     "ruff>=0.7",
     "mypy>=1.13",
     "types-openpyxl>=3.1",
