@@ -47,11 +47,6 @@ EXTENSIONES = {
 
 DIRECTORIOS_EXCLUIDOS = {".git", "node_modules", ".venv", "__pycache__", "dist", "build"}
 
-# La regla protege lo que se entrega a MINSUR. Estos archivos estan en
-# .gitignore, no llegan a Azure Repos y por definicion no forman parte del
-# entregable, asi que auditarlos solo produce falsos positivos en local.
-ARCHIVOS_EXCLUIDOS = {"CLAUDE.md"}
-
 RANGOS_DECORATIVOS = (
     (0x2190, 0x21FF),  # flechas
     (0x2300, 0x23FF),  # simbolos tecnicos
@@ -84,8 +79,6 @@ def archivos_candidatos():
         if not ruta.is_file() or ruta.suffix not in EXTENSIONES:
             continue
         if DIRECTORIOS_EXCLUIDOS & set(ruta.relative_to(RAIZ).parts):
-            continue
-        if ruta.name in ARCHIVOS_EXCLUIDOS:
             continue
         yield ruta
 

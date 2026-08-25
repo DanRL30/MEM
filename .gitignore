@@ -19,9 +19,9 @@ NOTAS.md
 .idea/
 
 # Configuracion de las herramientas de trabajo de INVA. No forma parte del
-# entregable: ver docs/convenciones.md, seccion 2.
+# entregable: ver docs/convenciones.md, seccion 2. CLAUDE.md si se versiona:
+# es documentacion de ingenieria del monorepo y se entrega con el codigo.
 .claude/
-CLAUDE.md
 
 # === Secretos ==============================================================
 .env
