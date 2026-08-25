@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from minsur_api import version
 from minsur_api.main import crear_app
 from minsur_api.openapi import esquema
 from minsur_api.seguridad import GRUPOS_POR_PERFIL, PRECEDENCIA, perfil_desde_grupos
@@ -81,8 +82,22 @@ class TestSalud:
         assert respuesta.json()["estado"] == "ok"
 
     def test_informa_que_el_motor_no_esta_disponible(self, cliente: TestClient):
-        # El motor no tiene lógica todavía: PT2 espera el modelo (R-02).
+        # El motor no tiene lógica todavía: PT2 espera el modelo (R-02). La
+        # señal es la ausencia del módulo de indicadores, no la del paquete:
+        # `minsur_engine` es miembro del espacio de trabajo y se instala
+        # siempre, de modo que su importación nunca falla.
         assert respuesta_motor(cliente) is None
+
+    def test_informa_la_version_cuando_el_motor_ya_calcula(
+        self, cliente: TestClient, monkeypatch: pytest.MonkeyPatch
+    ):
+        # La otra mitad de la señal, y la que faltaba. Comprobar solo el caso
+        # None deja pasar una implementación que devuelva None siempre, que es
+        # justo como este campo estuvo informando de más sin que se notara.
+        from minsur_engine import __version__ as version_del_motor
+
+        monkeypatch.setattr(version, "find_spec", lambda nombre: object())
+        assert respuesta_motor(cliente) == version_del_motor
 
 
 def respuesta_motor(cliente: TestClient):
