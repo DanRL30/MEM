@@ -16,9 +16,10 @@ import argparse
 import json
 import pathlib
 import sys
+from typing import Any
 
 
-def esquema() -> dict:
+def esquema() -> dict[str, Any]:
     from .main import crear_app
 
     documento = crear_app().openapi()
@@ -50,8 +51,11 @@ def main() -> int:
         args.salida.write_text(documento + "\n", encoding="utf-8")
         print(f"Esquema escrito en {args.salida}", file=sys.stderr)
     else:
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stdout.write(documento + "\n")
+        # Se escriben los bytes ya codificados en lugar de fijar la
+        # codificacion del flujo: reconfigure solo existe en TextIOWrapper, y
+        # la salida estandar no siempre lo es. La consola de Windows no usa
+        # UTF-8 y corromperia los acentos del esquema.
+        sys.stdout.buffer.write((documento + "\n").encode("utf-8"))
     return 0
 
 

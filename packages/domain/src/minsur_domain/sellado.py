@@ -347,7 +347,9 @@ def verificar_reproducibilidad(
     )
 
 
-def _lineas_divergentes(sellados: dict, recalculados: dict, prefijo: str = "") -> list[str]:
+def _lineas_divergentes(
+    sellados: dict[str, Any], recalculados: dict[str, Any], prefijo: str = ""
+) -> list[str]:
     """Localiza las líneas que difieren, para que el incidente sea accionable."""
     rutas: list[str] = []
     for clave in sorted(set(sellados) | set(recalculados)):

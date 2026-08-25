@@ -14,6 +14,7 @@ lo que permite prescindir del permiso GroupMember.Read.All.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from fastapi import Depends, Header, HTTPException, status
@@ -102,7 +103,7 @@ async def usuario_actual(
     )
 
 
-def requiere(*perfiles: Perfil):
+def requiere(*perfiles: Perfil) -> Callable[..., Awaitable[Usuario]]:
     """Dependencia que restringe un endpoint a ciertos perfiles."""
 
     async def verificar(usuario: Usuario = Depends(usuario_actual)) -> Usuario:

@@ -58,39 +58,39 @@ def contenido(terna: TernaVersion) -> Contenido:
 
 
 class TestCanonicalizacion:
-    def test_el_orden_de_las_claves_no_altera_el_resumen(self):
+    def test_el_orden_de_las_claves_no_altera_el_resumen(self) -> None:
         a = {"zeta": 1, "alfa": 2, "media": {"y": 3, "x": 4}}
         b = {"alfa": 2, "media": {"x": 4, "y": 3}, "zeta": 1}
         assert sha256(a) == sha256(b)
 
-    def test_cero_negativo_y_cero_positivo_coinciden(self):
+    def test_cero_negativo_y_cero_positivo_coinciden(self) -> None:
         # Una resta que da cero puede producir -0.0 en un servidor y 0.0 en
         # otro. Sin normalizar, el recálculo divergiría por eso solo.
         assert sha256({"flujo": -0.0}) == sha256({"flujo": 0.0})
 
-    def test_las_marcas_de_tiempo_se_normalizan_a_utc(self):
+    def test_las_marcas_de_tiempo_se_normalizan_a_utc(self) -> None:
         utc = datetime(2026, 9, 30, 14, 0, tzinfo=UTC)
         lima = datetime(2026, 9, 30, 9, 0, tzinfo=timezone(timedelta(hours=-5)))
         assert sha256({"t": utc}) == sha256({"t": lima})
 
-    def test_rechaza_marca_de_tiempo_sin_zona(self):
+    def test_rechaza_marca_de_tiempo_sin_zona(self) -> None:
         with pytest.raises(ErrorSellado, match="sin zona horaria"):
             canonicalizar({"t": datetime(2026, 9, 30, 14, 0)})
 
-    def test_rechaza_valores_indefinidos(self):
+    def test_rechaza_valores_indefinidos(self) -> None:
         with pytest.raises(ErrorSellado, match="NaN"):
             canonicalizar({"npv": float("nan")})
         with pytest.raises(ErrorSellado, match="infinito"):
             canonicalizar({"tir": float("inf")})
 
-    def test_rechaza_tipos_no_serializables(self):
+    def test_rechaza_tipos_no_serializables(self) -> None:
         with pytest.raises(ErrorSellado, match="no serializable"):
             canonicalizar({"objeto": object()})
 
-    def test_es_estable_entre_invocaciones(self, contenido: Contenido):
+    def test_es_estable_entre_invocaciones(self, contenido: Contenido) -> None:
         assert len({sha256(contenido.a_dict()) for _ in range(50)}) == 1
 
-    def test_diferencias_por_debajo_de_la_precision_no_alteran_el_resumen(self):
+    def test_diferencias_por_debajo_de_la_precision_no_alteran_el_resumen(self) -> None:
         # Doce decimales exceden la precisión significativa de una evaluación
         # económica: el ruido de coma flotante por debajo de ese umbral no
         # debe leerse como divergencia. Estos dos son floats distintos que
@@ -99,14 +99,14 @@ class TestCanonicalizacion:
         assert a != b
         assert sha256({"npv": a}) == sha256({"npv": b})
 
-    def test_una_diferencia_en_el_ultimo_decimal_conservado_si_altera(self):
+    def test_una_diferencia_en_el_ultimo_decimal_conservado_si_altera(self) -> None:
         # El umbral está en doce decimales: por encima se conserva.
         assert sha256({"npv": 128.456789123456}) != sha256({"npv": 128.456789123457})
 
-    def test_diferencias_significativas_si_alteran_el_resumen(self):
+    def test_diferencias_significativas_si_alteran_el_resumen(self) -> None:
         assert sha256({"npv": 128.45}) != sha256({"npv": 128.46})
 
-    def test_no_escapa_caracteres_no_ascii(self):
+    def test_no_escapa_caracteres_no_ascii(self) -> None:
         assert "ó".encode() in canonicalizar({"linea": "Producción"})
 
 
@@ -114,7 +114,7 @@ class TestCanonicalizacion:
 
 
 class TestSellado:
-    def test_produce_dos_resumenes_distintos(self, contenido: Contenido):
+    def test_produce_dos_resumenes_distintos(self, contenido: Contenido) -> None:
         imagen = sellar(
             contenido, "hugo.diaz", "Sustento del Comité de Inversiones", momento=MOMENTO
         )
@@ -122,22 +122,22 @@ class TestSellado:
         assert len(imagen.huella_sello) == 64
         assert imagen.huella_contenido != imagen.huella_sello
 
-    def test_exige_responsable(self, contenido: Contenido):
+    def test_exige_responsable(self, contenido: Contenido) -> None:
         with pytest.raises(ErrorSellado, match="responsable"):
             sellar(contenido, "   ", "motivo", momento=MOMENTO)
 
-    def test_exige_motivo(self, contenido: Contenido):
+    def test_exige_motivo(self, contenido: Contenido) -> None:
         with pytest.raises(ErrorSellado, match="motivo"):
             sellar(contenido, "hugo.diaz", "", momento=MOMENTO)
 
-    def test_el_orden_de_los_respaldos_no_altera_el_sello(self, contenido: Contenido):
+    def test_el_orden_de_los_respaldos_no_altera_el_sello(self, contenido: Contenido) -> None:
         a = Respaldo("acta", "Acta.pdf", "resp/acta.pdf", "b" * 64)
         b = Respaldo("correo", "Aprobacion.msg", "resp/correo.msg", "c" * 64)
         uno = sellar(contenido, "hugo.diaz", "m", (a, b), momento=MOMENTO)
         otro = sellar(contenido, "hugo.diaz", "m", (b, a), momento=MOMENTO)
         assert uno.huella_sello == otro.huella_sello
 
-    def test_serializa_a_bytes_deterministas(self, contenido: Contenido):
+    def test_serializa_a_bytes_deterministas(self, contenido: Contenido) -> None:
         imagen = sellar(contenido, "hugo.diaz", "m", momento=MOMENTO)
         assert imagen.serializar() == imagen.serializar()
 
@@ -146,11 +146,11 @@ class TestSellado:
 
 
 class TestIntegridad:
-    def test_una_imagen_recien_sellada_verifica(self, contenido: Contenido):
+    def test_una_imagen_recien_sellada_verifica(self, contenido: Contenido) -> None:
         imagen = sellar(contenido, "hugo.diaz", "m", momento=MOMENTO)
         assert verificar_integridad(imagen).integra
 
-    def test_detecta_alteracion_del_contenido(self, contenido: Contenido):
+    def test_detecta_alteracion_del_contenido(self, contenido: Contenido) -> None:
         imagen = sellar(contenido, "hugo.diaz", "m", momento=MOMENTO)
         alterada = Contenido(
             id_caso=contenido.id_caso,
@@ -173,7 +173,7 @@ class TestIntegridad:
         assert veredicto.es_incidente
         assert "alterada" in veredicto.detalle
 
-    def test_detecta_alteracion_de_los_metadatos(self, contenido: Contenido):
+    def test_detecta_alteracion_de_los_metadatos(self, contenido: Contenido) -> None:
         imagen = sellar(contenido, "hugo.diaz", "Sustento original", momento=MOMENTO)
         manipulada = type(imagen)(
             contenido=imagen.contenido,
@@ -193,25 +193,25 @@ class TestIntegridad:
 
 
 class TestReproducibilidad:
-    def test_el_mismo_resultado_reproduce(self, contenido: Contenido):
+    def test_el_mismo_resultado_reproduce(self, contenido: Contenido) -> None:
         imagen = sellar(contenido, "hugo.diaz", "m", momento=MOMENTO)
         veredicto = verificar_reproducibilidad(imagen, dict(contenido.resultados))
         assert veredicto.reproducible
         assert not veredicto.es_incidente
 
-    def test_el_orden_de_las_lineas_no_afecta(self, contenido: Contenido):
+    def test_el_orden_de_las_lineas_no_afecta(self, contenido: Contenido) -> None:
         imagen = sellar(contenido, "hugo.diaz", "m", momento=MOMENTO)
         invertido = dict(reversed(list(contenido.resultados.items())))
         assert verificar_reproducibilidad(imagen, invertido).reproducible
 
-    def test_una_divergencia_se_reporta_con_su_linea(self, contenido: Contenido):
+    def test_una_divergencia_se_reporta_con_su_linea(self, contenido: Contenido) -> None:
         imagen = sellar(contenido, "hugo.diaz", "m", momento=MOMENTO)
         veredicto = verificar_reproducibilidad(imagen, {**contenido.resultados, "tir": 0.2240})
         assert veredicto.reproducible is False
         assert veredicto.es_incidente
         assert "tir" in veredicto.detalle
 
-    def test_localiza_divergencias_anidadas(self, terna: TernaVersion):
+    def test_localiza_divergencias_anidadas(self, terna: TernaVersion) -> None:
         c = Contenido(
             id_caso="C1",
             terna=terna,

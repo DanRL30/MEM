@@ -37,6 +37,7 @@ from azure.core.credentials import TokenCredential
 from azure.storage.blob import (
     BlobSasPermissions,
     BlobServiceClient,
+    UserDelegationKey,
     generate_blob_sas,
 )
 
@@ -78,7 +79,7 @@ class CargaDirecta:
 
     # --- Clave de delegación -------------------------------------------------
 
-    def _clave_delegacion(self, desde: datetime, hasta: datetime):
+    def _clave_delegacion(self, desde: datetime, hasta: datetime) -> UserDelegationKey:
         """Clave firmada por Entra ID, no por una clave de cuenta.
 
         Requiere el rol `Storage Blob Delegator` sobre la cuenta, que la

@@ -8,14 +8,18 @@ solicitud desperdiciaria esa cache.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from minsur_domain.carga_directa import CargaDirecta
 
 from .config import config
 
+if TYPE_CHECKING:
+    from azure.core.credentials import TokenCredential
+
 
 @lru_cache
-def credencial():
+def credencial() -> TokenCredential:
     """Credencial de la identidad administrada asignada por el usuario.
 
     En un entorno de Azure resuelve a la identidad que la plantilla asignó a

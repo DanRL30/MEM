@@ -11,7 +11,7 @@ generada y son lo que lee quien construye la interfaz.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -204,10 +204,10 @@ class ResultadoFidelidad(Base):
 class Tablero(Base):
     id_caso: str
     indicadores: Indicadores
-    cascada: list[dict] = Field(default_factory=list)
-    curva_produccion: list[dict] = Field(default_factory=list)
-    curva_costo_unitario: list[dict] = Field(default_factory=list)
-    capex_por_etapa: list[dict] = Field(default_factory=list)
+    cascada: list[dict[str, Any]] = Field(default_factory=list)
+    curva_produccion: list[dict[str, Any]] = Field(default_factory=list)
+    curva_costo_unitario: list[dict[str, Any]] = Field(default_factory=list)
+    capex_por_etapa: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class EstadosFinancieros(Base):

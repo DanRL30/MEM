@@ -13,6 +13,7 @@ atravesando la puerta.
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
@@ -53,7 +54,7 @@ cuadro de control que la bloquea.
 
 
 @asynccontextmanager
-async def ciclo_vida(app: FastAPI):
+async def ciclo_vida(app: FastAPI) -> AsyncIterator[None]:
     cfg = config()
     log.info(
         "API %s iniciada · entorno=%s · motor=%s",
@@ -87,7 +88,7 @@ def crear_app() -> FastAPI:
         app.include_router(router, prefix="/api")
 
     @app.exception_handler(Exception)
-    async def error_no_previsto(request: Request, exc: Exception):
+    async def error_no_previsto(request: Request, exc: Exception) -> JSONResponse:
         # El detalle va al registro, no a la respuesta: un mensaje de
         # excepción puede revelar rutas, consultas o nombres de recursos.
         log.exception("Error no previsto en %s %s", request.method, request.url.path)

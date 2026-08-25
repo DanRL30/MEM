@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from minsur_domain.estados import Perfil
@@ -80,7 +82,7 @@ async def comparar(
     id_caso: str,
     id_otro: str,
     usuario: Usuario = Depends(usuario_actual),
-) -> dict:
+) -> dict[str, Any]:
     """Compara el caso sin proyecto contra uno o varios casos con proyecto.
 
     Advierte cuando las corridas no son comparables: contrastar un caso base

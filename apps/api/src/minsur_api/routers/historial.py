@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from minsur_domain.estados import Perfil
@@ -55,7 +57,7 @@ async def auditoria(
     caso: str | None = Query(default=None),
     corrida: str | None = Query(default=None),
     usuario: Usuario = Depends(requiere(Perfil.ADMINISTRADOR, Perfil.AUDITOR)),
-) -> dict:
+) -> dict[str, Any]:
     """Bitacora de solo escritura, restringida al perfil Auditor.
 
     Cada registro contiene el identificador de la corrida, el usuario
