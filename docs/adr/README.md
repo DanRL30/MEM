@@ -28,6 +28,15 @@ Qué más se evaluó y por qué se descartó.
 Qué se vuelve fácil, qué se vuelve difícil, qué queda bloqueado.
 ```
 
+## Decisiones registradas
+
+| # | Decisión | Estado | Fecha |
+|---|---|---|---|
+| [0008](0008-versionado-de-claude-md.md) | Versionar `CLAUDE.md` con su encabezado de origen | aceptada | 24/08/2026 |
+
+La numeración no sigue el orden de redacción. Los números de la tabla siguiente están reservados
+para decisiones ya identificadas, así que un ADR nuevo toma el primero libre por encima de ellas.
+
 ## Decisiones pendientes de registrar
 
 | # | Decisión | Disparador |
