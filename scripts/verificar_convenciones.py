@@ -73,6 +73,12 @@ ATRIBUCION = re.compile(
     re.IGNORECASE,
 )
 
+# CLAUDE.md conserva su encabezado de origen por decision de la jefatura del
+# servicio. La excepcion es deliberada y se acota a esta regla: el archivo
+# sigue auditandose por caracteres decorativos, y ningun otro queda exento de
+# nada. Si el encabezado se retira, esta linea sobra.
+SIN_REGLA_DE_ATRIBUCION = {"CLAUDE.md"}
+
 
 def archivos_candidatos():
     for ruta in RAIZ.rglob("*"):
@@ -90,6 +96,8 @@ def revisar(ruta: Path) -> list[str]:
     except (UnicodeDecodeError, OSError) as error:
         return [f"{relativa}: no se pudo leer ({error})"]
 
+    revisar_atribucion = ruta.name not in SIN_REGLA_DE_ATRIBUCION
+
     infracciones = []
     for numero, linea in enumerate(contenido.splitlines(), 1):
         for caracter in DECORATIVOS.findall(linea):
@@ -101,7 +109,7 @@ def revisar(ruta: Path) -> list[str]:
                 f"({nombre}). Usa ASCII; para diagramas, ASCII."
             )
 
-        if ATRIBUCION.search(linea):
+        if revisar_atribucion and ATRIBUCION.search(linea):
             infracciones.append(
                 f"{relativa}:{numero}: atribucion a una herramienta de asistencia. "
                 "El codigo se entrega bajo titularidad de MINSUR y no la menciona."

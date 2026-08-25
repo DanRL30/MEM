@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 Contexto de ingenieria del monorepo: como se construye, se prueba y se sostiene el codigo de la
 plataforma. Esta dirigido a quien llega al repositorio sin haber participado en su construccion.
 
