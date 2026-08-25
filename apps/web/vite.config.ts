@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
 
@@ -24,5 +24,12 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: true,
+  },
+  test: {
+    // Los componentes se prueban contra un DOM real, no contra cadenas: una
+    // asercion sobre marcado renderizado a texto no distingue un encabezado de
+    // un parrafo que se le parece.
+    environment: "jsdom",
+    include: ["tests/**/*.test.{ts,tsx}"],
   },
 });
