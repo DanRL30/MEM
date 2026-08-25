@@ -73,10 +73,10 @@ ATRIBUCION = re.compile(
     re.IGNORECASE,
 )
 
-# CLAUDE.md conserva su encabezado de origen por decision de la jefatura del
-# servicio. La excepcion es deliberada y se acota a esta regla: el archivo
-# sigue auditandose por caracteres decorativos, y ningun otro queda exento de
-# nada. Si el encabezado se retira, esta linea sobra.
+# CLAUDE.md conserva su encabezado de origen: ver docs/adr/0008. La excepcion
+# es deliberada y se acota a esta regla, de modo que el archivo sigue
+# auditandose por caracteres decorativos y ningun otro queda exento de nada.
+# Si el encabezado se retira, esta linea sobra y se elimina con el.
 SIN_REGLA_DE_ATRIBUCION = {"CLAUDE.md"}
 
 
