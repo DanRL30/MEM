@@ -32,6 +32,7 @@ Qué se vuelve fácil, qué se vuelve difícil, qué queda bloqueado.
 
 | # | Decisión | Estado | Fecha |
 |---|---|---|---|
+| [0001](0001-python-como-lenguaje-del-motor.md) | Python como lenguaje del motor y de los servicios, pese al estándar .NET/C# | aceptada | 24/08/2026 |
 | [0008](0008-versionado-de-claude-md.md) | Versionar `CLAUDE.md` con su encabezado de origen | aceptada | 24/08/2026 |
 
 La numeración no sigue el orden de redacción. Los números de la tabla siguiente están reservados
@@ -41,7 +42,6 @@ para decisiones ya identificadas, así que un ADR nuevo toma el primero libre po
 
 | # | Decisión | Disparador |
 |---|---|---|
-| 0001 | Python como lenguaje del motor, pese al estándar .NET/C# de MINSUR | KOM 24/08 · `R-14` |
 | 0002 | Patrón de persistencia: Azure SQL para transaccional, Blob/Table para evidencias | Estándar MINSUR |
 | 0003 | API Management como única puerta al backend | Estándar MINSUR |
 | 0004 | Congelamiento por imagen sellada con SHA-256 e inmutabilidad de contenedor | Alcance |
