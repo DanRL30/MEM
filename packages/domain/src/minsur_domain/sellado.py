@@ -38,7 +38,7 @@ import hashlib
 import json
 import math
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from .versionado import TernaVersion
@@ -85,7 +85,7 @@ def _normalizar(valor: Any) -> Any:
             raise ErrorSellado(
                 "Marca de tiempo sin zona horaria. Use UTC explícito."
             )
-        return valor.astimezone(timezone.utc).isoformat(timespec="microseconds")
+        return valor.astimezone(UTC).isoformat(timespec="microseconds")
 
     if isinstance(valor, date):
         return valor.isoformat()
@@ -245,7 +245,7 @@ def sellar(
     parcial = ImagenSellada(
         contenido=contenido,
         congelada_por=congelada_por.strip(),
-        congelada_en=(momento or datetime.now(timezone.utc)),
+        congelada_en=(momento or datetime.now(UTC)),
         motivo=motivo.strip(),
         respaldos=respaldos,
         huella_contenido=huella_contenido,

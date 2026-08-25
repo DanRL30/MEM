@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -24,7 +24,7 @@ from minsur_domain.estados import (
     verificar,
 )
 
-MOMENTO = datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc)
+MOMENTO = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
 
 
 # --- Máquina de estados ------------------------------------------------------

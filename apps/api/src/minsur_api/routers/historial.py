@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+
 from minsur_domain.estados import Perfil
 
 from ..esquemas import PaginaHistorial, Problema

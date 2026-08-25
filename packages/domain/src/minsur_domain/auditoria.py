@@ -29,10 +29,11 @@ lugar de alterarlo, que es más difícil de notar.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from collections.abc import Iterator
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Iterator
+from typing import Any
 
 from .estados import Perfil
 from .sellado import canonicalizar
@@ -172,7 +173,7 @@ class Bitacora:
             id_caso=id_caso,
             usuario=usuario.strip(),
             perfil=perfil,
-            marca_tiempo=momento or datetime.now(timezone.utc),
+            marca_tiempo=momento or datetime.now(UTC),
             accion=accion,
             origen=origen,
             valor_anterior=valor_anterior,

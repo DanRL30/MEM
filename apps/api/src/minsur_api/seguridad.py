@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from fastapi import Depends, Header, HTTPException, status
+
 from minsur_domain.estados import Perfil
 
 # La correspondencia la fija MINSUR al crear los grupos (SOL-21 · R-21).

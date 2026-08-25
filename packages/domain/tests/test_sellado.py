@@ -9,7 +9,7 @@ mecanismo perderá credibilidad justo cuando haga falta.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
 
@@ -30,7 +30,7 @@ from minsur_domain.versionado import (
     VersionMotor,
 )
 
-MOMENTO = datetime(2026, 9, 30, 14, 30, 0, tzinfo=timezone.utc)
+MOMENTO = datetime(2026, 9, 30, 14, 30, 0, tzinfo=UTC)
 HUELLA = "a" * 64
 
 
@@ -69,7 +69,7 @@ class TestCanonicalizacion:
         assert sha256({"flujo": -0.0}) == sha256({"flujo": 0.0})
 
     def test_las_marcas_de_tiempo_se_normalizan_a_utc(self):
-        utc = datetime(2026, 9, 30, 14, 0, tzinfo=timezone.utc)
+        utc = datetime(2026, 9, 30, 14, 0, tzinfo=UTC)
         lima = datetime(2026, 9, 30, 9, 0, tzinfo=timezone(timedelta(hours=-5)))
         assert sha256({"t": utc}) == sha256({"t": lima})
 

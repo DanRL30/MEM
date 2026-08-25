@@ -29,7 +29,7 @@ Seguridad del mecanismo:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import uuid4
 
@@ -111,7 +111,7 @@ class CargaDirecta:
             )
 
         ruta = f"{id_caso}/{tipo}/{uuid4().hex}{extension}"
-        ahora = datetime.now(timezone.utc)
+        ahora = datetime.now(UTC)
         desde, hasta = ahora - MARGEN_RELOJ, ahora + VIGENCIA_CARGA
 
         firma = generate_blob_sas(
@@ -142,7 +142,7 @@ class CargaDirecta:
         Se usa para las exportaciones a Excel y PDF, que también evitan
         atravesar la puerta de enlace.
         """
-        ahora = datetime.now(timezone.utc)
+        ahora = datetime.now(UTC)
         desde, hasta = ahora - MARGEN_RELOJ, ahora + VIGENCIA_DESCARGA
 
         firma = generate_blob_sas(

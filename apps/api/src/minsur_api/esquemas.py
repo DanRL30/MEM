@@ -13,8 +13,9 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from minsur_domain.estados import Accion, Estado, Perfil
 from pydantic import BaseModel, ConfigDict, Field
+
+from minsur_domain.estados import Accion, Estado, Perfil
 
 
 class Base(BaseModel):

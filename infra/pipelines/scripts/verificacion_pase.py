@@ -2,7 +2,7 @@
 
 Las cinco comprobaciones obligatorias de la ventana de pase, definidas en el
 Plan de Trabajo. Se ejecutan **dentro de la misma ventana de mantenimiento**
-(domingo 00:00–06:00). Si alguna falla y no se resuelve dentro de la ventana,
+(domingo 00:00-06:00). Si alguna falla y no se resuelve dentro de la ventana,
 se revierte el despliegue de la aplicación y se reprograma a la ventana
 siguiente. La infraestructura permanece: es idempotente y está codificada.
 
@@ -59,7 +59,17 @@ class Resultado:
 
 
 def _pedir(url: str, token: str | None = None, timeout: int = 60) -> tuple[int, bytes, float]:
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    # El destino llega por linea de comandos. urllib acepta file: y esquemas
+    # personalizados, de modo que un argumento mal formado convertiria la
+    # verificacion del pase en una lectura del disco del agente que ademas
+    # reportaria exito. Aqui solo hay un destino valido y lleva el token de un
+    # perfil real: la API productiva sobre TLS.
+    if not url.startswith("https://"):
+        raise ValueError(
+            f"La verificacion del pase solo consulta https. Recibido: {url!r}. "
+            "Revisa el argumento --url del pipeline."
+        )
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})  # noqa: S310
     if token:
         req.add_header("Authorization", f"Bearer {token}")
     ctx = ssl.create_default_context()

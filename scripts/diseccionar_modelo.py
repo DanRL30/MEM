@@ -7,7 +7,7 @@ trabajo que sí requiere criterio: decidir qué reglas son intencionales y cuál
 son accidentes que Finanzas debe confirmar.
 
 Lo que busca es, específicamente, lo que después causa discrepancias en el
-contraste N0–N3:
+contraste N0-N3:
 
   - Constantes incrustadas en fórmulas (una tasa escrita a mano en una celda)
   - Redondeos explícitos, que cambian el resultado y rara vez están documentados

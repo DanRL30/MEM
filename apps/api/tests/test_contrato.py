@@ -18,11 +18,11 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from minsur_domain.estados import Perfil
 
 from minsur_api.main import crear_app
 from minsur_api.openapi import esquema
 from minsur_api.seguridad import GRUPOS_POR_PERFIL, PRECEDENCIA, perfil_desde_grupos
+from minsur_domain.estados import Perfil
 
 RAIZ = Path(__file__).resolve().parents[3]
 

@@ -69,7 +69,7 @@ class Entorno:
 
     @property
     def total(self) -> float:
-        return sum(l.mensual for l in self.lineas)
+        return sum(linea.mensual for linea in self.lineas)
 
 
 # --- Componentes -------------------------------------------------------------
@@ -325,10 +325,10 @@ def main() -> int:
         for e in entornos:
             if args.detalle:
                 print(f"\n  {e.nombre}")
-                for l in e.lineas:
-                    if l.mensual > 0 or l.nota:
-                        nota = f"   {l.nota}" if l.nota else ""
-                        print(f"    {l.concepto:<46} {l.mensual:>8,.0f}{nota}")
+                for linea in e.lineas:
+                    if linea.mensual > 0 or linea.nota:
+                        nota = f"   {linea.nota}" if linea.nota else ""
+                        print(f"    {linea.concepto:<46} {linea.mensual:>8,.0f}{nota}")
                 print(f"    {'':<46} {'—' * 8}")
                 print(f"    {'Subtotal':<46} {e.total:>8,.0f}")
             else:

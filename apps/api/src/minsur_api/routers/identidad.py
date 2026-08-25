@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+
 from minsur_domain.estados import Estado, acciones_disponibles
 
 from ..esquemas import UsuarioActual

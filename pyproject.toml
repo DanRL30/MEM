@@ -80,12 +80,38 @@ select = [
 ]
 ignore = [
     "E501",     # la longitud la gobierna el formateador
-    "PD901",    # `df` es un nombre aceptable en el motor
+    # N818 exige que una excepcion termine en Error. Los nombres del dominio
+    # son sustantivos en espanol, donde el calificador va detras:
+    # TransicionInvalida, PerfilNoAutorizado, ErrorVersionado. Cumplir la regla
+    # obliga a TransicionInvalidaError, que no es ni ingles ni espanol.
+    "N818",
 ]
+
+# Sin esto, isort aisla cada import con `as` en una sentencia propia y el mismo
+# modulo aparece dos veces seguidas. El alias existe para desambiguar dos
+# Accion que conviven en el mismo archivo, y separarlo oscurece justamente eso.
+[tool.ruff.lint.isort]
+combine-as-imports = true
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101"]  # assert es el mecanismo de pytest
 "tests/**" = ["S101"]
+
+# FastAPI declara las dependencias y los parametros en los valores por defecto:
+# esa llamada es la forma de declararlos, no una evaluacion accidental en la
+# definicion. `requiere` es la fabrica propia que devuelve la dependencia de
+# autorizacion y se usa siempre dentro de Depends.
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Body",
+    "fastapi.Depends",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Header",
+    "fastapi.Path",
+    "fastapi.Query",
+    "minsur_api.seguridad.requiere",
+]
 
 [tool.mypy]
 python_version = "3.12"

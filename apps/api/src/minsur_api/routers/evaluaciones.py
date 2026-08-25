@@ -13,6 +13,7 @@ alguien podría tomar por bueno.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
+
 from minsur_domain.estados import Perfil
 
 from ..esquemas import (
