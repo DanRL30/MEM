@@ -61,8 +61,10 @@ uv run pytest -k "sellado and utc"
 ```
 
 Los marcadores estan declarados en `pyproject.toml`. `tenant_minsur` marca lo que solo corre dentro
-del tenant del cliente por depender de datos reales, y `lento` la simulacion de Montecarlo. CI
-excluye ambos:
+del tenant del cliente por depender de datos reales, `lento` la simulacion de Montecarlo y
+`fidelidad` el contraste N0-N3. CI excluye los dos primeros y corre `fidelidad` sobre los fixtures
+sinteticos; los casos certificados quedan para
+[fidelidad-tenant.yml](infra/pipelines/fidelidad-tenant.yml):
 
 ```bash
 uv run pytest -m "not tenant_minsur and not lento"
@@ -81,6 +83,37 @@ uv run pytest --cov
 `verificar_convenciones.py` es la unica de las cuatro que no necesita el entorno sincronizado: es
 ASCII puro y sin dependencias, a proposito.
 
+Seguridad del codigo y de las dependencias. Las herramientas viven en el grupo `security` de
+`pyproject.toml`, que no es un grupo por defecto: `uv sync --all-packages` no lo instala y hay que
+pedirlo por su nombre.
+
+```bash
+uv run --group security bandit -r packages apps/api/src infra/pipelines/scripts scripts
+uv run --group security pip-audit
+```
+
+En integracion las corre [sast-sca.yml](infra/pipelines/templates/sast-sca.yml) desde la semana 3,
+no en la homologacion.
+
+### Las herramientas de `scripts/`
+
+Sin dependencias y fuera del entorno sincronizado: `python` a secas basta.
+
+```bash
+python scripts/diseccionar_modelo.py <modelo.xlsx> --salida informe/
+python scripts/modelo_costos.py --detalle
+```
+
+[diseccionar_modelo.py](scripts/diseccionar_modelo.py) abre el libro corporativo en solo lectura y
+levanta justo lo que despues aparece como discrepancia en el contraste: constantes incrustadas,
+redondeos explicitos, referencias circulares, macros y nombres rotos. Es la herramienta de PT1.4,
+que tiene tres dias en ruta critica. **Su informe hereda la clasificacion del modelo** — contiene
+formulas y valores del libro — y va a `00-gestion/03-insumos-minsur/`, nunca al repositorio.
+
+[modelo_costos.py](scripts/modelo_costos.py) modela el consumo de Azure de los cuatro entornos a
+partir del dimensionamiento del alcance. Es el sustento aritmetico de la eleccion de SKU del
+artefacto de arquitectura, y ese consumo lo paga MINSUR.
+
 ### TypeScript
 
 ```bash
@@ -91,11 +124,19 @@ pnpm build
 pnpm dev
 ```
 
-Una sola prueba del frontend:
+Una sola prueba del frontend, filtrando por el nombre del archivo:
 
 ```bash
-pnpm --filter @minsur/web test -- --run tablero
+pnpm --filter @minsur/web test -- App
 ```
+
+Hoy `apps/web/tests/` solo contiene `App.test.tsx`. Un filtro por una vista que aun no existe no
+selecciona nada y vitest termina en 1 con `No test files found`: es un filtro vacio, no una
+regresion.
+
+Las pruebas de extremo a extremo estan declaradas y sin poblar. `pnpm test:e2e` apunta a
+`tests/e2e/playwright.config.ts`, que todavia no existe; el directorio solo tiene su `.gitkeep`.
+Son PT7.2 y llegan detras de las vistas.
 
 ### El puente entre ambos
 
@@ -115,18 +156,19 @@ secas, no `uv run`, asi que exige el entorno del proyecto activo o falla con `Mo
 
 ## 3. Estado verificado de las comprobaciones
 
-Ejecutado el 24/08/2026 sobre el arbol completo. **Todas las puertas de
-[ci.yml](infra/pipelines/ci.yml) estan en verde.** Cualquier fallo es una regresion introducida
-despues, no deuda heredada.
+Reejecutado el 31/08/2026 sobre el arbol completo, con los cambios del directorio de trabajo
+incluidos. **Todas las puertas de [ci.yml](infra/pipelines/ci.yml) estan en verde.** Cualquier
+fallo es una regresion introducida despues, no deuda heredada.
 
 | Comprobacion | Resultado |
 |---|---|
 | `verificar_convenciones.py` | Sin infracciones |
 | `ruff check .` | Limpio |
-| `ruff format --check .` | Limpio, 46 archivos |
+| `ruff format --check .` | Limpio, 52 archivos |
 | `mypy packages apps/api/src` | Limpio en modo estricto, 28 archivos |
 | `pytest` | 77 de 77 |
-| `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build` | Limpios |
+| `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
+| `pnpm test` | 2 de 2, un archivo |
 
 Dos cosas que conviene saber sobre como se llego aqui, porque explican decisiones que de otro modo
 parecen arbitrarias:
@@ -135,8 +177,9 @@ parecen arbitrarias:
 24/08/2026 nadie habia ejecutado `ruff`, `mypy` ni `pytest` sobre este arbol, y los manifiestos
 arrastraban huecos que solo aparecen al ejecutar: faltaba `httpx2` para el `TestClient`, faltaba
 `@types/node` para `vite.config.ts` y `vitest` 2 arrastraba un `vite` 5 paralelo al `vite` 6 de la
-aplicacion. Si al añadir una herramienta algo no arranca, sospecha del manifiesto antes que del
-codigo.
+aplicacion, que se cerro subiendo a `vitest` 3. El manifiesto de `apps/web` fija hoy `vitest ^3`
+sobre `vite ^6`; bajar de version reabre el conflicto. Si al añadir una herramienta algo no
+arranca, sospecha del manifiesto antes que del codigo.
 
 **Dos reglas estan desactivadas con motivo, no por comodidad.** `N818` exige que las excepciones
 terminen en `Error`, incompatible con nombres de dominio en espanol donde el calificador va detras
@@ -218,6 +261,26 @@ La consecuencia practica: renombrar un endpoint, mover un script de pipeline o c
 de `package.json` rompe estas pruebas a proposito. Sin ellas, el fallo aparece durante la ventana de
 mantenimiento del domingo del pase.
 
+### La interfaz
+
+[App.tsx](apps/web/src/App.tsx) es todavia el armazon: un encabezado y el `<main>` donde PT3 montara
+casos, tablero, historial y comparador. Lo que si esta resuelto, y no conviene tocar a ciegas, es la
+capa de marca que carga [main.tsx](apps/web/src/main.tsx).
+
+- [estilos/color.css](apps/web/src/estilos/color.css) traduce el Manual de Marca Minsur. Los valores
+  de marca son los del manual y no se interpolan ni se ajustan. Los tokens semanticos derivados
+  — densidad, tablas, estados, formularios, fondo oscuro — son propuesta de INVA, porque el manual
+  no cubre interfaz de aplicacion, y **estan pendientes de aprobacion de Comunicaciones de MINSUR**.
+  Hasta que llegue no son definitivos, y no se presentan como tales al cliente.
+- [activos/fuentes/](apps/web/src/activos/fuentes/) guarda tipografias comerciales licenciadas por
+  MINSUR, no activos intercambiables. Rationell y Bagiora son propiedad de sus fundiciones; la
+  procedencia, la version y la situacion de licencia de cada archivo estan en
+  [LEEME.md](apps/web/src/activos/fuentes/LEEME.md). Agregar un peso o sustituir una familia exige
+  actualizar ese registro en el mismo commit.
+
+`apps/web/staticwebapp.config.json` viaja con el artefacto: Static Web Apps lo lee del `dist`
+publicado, de modo que un cambio de rutas o de cabeceras no se comprueba corriendo `pnpm dev`.
+
 ### Infraestructura
 
 Una sola plantilla, `infra/bicep/main.bicep`, para los cuatro entornos; solo cambian los
@@ -248,6 +311,21 @@ necesidad, se agrega ahi y no con `pnpm approve-builds`, que solo afecta a la ma
 en [reglas-no-documentadas.md](docs/modelo-economico/reglas-no-documentadas.md) y se reporta a
 Finanzas. Corregirlo en el codigo rompe el contraste de fidelidad, que es el criterio de aceptacion
 del entregable.
+
+**La excepcion son las desviaciones acordadas, y hoy son cuatro lineas del contraste N1.** MINSUR
+pidio expresamente que la plataforma se aparte del modelo en esos puntos; el registro, con la
+reunion que origina cada acuerdo y el tratamiento que le corresponde, esta en
+[desviaciones-acordadas.md](docs/modelo-economico/desviaciones-acordadas.md). Ahi el motor no
+coincide con el modelo y no debe coincidir: se contrasta contra el valor esperado que define el
+acuerdo, y la prueba declara la desviacion que aplica. Una linea que difiera sin citar una
+desviacion registrada sigue siendo un fallo.
+
+**El estandar corporativo no le gana al modelo.** `DM-STD-PE-27` dice como deberia calcularse; el
+modelo es la implementacion vigente y es lo que el motor reproduce. Donde difieran, manda el modelo
+y la diferencia se registra como discrepancia.
+[estandar-dm-std-pe-27.md](docs/modelo-economico/estandar-dm-std-pe-27.md) recoge lo que el estandar
+exige y que hoy no esta especificado en el arbol; ningun punto marcado pendiente de confirmacion se
+implementa hasta que Finanzas responda.
 
 **Los umbrales de tolerancia son provisionales.** Los de `mapa-n1.md` son la propuesta de INVA. El
 valor contractual lo fija Finanzas (`R-31`). Hasta entonces no se declaran como criterio de
