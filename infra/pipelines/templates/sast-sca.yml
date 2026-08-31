@@ -8,6 +8,10 @@
 # Politica de corte (R-29, criterio escalonado):
 #   criticos y altos -> bloquean
 #   medios y bajos   -> se registran y se difieren a una segunda fase
+#
+# La compuerta tambien exige que los tres reportes existan. Un paso que no deja
+# evidencia detiene la integracion aunque fallarEnAltos sea falso: sin reporte
+# no hay analisis del que pronunciarse.
 
 parameters:
   - name: fallarEnAltos
@@ -52,7 +56,7 @@ steps:
       python infra/pipelines/scripts/evaluar_hallazgos.py \
         --directorio $(Build.ArtifactStagingDirectory)/seguridad \
         --fallar-en-altos ${{ parameters.fallarEnAltos }}
-    displayName: "Compuerta de seguridad · criticos y altos"
+    displayName: "Compuerta de seguridad · evidencia, criticos y altos"
 
   - publish: $(Build.ArtifactStagingDirectory)/seguridad
     artifact: evidencia-seguridad-$(Build.BuildId)

@@ -118,7 +118,14 @@ stages:
         pool:
           vmImage: ubuntu-latest
         steps:
+          # Bandit y pip-audit viven en el grupo `security`, que no es un
+          # grupo por defecto. Sin pedirlo, `uv run bandit` no encuentra la
+          # herramienta, los pasos de sast-sca.yml no dejan reporte y la
+          # compuerta evalúa un directorio de evidencia vacío: pasa en verde
+          # sin haber analizado nada.
           - template: templates/setup-python.yml
+            parameters:
+              instalarGrupos: "--all-packages --group security"
           - template: templates/setup-node.yml
 
           - task: SonarQubePrepare@6

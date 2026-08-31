@@ -44,7 +44,11 @@ stages:
         pool:
           vmImage: ubuntu-latest
         steps:
+          # El grupo `security` trae bandit y pip-audit; sin él, sast-sca.yml
+          # no produce evidencia. Ver la etapa de seguridad de ci.yml.
           - template: templates/setup-python.yml
+            parameters:
+              instalarGrupos: "--all-packages --group security"
           - template: templates/setup-node.yml
           - template: templates/sast-sca.yml
             parameters:

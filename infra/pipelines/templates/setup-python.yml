@@ -1,6 +1,10 @@
 # Prepara el intérprete y el workspace uv.
 # Se usa en todos los pipelines que tocan código Python.
 
+# El valor por defecto instala los miembros del workspace y el grupo `dev`,
+# que es lo que necesitan las pruebas. Un pipeline que corra bandit o pip-audit
+# tiene que pedir además el grupo `security`, que no se instala solo:
+#   instalarGrupos: "--all-packages --group security"
 parameters:
   - name: instalarGrupos
     type: string

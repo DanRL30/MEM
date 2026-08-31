@@ -10,6 +10,11 @@ escalonamiento, cualquier vulnerabilidad menor en una librería de terceros
 detiene el pase, y el propio cliente advirtió en el KOM que con Python y
 librerías de terceros eso es frecuente.
 
+Un reporte ausente, vacío o ilegible **no es ausencia de hallazgos**: es una
+corrida rota. La compuerta lo trata como falta de evidencia y se detiene, con
+`--fallar-en-altos` en cualquier valor. Ese interruptor gradúa la severidad que
+bloquea; no autoriza a pronunciarse sobre un análisis que no llegó a correr.
+
 Salida: código 0 si la integración puede continuar, 1 si debe detenerse.
 """
 
@@ -22,6 +27,26 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 BLOQUEANTES = {"CRITICAL", "HIGH"}
+
+# Cada reporte que la compuerta espera encontrar, con el paso que lo produce.
+# El nombre del paso viaja en el diagnóstico porque es lo que se busca en el
+# registro de la canalización cuando el archivo no aparece.
+REPORTES_ESPERADOS = {
+    "bandit.json": "SAST · Bandit",
+    "pip-audit.json": "SCA · pip-audit (Python)",
+    "pnpm-audit.json": "SCA · pnpm audit (Node)",
+}
+
+
+@dataclass
+class Evidencia:
+    """Reportes que no se pudieron leer, con el motivo."""
+
+    faltas: list[str] = field(default_factory=list)
+
+    def registrar(self, ruta: Path, motivo: str) -> None:
+        paso = REPORTES_ESPERADOS.get(ruta.name, "paso desconocido")
+        self.faltas.append(f"{ruta.name}: {motivo} (lo produce: {paso})")
 
 
 @dataclass
@@ -36,18 +61,25 @@ class Resumen:
             self.bloqueantes.append(f"[{sev}] {descripcion}")
 
 
-def _cargar(ruta: Path) -> dict | list | None:
-    if not ruta.exists() or ruta.stat().st_size == 0:
+def _cargar(ruta: Path, evidencia: Evidencia) -> dict | list | None:
+    if not ruta.exists():
+        evidencia.registrar(ruta, "no existe")
+        return None
+    if ruta.stat().st_size == 0:
+        evidencia.registrar(ruta, "está vacío")
         return None
     try:
         return json.loads(ruta.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        print(f"  aviso: {ruta.name} no es JSON válido; se ignora")
+    except json.JSONDecodeError as error:
+        evidencia.registrar(ruta, f"no es JSON válido ({error})")
+        return None
+    except OSError as error:
+        evidencia.registrar(ruta, f"no se pudo leer ({error})")
         return None
 
 
-def leer_bandit(directorio: Path, resumen: Resumen) -> None:
-    datos = _cargar(directorio / "bandit.json")
+def leer_bandit(directorio: Path, resumen: Resumen, evidencia: Evidencia) -> None:
+    datos = _cargar(directorio / "bandit.json", evidencia)
     if not isinstance(datos, dict):
         return
     for r in datos.get("results", []):
@@ -57,8 +89,8 @@ def leer_bandit(directorio: Path, resumen: Resumen) -> None:
         )
 
 
-def leer_pip_audit(directorio: Path, resumen: Resumen) -> None:
-    datos = _cargar(directorio / "pip-audit.json")
+def leer_pip_audit(directorio: Path, resumen: Resumen, evidencia: Evidencia) -> None:
+    datos = _cargar(directorio / "pip-audit.json", evidencia)
     dependencias = datos.get("dependencies", []) if isinstance(datos, dict) else datos or []
     for dep in dependencias:
         if not isinstance(dep, dict):
@@ -73,8 +105,8 @@ def leer_pip_audit(directorio: Path, resumen: Resumen) -> None:
             )
 
 
-def leer_pnpm_audit(directorio: Path, resumen: Resumen) -> None:
-    datos = _cargar(directorio / "pnpm-audit.json")
+def leer_pnpm_audit(directorio: Path, resumen: Resumen, evidencia: Evidencia) -> None:
+    datos = _cargar(directorio / "pnpm-audit.json", evidencia)
     if not isinstance(datos, dict):
         return
     for clave, aviso in (datos.get("advisories") or {}).items():
@@ -95,15 +127,29 @@ def main() -> int:
     args = p.parse_args()
 
     resumen = Resumen()
-    leer_bandit(args.directorio, resumen)
-    leer_pip_audit(args.directorio, resumen)
-    leer_pnpm_audit(args.directorio, resumen)
+    evidencia = Evidencia()
+    leer_bandit(args.directorio, resumen, evidencia)
+    leer_pip_audit(args.directorio, resumen, evidencia)
+    leer_pnpm_audit(args.directorio, resumen, evidencia)
 
     print("Hallazgos por severidad:")
     if not resumen.conteo:
         print("  ninguno")
     for sev in sorted(resumen.conteo):
         print(f"  {sev:<10} {resumen.conteo[sev]}")
+
+    if evidencia.faltas:
+        print(f"\nEvidencia incompleta, {len(evidencia.faltas)} reporte(s):")
+        for falta in evidencia.faltas:
+            print(f"  - {falta}")
+        print(
+            "\nLa compuerta no se pronuncia sobre un análisis que no dejó reporte: "
+            "un archivo ausente no es ausencia de hallazgos. Revisa que el paso que "
+            "lo produce haya corrido y que el entorno tenga el grupo `security` "
+            "sincronizado (uv sync --all-packages --group security)."
+        )
+        print("##vso[task.logissue type=error]Evidencia de seguridad incompleta")
+        return 1
 
     if not resumen.bloqueantes:
         print("\nSin hallazgos críticos ni altos. La integración continúa.")
