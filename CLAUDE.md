@@ -97,10 +97,13 @@ no en la homologacion.
 
 ### Las herramientas de `scripts/`
 
-Sin dependencias y fuera del entorno sincronizado: `python` a secas basta.
+Las dos que tocan Excel necesitan `openpyxl` y por tanto el entorno sincronizado; `modelo_costos.py`
+y `verificar_convenciones.py` son de biblioteca estandar y corren con `python` a secas.
 
 ```bash
-python scripts/diseccionar_modelo.py <modelo.xlsx> --salida informe/
+uv run python scripts/diseccionar_modelo.py <modelo.xlsx> --salida informe/
+uv run python scripts/generar_plantilla_inputs.py --salida plantilla.xlsx \
+    --unidad "Proyecto X:mina:Sn,Cu" --primer-ano 2027 --anos 20
 python scripts/modelo_costos.py --detalle
 ```
 
@@ -109,6 +112,12 @@ levanta justo lo que despues aparece como discrepancia en el contraste: constant
 redondeos explicitos, referencias circulares, macros y nombres rotos. Es la herramienta de PT1.4,
 que tiene tres dias en ruta critica. **Su informe hereda la clasificacion del modelo** — contiene
 formulas y valores del libro — y va a `00-gestion/03-insumos-minsur/`, nunca al repositorio.
+
+[generar_plantilla_inputs.py](scripts/generar_plantilla_inputs.py) emite la plantilla canonica de
+inputs a partir de las unidades productivas que el caso declare. Es la contraparte ejecutable de
+[catalogo-inputs.md](docs/modelo-economico/catalogo-inputs.md): si el catalogo y el script divergen,
+manda el catalogo. La plantilla sale vacia; llenarla con un caso real la convierte en informacion
+confidencial y deja de poder volver al repositorio.
 
 [modelo_costos.py](scripts/modelo_costos.py) modela el consumo de Azure de los cuatro entornos a
 partir del dimensionamiento del alcance. Es el sustento aritmetico de la eleccion de SKU del
