@@ -28,6 +28,8 @@ que es lo que el motor necesita.
 | 010 | `Ventas`, filas 61 a 66 | Las penalidades del concentrado se calculan y se suman al total de cargos, pero el valor neto que alimenta la venta no las incluye | Puede ser deliberado —penalidad liquidada aparte— o un arrastre. Se reproduce | | | `ventas.py` |
 | 012 | `Depreciacion`, filas 132 y siguientes | `IF(base - acumulado > base * tasa, base * tasa, base - acumulado)` | Depreciación lineal sobre el valor original, con la última cuota ajustada al saldo pendiente | Derivada del libro | 01/09/2026 | `depreciacion.py` |
 | 013 | `Depreciacion`, fila 168 | `IF(SUM(produccion hasta el ano) = 0, 0, ...)` | La depreciación no corre en los años previos al primero con producción acumulada | Derivada del libro | 01/09/2026 | `depreciacion.py` |
+| 014 | `Otros`, filas 58 y 66 | La variación de IGV se calcula entera y se lleva al flujo multiplicada por cero: `-(credito - credito anterior) * 0` | El IGV no se considera en el capital de trabajo, como anota la hoja oculta `Inputs`. El bloque queda calculado y desconectado | | | `capital_trabajo.py` |
+| 015 | `FC escenarios`, filas 44 a 46 | El NPV suma desde la primera columna del horizonte y la TIR arranca una columna después | Asimetría entre dos indicadores de la misma serie. En `FC NZ` ambos cubren el mismo rango | | | `indicadores.py` |
 | 011 | `Ventas`, filas 55 a 60 | El contenido pagable se valoriza sobre las toneladas vendidas y los cargos se cobran sobre las netas de merma | Asimetría deliberada de la liquidación comercial | | | `ventas.py` |
 
 ## Detalle de las que no caben en una fila
@@ -60,6 +62,17 @@ Finanzas confirmó el 01/09/2026 que el redondeo era intencional y exclusivo de 
 confirmación se dio sobre una descripción equivocada, así que **no vale como confirmada**: hay que
 volver a preguntar, ahora sobre lo que la fórmula hace de verdad. En el bloque de depreciación no
 hay ningún redondeo.
+
+### 015 — El NPV y la TIR no cubren el mismo rango
+
+En la hoja de escenarios, el NPV suma los flujos descontados desde la primera columna del horizonte
+y la TIR se calcula sobre la serie que empieza una columna después. Sobre la misma serie, los dos
+indicadores describen proyectos distintos: uno incluye un ejercicio que el otro ignora.
+
+En `FC NZ`, la hoja del caso, ambos cubren el mismo rango. La asimetría aparece solo en la hoja de
+escenarios, lo que sugiere un arrastre al armarla más que una decisión. El motor calcula ambos
+indicadores sobre la misma serie, que es lo que hace `FC NZ`, y la diferencia con la hoja de
+escenarios queda reportada.
 
 ### 010 — Las penalidades no llegan a la venta
 
@@ -129,8 +142,9 @@ utilidad`. Esa cancelación es lo que sostiene la decisión del ADR.
 4. **Precisión numérica** — se evalúa contra la tolerancia acordada y se documenta como aceptable
    sin corrección si queda dentro del umbral.
 
-Las trece del registro son de tipo 2, salvo la 005, la 007 y la 010, que son de tipo 3: se reproducen
-y se reportan. Seis quedaron confirmadas por Finanzas el 01/09/2026; siguen abiertas la 003 (unidades de
+Las quince del registro son de tipo 2, salvo la 005, la 007, la 010 y la 015, que son de tipo 3: se
+reproducen y se reportan. La 015 es la única donde el motor **no** reproduce el libro, porque las dos
+hojas del libro se contradicen entre sí: sigue a `FC NZ`, que es la hoja del caso. Seis quedaron confirmadas por Finanzas el 01/09/2026; siguen abiertas la 003 (unidades de
 medida), la 004 (tramos tributarios) y la 007 (valores guardados sin recalcular).
 
 Ver la bitácora de discrepancias abiertas en `bitacora-discrepancias.md`.

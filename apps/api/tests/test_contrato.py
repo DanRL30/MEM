@@ -81,23 +81,23 @@ class TestSalud:
         assert respuesta.status_code == 200
         assert respuesta.json()["estado"] == "ok"
 
-    def test_informa_que_el_motor_no_esta_disponible(self, cliente: TestClient):
-        # El motor no tiene lógica todavía: PT2 espera el modelo (R-02). La
-        # señal es la ausencia del módulo de indicadores, no la del paquete:
-        # `minsur_engine` es miembro del espacio de trabajo y se instala
-        # siempre, de modo que su importación nunca falla.
-        assert respuesta_motor(cliente) is None
-
-    def test_informa_la_version_cuando_el_motor_ya_calcula(
-        self, cliente: TestClient, monkeypatch: pytest.MonkeyPatch
-    ):
-        # La otra mitad de la señal, y la que faltaba. Comprobar solo el caso
-        # None deja pasar una implementación que devuelva None siempre, que es
-        # justo como este campo estuvo informando de más sin que se notara.
+    def test_informa_la_version_ahora_que_el_motor_calcula(self, cliente: TestClient):
+        # Hasta el 01/09/2026 esta prueba afirmaba lo contrario, porque el
+        # motor esperaba el modelo de referencia (R-02). Con los módulos de
+        # PT2 en el árbol, la señal se invierte y la prueba con ella: dejarla
+        # como estaba habría convertido un avance real en un fallo rojo.
         from minsur_engine import __version__ as version_del_motor
 
-        monkeypatch.setattr(version, "find_spec", lambda nombre: object())
         assert respuesta_motor(cliente) == version_del_motor
+
+    def test_informa_la_ausencia_cuando_el_modulo_de_indicadores_falta(
+        self, cliente: TestClient, monkeypatch: pytest.MonkeyPatch
+    ):
+        # La otra mitad de la señal. Comprobar solo el caso con motor deja
+        # pasar una implementación que devuelva siempre una versión, que es el
+        # error simétrico al que este campo tuvo antes.
+        monkeypatch.setattr(version, "find_spec", lambda nombre: None)
+        assert respuesta_motor(cliente) is None
 
 
 def respuesta_motor(cliente: TestClient):
