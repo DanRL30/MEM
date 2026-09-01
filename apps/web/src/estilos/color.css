@@ -1,0 +1,83 @@
+/* Paleta de la plataforma, tomada del Manual de Marca Minsur.
+ *
+ * Los valores son los del manual y no se interpolan ni se ajustan. Donde el
+ * manual restringe el uso de un color, la restriccion esta anotada: no es una
+ * recomendacion de estilo, es lo que el documento autoriza.
+ *
+ * El manual no cubre interfaz de aplicacion. No define densidad, tablas,
+ * estados, formularios, comportamiento sobre fondo oscuro ni criterios de
+ * contraste. Los tokens semanticos de este archivo son, por tanto, una
+ * derivacion de INVA sobre la paleta corporativa, y requieren aprobacion de
+ * Comunicaciones de MINSUR antes de considerarse definitivos.
+ */
+
+:root {
+  /* --- Primarios de marca --------------------------------------------------
+   * Blanco y azul dominan las piezas: el manual les asigna entre 30 y 60 % de
+   * presencia.
+   */
+  --marca-azul: #003da5; /* Pantone 293 */
+  --marca-celeste: #406ef8; /* Pantone 2728 */
+  --marca-blanco: #ffffff;
+
+  /* --- Accesorios ----------------------------------------------------------
+   * El manual acota estos dos a un uso y solo uno. El azul oscuro es el color
+   * del texto; el gris claro, el de los contenedores. No se intercambian.
+   */
+  --accesorio-texto: #2d314d; /* Pantone 2767. Solo cuerpos de texto */
+  --accesorio-contenedor: #e9e9e9; /* Solo contenedores de informacion */
+
+  /* --- Secundarios ---------------------------------------------------------
+   * El manual los restringe a apoyo grafico -iconos, acentos, graficos
+   * informativos- y prohibe usarlos como protagonistas de la identidad. En la
+   * plataforma su sitio son las series de los graficos, no la interfaz.
+   */
+  --secundario-rojo: #f0305b;
+  --secundario-naranja: #f58a2e;
+  --secundario-amarillo: #f2c230;
+  --secundario-verde: #a6d400;
+  --secundario-turquesa: #18c7d6;
+  --secundario-morado: #8a35f4;
+
+  /* --- Tokens semanticos ---------------------------------------------------
+   * Derivacion de INVA sobre la paleta del manual. Pendiente de aprobacion.
+   *
+   * El texto usa el azul oscuro del manual sobre blanco: 12,67 a 1 de
+   * contraste, muy por encima del 4,5 a 1 que exige WCAG AA para texto normal.
+   *
+   * El azul corporativo alcanza 9,50 a 1 sobre blanco y sirve para texto,
+   * enlaces y superficies de enfasis.
+   *
+   * El celeste institucional se queda en 4,37 a 1, por debajo del umbral de
+   * texto normal aunque cumple para texto grande. Por eso queda reservado a
+   * superficies, bordes y elementos de mas de 24 px, y nunca se usa para texto
+   * de interfaz. Es una limitacion medida del color, no una preferencia.
+   */
+  --fondo-lienzo: #ffffff;
+  --fondo-contenedor: var(--accesorio-contenedor);
+  --texto-principal: var(--accesorio-texto);
+  --texto-enfasis: var(--marca-azul);
+  --borde-sutil: var(--accesorio-contenedor);
+  --acento-superficie: var(--marca-celeste);
+}
+
+/* --- Estados ---------------------------------------------------------------
+ * El manual no define colores de estado para interfaz. Los de aqui se toman de
+ * los secundarios corporativos, que es lo mas cercano a una fuente autorizada,
+ * en lugar de introducir colores ajenos a la marca.
+ *
+ * Ninguno alcanza 4,5 a 1 sobre blanco a su valor nominal, asi que se usan como
+ * relleno de indicador o borde, acompanados de texto en --texto-principal.
+ * Colorear el texto con ellos incumpliria WCAG AA.
+ */
+:root {
+  --estado-error: var(--secundario-rojo);
+  --estado-alerta: var(--secundario-naranja);
+  --estado-exito: var(--secundario-verde);
+  --estado-informacion: var(--secundario-turquesa);
+}
+
+body {
+  background-color: var(--fondo-lienzo);
+  color: var(--texto-principal);
+}

@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import App from "./App";
+import "./estilos/color.css";
+import "./estilos/tipografia.css";
 
 const raiz = document.getElementById("raiz");
 

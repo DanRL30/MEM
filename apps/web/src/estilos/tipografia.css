@@ -1,0 +1,169 @@
+/* Capa tipografica de la plataforma.
+ *
+ * La familia es Rationell, tipografia principal del Manual de Marca Minsur, con
+ * Nata Sans como respaldo. El orden de la pila no es una preferencia tecnica:
+ * reproduce la jerarquia que fija el manual, donde Nata Sans es la tipografia de
+ * soporte para cuando Rationell no esta disponible.
+ *
+ * Procedencia y situacion de licencia de cada archivo en
+ * activos/fuentes/LEEME.md. Las reglas de tamano, interlineado e interletrado de
+ * este archivo provienen del manual y no son decisiones de implementacion.
+ */
+
+/* --- Familia principal -----------------------------------------------------
+ * Cuatro pesos, que son los que el manual define. Rationell no se distribuye
+ * como fuente variable, asi que cada peso es un archivo.
+ */
+@font-face {
+  font-family: "Rationell";
+  src: url("../activos/fuentes/Rationell-Light.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rationell";
+  src: url("../activos/fuentes/Rationell-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rationell";
+  src: url("../activos/fuentes/Rationell-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rationell";
+  src: url("../activos/fuentes/Rationell-ExtraBold.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* --- Familia de respaldo ---------------------------------------------------
+ * El navegador solo descarga este archivo si Rationell no resuelve, de modo que
+ * declararlo no cuesta transferencia. Un solo archivo variable cubre de Thin a
+ * Black en 48 KB.
+ */
+@font-face {
+  font-family: "Nata Sans";
+  src: url("../activos/fuentes/NataSansVF.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* --- Familia del proposito -------------------------------------------------
+ * El manual reserva Bagiora a un solo uso: el proposito de marca, "Mejoramos la
+ * vida transformando minerales en bienestar". No se usa en ningun otro texto de
+ * la interfaz.
+ */
+@font-face {
+  font-family: "Bagiora";
+  src: url("../activos/fuentes/Bagiora-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --familia-base: "Rationell", "Nata Sans", "Segoe UI", system-ui, sans-serif;
+  --familia-proposito: "Bagiora", Georgia, serif;
+
+  /* --- Pesos ---------------------------------------------------------------
+   * El manual reserva los pesos gruesos para titulares y los delgados para
+   * cuerpos de texto. Los cuatro declarados son los que MINSUR licencio; no hay
+   * peso intermedio disponible, asi que los encabezados de tabla usan Bold.
+   */
+  --peso-titular: 800;
+  --peso-destacado: 700;
+  --peso-encabezado: 700;
+  --peso-cuerpo: 400;
+  --peso-tenue: 300;
+
+  /* --- Escala --------------------------------------------------------------
+   * El manual fija un tamano minimo de 10 pt para formatos digitales. En CSS,
+   * 10 pt son 13,33 px, asi que 14 px es el primer valor entero que lo cumple y
+   * ningun texto de la interfaz baja de ahi. Esto descarta el cuerpo de 12 px
+   * habitual en tableros financieros densos: la restriccion es de marca, no de
+   * densidad, y se compensa apretando interlineado y filas, no la letra.
+   */
+  --texto-cuerpo: 0.875rem; /* 14 px, minimo del manual */
+  --texto-tabla: 0.875rem;
+  --texto-etiqueta: 0.875rem;
+  --texto-subtitulo: 1.125rem;
+  --texto-titulo: 1.5rem;
+  --texto-display: 2.25rem;
+
+  /* --- Interlineado --------------------------------------------------------
+   * El manual establece que el interlineado equivale al puntaje de la fuente
+   * (15 pt de texto, 15 pt de interlineado) y prohibe expresamente reducirlo.
+   * En CSS ese suelo es line-height 1. Aumentarlo si esta permitido, y los
+   * cuerpos de texto largos lo necesitan para ser legibles.
+   */
+  --interlineado-titular: 1;
+  --interlineado-cuerpo: 1.5;
+  --interlineado-tabla: 1.3;
+
+  /* --- Interletrado --------------------------------------------------------
+   * El manual fija el minimo en -15 unidades de tracking, equivalente a
+   * -0,015em. Es un suelo, no un valor por defecto: por debajo las letras se
+   * juntan y la legibilidad cae.
+   */
+  --interletrado-titular: -0.015em;
+  --interletrado-cuerpo: 0;
+  --interletrado-etiqueta: 0.04em;
+}
+
+/* --- Cifras ----------------------------------------------------------------
+ * Toda cifra de la plataforma se alinea en columna: montos, porcentajes, anos.
+ * Sin numeros tabulares los digitos tienen anchos distintos y las columnas de
+ * un flujo de caja dejan de alinearse, que es el defecto visual mas visible en
+ * un modelo financiero.
+ */
+.cifra,
+td,
+th {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+body {
+  font-family: var(--familia-base);
+  font-size: var(--texto-cuerpo);
+  font-weight: var(--peso-cuerpo);
+  line-height: var(--interlineado-cuerpo);
+  letter-spacing: var(--interletrado-cuerpo);
+}
+
+h1,
+h2,
+h3 {
+  font-weight: var(--peso-titular);
+  line-height: var(--interlineado-titular);
+  letter-spacing: var(--interletrado-titular);
+}
+
+h1 {
+  font-size: var(--texto-display);
+}
+
+h2 {
+  font-size: var(--texto-titulo);
+}
+
+h3 {
+  font-size: var(--texto-subtitulo);
+}
+
+/* Unico uso autorizado de Bagiora. */
+.proposito {
+  font-family: var(--familia-proposito);
+  font-weight: 500;
+}
