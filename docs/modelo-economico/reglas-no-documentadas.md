@@ -16,7 +16,7 @@ que es lo que el motor necesita.
 
 | # | Origen (hoja!celda) | Comportamiento observado | Hipótesis | Confirmada por | Fecha | Implementada en |
 |---|---|---|---|---|---|---|
-| 001 | `Depreciacion`, 105 celdas | `ROUND(..., 0)` sobre el saldo depreciable | Redondeo intencional y exclusivo de depreciación | Finanzas | 01/09/2026 | `depreciacion.py` |
+| 001 | `Depreciacion`, filas de reservas (877, 940, 1265), 105 celdas | `ROUND(reservas iniciales - extraido + adiciones, 0)` | Redondeo a tonelada entera del saldo de **reservas**, no del saldo depreciable. **Pendiente de reconfirmar**: ver el detalle | Finanzas, sobre una descripción imprecisa | 01/09/2026 | `produccion.py` |
 | 002 | `InputsProd`, 596 celdas | Tope de 90 000 incrustado en el mineral tratado, con fórmula complementaria que reparte el exceso | Capacidad máxima de planta. **Pasa a ser input del caso**, editable por unidad | Finanzas | 01/09/2026 | `produccion.py` |
 | 003 | Todo el libro | Factores `10^3` y `/1000` al cruzar de hoja | Convivencia de US$ y miles de US$ sin declaración de unidades | | | |
 | 004 | `Impuestos`, 576 celdas | Tributo por tramos: tasa aplicada al exceso sobre un umbral, con dos ramas y un tercer caso nulo | Escalas progresivas de regalía e IEM sobre el margen operativo, derivadas y reproducidas | Derivada del libro | 01/09/2026 | `tributos.py` |
@@ -26,6 +26,8 @@ que es lo que el motor necesita.
 | 008 | `InputsOpex`, 5 661 celdas | `IFERROR(x/y*10^3, 0)` | **Cero es el resultado esperado.** Una indeterminación como 0/0 no detiene el cálculo | Finanzas | 01/09/2026 | `cash_cost.py` |
 | 009 | `InputsCapex` | Ninguna fórmula propia: 5 394 enlaces externos y el resto valores | El capital entra al modelo ya calculado desde otros libros | | | |
 | 010 | `Ventas`, filas 61 a 66 | Las penalidades del concentrado se calculan y se suman al total de cargos, pero el valor neto que alimenta la venta no las incluye | Puede ser deliberado —penalidad liquidada aparte— o un arrastre. Se reproduce | | | `ventas.py` |
+| 012 | `Depreciacion`, filas 132 y siguientes | `IF(base - acumulado > base * tasa, base * tasa, base - acumulado)` | Depreciación lineal sobre el valor original, con la última cuota ajustada al saldo pendiente | Derivada del libro | 01/09/2026 | `depreciacion.py` |
+| 013 | `Depreciacion`, fila 168 | `IF(SUM(produccion hasta el ano) = 0, 0, ...)` | La depreciación no corre en los años previos al primero con producción acumulada | Derivada del libro | 01/09/2026 | `depreciacion.py` |
 | 011 | `Ventas`, filas 55 a 60 | El contenido pagable se valoriza sobre las toneladas vendidas y los cargos se cobran sobre las netas de merma | Asimetría deliberada de la liquidación comercial | | | `ventas.py` |
 
 ## Detalle de las que no caben en una fila
@@ -44,6 +46,20 @@ capacidad necesita otro número.
 poder cambiarla. Deja de ser una constante del motor y pasa al catálogo como *capacidad máxima de
 tratamiento*, un input por unidad productiva y por año. El valor de 90 000 sobrevive únicamente
 como el que traen los casos históricos al contrastarse.
+
+### 001 — El redondeo estaba mal ubicado
+
+Al implementar `depreciacion.py` se localizaron las 105 celdas: están en la hoja `Depreciacion`,
+pero en su bloque de **reservas** —filas 877, 940 y 1265, etiquetadas `Reservas Finales`— y no en el
+cálculo de depreciación. La fórmula redondea a entero el saldo de reservas después de descontar lo
+extraído y sumar las adiciones, así que **redondea toneladas, no dólares**, y pertenece a
+`produccion.py`.
+
+El registro original decía «`ROUND(..., 0)` sobre el saldo depreciable», y con esa descripción
+Finanzas confirmó el 01/09/2026 que el redondeo era intencional y exclusivo de la depreciación. La
+confirmación se dio sobre una descripción equivocada, así que **no vale como confirmada**: hay que
+volver a preguntar, ahora sobre lo que la fórmula hace de verdad. En el bloque de depreciación no
+hay ningún redondeo.
 
 ### 010 — Las penalidades no llegan a la venta
 
@@ -113,7 +129,7 @@ utilidad`. Esa cancelación es lo que sostiene la decisión del ADR.
 4. **Precisión numérica** — se evalúa contra la tolerancia acordada y se documenta como aceptable
    sin corrección si queda dentro del umbral.
 
-Las once del registro son de tipo 2, salvo la 005, la 007 y la 010, que son de tipo 3: se reproducen
+Las trece del registro son de tipo 2, salvo la 005, la 007 y la 010, que son de tipo 3: se reproducen
 y se reportan. Seis quedaron confirmadas por Finanzas el 01/09/2026; siguen abiertas la 003 (unidades de
 medida), la 004 (tramos tributarios) y la 007 (valores guardados sin recalcular).
 
