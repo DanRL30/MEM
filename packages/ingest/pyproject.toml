@@ -5,6 +5,7 @@ description = "Lector y validador de las plantillas de Produccion, CAPEX y OPEX.
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "minsur-domain",
+    "minsur-engine",
     "openpyxl>=3.1",
     "pandas>=2.2",
     "pydantic>=2.9",

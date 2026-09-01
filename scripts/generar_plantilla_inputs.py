@@ -329,6 +329,10 @@ def hoja_precios(libro: Workbook, unidades: list[Unidad], primer_ano: int, anos:
             numericas.append(fila)
             fila = fila_de_entrada(hoja, fila, f"Precio, escenario {escenario}", "US$/t", anos)
         for concepto, medida in (
+            # El libro vende el metal por dos caminos: refinado al precio mas
+            # un premio, y en concentrado al precio por el factor pagable.
+            ("Premio del metal refinado", "US$/t"),
+            ("Factor de metal pagable", "fraccion"),
             ("Terminos comerciales", "US$/t"),
             ("Gasto de ventas", "US$/t"),
             ("Fletes", "US$/t"),

@@ -222,7 +222,28 @@ Los modulos de `packages/engine/src/minsur_engine/` mapean 1:1 con las filas de
 estetica: cuando una corrida difiere del modelo corporativo, la tabla de ese documento traduce la
 linea discrepante a un archivo y a una prueba. Fusionar dos bloques rompe esa propiedad.
 
-Hoy el paquete solo contiene `__init__.py`: PT2 espera la entrega del modelo de referencia (`R-02`).
+Once modulos derivados de las formulas del libro, mas `caso.py` y `corrida.py`, que son el
+ensamblaje: `corrida.calcular()` es el unico sitio que conoce el orden del calculo y los demas
+resuelven su linea sin saber quien los llama. El contraste N0-N3 vive en `tests/fidelidad/` y corre
+en cada integracion.
+
+Un detalle del arnes que conviene entender antes de tocarlo: **el contraste sintetico es exacto, no
+tolerante**. La tolerancia contractual —0,1 % o US$ 10 000— existe para comparar contra un libro de
+Excel; aplicada a un caso sintetico se vuelve ciega, porque una linea cuyo valor esperado son 10 000
+pasaria valiendo cero. La regla contractual esta implementada y verificada aparte, reservada para el
+contraste contra el modelo.
+
+### La ingesta es la frontera
+
+`packages/ingest` lee la plantilla que emite `scripts/generar_plantilla_inputs.py` y devuelve un
+caso validado. Es el unico sitio donde se convierten escalas —la regla 003, con el libro alternando
+dolares y miles de dolares— y donde vive la tabla de sinonimos que traduce el vocabulario del libro
+al del catalogo: sin ella, leer una plantilla llenada al estilo del libro pierde una de cada veinte
+lineas en silencio.
+
+La lectura **acumula incidencias con su hoja y su celda** en vez de detenerse en la primera. Una
+plantilla llena a mano llega con varios errores a la vez, y devolverlos de uno en uno obliga a
+corregir y reenviar tantas veces como errores tenga.
 
 ### Lo que ya esta construido: el dominio
 
