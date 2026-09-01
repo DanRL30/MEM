@@ -19,7 +19,7 @@ que es lo que el motor necesita.
 | 001 | `Depreciacion`, 105 celdas | `ROUND(..., 0)` sobre el saldo depreciable | Redondeo intencional y exclusivo de depreciación | Finanzas | 01/09/2026 | `depreciacion.py` |
 | 002 | `InputsProd`, 596 celdas | Tope de 90 000 incrustado en el mineral tratado, con fórmula complementaria que reparte el exceso | Capacidad máxima de planta. **Pasa a ser input del caso**, editable por unidad | Finanzas | 01/09/2026 | `produccion.py` |
 | 003 | Todo el libro | Factores `10^3` y `/1000` al cruzar de hoja | Convivencia de US$ y miles de US$ sin declaración de unidades | | | |
-| 004 | `Impuestos`, 576 celdas | Tributo por tramos: tasa aplicada al exceso sobre un umbral, con dos ramas y un tercer caso nulo | Regalía minera e impuesto especial por tramos del margen operativo | | | `tributos.py` |
+| 004 | `Impuestos`, 576 celdas | Tributo por tramos: tasa aplicada al exceso sobre un umbral, con dos ramas y un tercer caso nulo | Escalas progresivas de regalía e IEM sobre el margen operativo, derivadas y reproducidas | Derivada del libro | 01/09/2026 | `tributos.py` |
 | 005 | `FC escenarios!I43` | Descuento `1/(1+r)^t` con `t` entero desde 0 | Se reproduce el descuento a fin de año. La discrepancia con `DM-STD-PE-27` §5.1 queda reportada | Finanzas | 01/09/2026 | `indicadores.py` |
 | 006 | Configuración del libro | Cálculo iterativo activado (`iterate=1`) | Circularidad deliberada. Finanzas delega el criterio en INVA y pide el más fiable y preciso: ver [ADR 0009](../adr/0009-resolucion-de-la-circularidad-tributaria.md) | Finanzas | 01/09/2026 | `tributos.py` |
 | 007 | Configuración del libro | `calcOnSave=0` | Los valores guardados pueden no corresponder a las fórmulas guardadas | | | |
@@ -69,16 +69,24 @@ Confirmado por Finanzas el 01/09/2026: se reproduce el descuento a fin de año. 
 
 ### 006 — La circularidad
 
-La participación de trabajadores se calcula sobre una utilidad que ya descuenta la participación, y
-el impuesto a la renta hace lo propio. El libro lo resuelve con el cálculo iterativo de Excel, cuyo
-criterio de parada es una configuración de la aplicación, no del modelo.
+El lazo lo cierra el **fondo de jubilación minera**: es gasto deducible de la utilidad operativa que
+sirve de base para calcularlo. La participación de trabajadores y el impuesto a la renta cuelgan del
+final de la cadena y no realimentan, contra lo que se supuso al abrir esta regla. El libro resuelve
+el ciclo con el cálculo iterativo de Excel, cuyo criterio de parada es configuración de la
+aplicación, no del modelo.
 
 El motor no puede heredar esa indefinición: necesita un criterio explícito, porque fija el último
 decimal de todos los indicadores.
 
 Finanzas delegó la decisión en INVA el 01/09/2026, pidiendo «el más fiable y preciso». La respuesta
-está en [ADR 0009](../adr/0009-resolucion-de-la-circularidad-tributaria.md): el sistema es lineal y
-tiene solución cerrada, así que no se itera salvo como verificación.
+está en [ADR 0009](../adr/0009-resolucion-de-la-circularidad-tributaria.md): el sistema es afín a
+trozos y tiene solución cerrada, así que no se itera salvo como verificación. Implementado y
+verificado contra un punto fijo independiente en `tributos.py`.
+
+La afinidad no era evidente. La tasa efectiva de regalía sale de una escala de tramos sobre el
+margen —`SUM(tramos) / margen`— y después se multiplica por la utilidad operativa, lo que parece
+cuadrático. No lo es: el margen se cancela contra sí mismo y queda `regalía = ventas × C + t ×
+utilidad`. Esa cancelación es lo que sostiene la decisión del ADR.
 
 ## Clasificación de discrepancias (protocolo del Plan de Trabajo)
 

@@ -121,10 +121,17 @@ Dos lecturas:
 
 ## 5. Calculo iterativo: la circularidad es deliberada
 
-El libro tiene `iterate=1` en su configuracion de calculo. No es un accidente: la participacion de
-trabajadores y el impuesto a la renta se determinan mutuamente, y Excel resuelve el ciclo por
-aproximaciones sucesivas. `Impuestos` referencia `FC NZ` 359 veces y el flujo vuelve a leer los
-tributos.
+El libro tiene `iterate=1` en su configuracion de calculo. No es un accidente, y al derivar la hoja
+`Impuestos` el 01/09/2026 se vio cual es el lazo exacto: **lo cierra el fondo de jubilacion
+minera**, que es gasto deducible de la misma utilidad operativa que sirve de base para calcularlo.
+
+    utilidad operativa --> margen --> regalia e IEM --> utilidad imponible
+           ^                                                  |
+           +------------- fondo de jubilacion minera ---------+
+
+La participacion de trabajadores y el impuesto a la renta **no** realimentan: cuelgan del final de
+la cadena y nadie los vuelve a leer. Conviene decirlo porque la suposicion contraria es natural y
+lleva a buscar el ciclo donde no esta.
 
 El motor no reproduce esa aproximacion. El subsistema es afin a trozos y tiene solucion exacta, asi
 que se resuelve en forma cerrada y no se itera: lo decide

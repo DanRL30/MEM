@@ -9,9 +9,14 @@
 ## Contexto
 
 El libro corporativo tiene el cálculo iterativo de Excel activado (`iterate=1`). No es un descuido:
-la participación de trabajadores y el impuesto a la renta se determinan mutuamente, y el flujo
-vuelve a leer los tributos que él mismo alimenta. La hoja `Impuestos` referencia `FC NZ` 359 veces
-y la dependencia se cierra sobre sí misma.
+la hoja `Impuestos` referencia `FC NZ` 359 veces y la dependencia se cierra sobre sí misma.
+
+> **Corrección del 01/09/2026, posterior a la aceptación.** Al derivar la hoja para implementar
+> `tributos.py` se comprobó que el lazo lo cierra el **fondo de jubilación minera**, que es gasto
+> deducible de la utilidad operativa que sirve de base para calcularlo; la participación de
+> trabajadores y el impuesto a la renta no realimentan. Este ADR describía el ciclo al revés. La
+> decisión no cambia —el sistema sigue siendo afín a trozos y con solución cerrada— y por eso se
+> corrige el contexto en lugar de superseder la decisión.
 
 Excel resuelve ese ciclo repitiendo el cálculo hasta que el cambio entre pasadas cae por debajo de
 un umbral. Ese umbral y el número máximo de repeticiones son **configuración de la aplicación, no
@@ -70,10 +75,11 @@ no linealidad real — un término cuadrático, un tope que dependa de una funci
 supuesto afín y obliga a revisar esta decisión con un ADR nuevo. Es una rigidez deliberada: obliga a
 que un cambio así se piense, en lugar de absorberse subiendo el número de iteraciones.
 
-**Queda condicionado** el módulo `tributos.py`. Esta decisión fija el método, no las ecuaciones. La
-derivación concreta del sistema — qué depende de qué y con qué coeficientes — se hace al implementar
-el módulo, contra la hoja `Impuestos`, y se documenta ahí. Si al derivarlo apareciera una
-dependencia que no sea afín a trozos, este ADR se supersede en lugar de forzarse.
+**Quedaba condicionado** el módulo `tributos.py`, y la condición se cumplió el 01/09/2026. La
+derivación confirmó la afinidad, aunque no fuera evidente: la tasa efectiva de regalía se obtiene
+como `SUM(tramos) / margen` y luego se multiplica por la utilidad operativa, de modo que el margen
+se cancela contra sí mismo y queda `regalía = ventas × C + t × utilidad`. Sin esa cancelación el
+sistema habría sido cuadrático y este ADR se habría supersedido en lugar de forzarse.
 
 **Nota sobre el contraste.** El modelo de referencia resuelve el ciclo por aproximación, así que sus
 valores traen el error residual de la iteración de Excel. La diferencia es de orden numérico y cae
