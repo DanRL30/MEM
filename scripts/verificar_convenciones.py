@@ -76,6 +76,9 @@ ATRIBUCION = re.compile(
 # CLAUDE.md conserva su encabezado de origen: ver docs/adr/0008. La excepcion
 # es deliberada y se acota a esta regla, de modo que el archivo sigue
 # auditandose por caracteres decorativos y ningun otro queda exento de nada.
+# El conjunto guarda rutas relativas a RAIZ, no nombres: comparar por nombre
+# eximiria a cualquier CLAUDE.md de cualquier subdirectorio, que es mas de lo
+# que decide el ADR.
 # Si el encabezado se retira, esta linea sobra y se elimina con el.
 SIN_REGLA_DE_ATRIBUCION = {"CLAUDE.md"}
 
@@ -96,7 +99,7 @@ def revisar(ruta: Path) -> list[str]:
     except (UnicodeDecodeError, OSError) as error:
         return [f"{relativa}: no se pudo leer ({error})"]
 
-    revisar_atribucion = ruta.name not in SIN_REGLA_DE_ATRIBUCION
+    revisar_atribucion = relativa not in SIN_REGLA_DE_ATRIBUCION
 
     infracciones = []
     for numero, linea in enumerate(contenido.splitlines(), 1):

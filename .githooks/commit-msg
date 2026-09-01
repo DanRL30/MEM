@@ -1,6 +1,6 @@
 #!/bin/sh
 # Rechaza mensajes de commit con trailers de coautoria de herramientas de IA
-# o con emojis. Ver CLAUDE.md, seccion 11.
+# o con emojis. Ver docs/convenciones.md, seccion 2.
 #
 # Activacion, una sola vez por copia de trabajo:
 #   git config core.hooksPath .githooks
@@ -9,12 +9,12 @@ mensaje="$1"
 
 if grep -qiE '^(Co-Authored-By|Co-authored-by):[[:space:]]*(Claude|Anthropic|Copilot|GPT)' "$mensaje"; then
     echo "El mensaje incluye un trailer de coautoria de una herramienta de IA." >&2
-    echo "Retirelo antes de confirmar. Ver CLAUDE.md, seccion 11." >&2
+    echo "Retirelo antes de confirmar. Ver docs/convenciones.md, seccion 2." >&2
     exit 1
 fi
 
 if grep -qP '[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}\x{FE0F}]' "$mensaje" 2>/dev/null; then
-    echo "El mensaje incluye emojis. Ver CLAUDE.md, seccion 11." >&2
+    echo "El mensaje incluye emojis. Ver docs/convenciones.md, seccion 2." >&2
     exit 1
 fi
 
