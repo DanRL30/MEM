@@ -4,10 +4,12 @@ Los endpoints están definidos con su contrato completo para que el esquema
 OpenAPI sea utilizable desde ya: de él salen los tipos del frontend y la
 definición que se importa a API Management.
 
-La implementación del cálculo espera el modelo económico de referencia
-(`R-02`). Hasta que llegue, cada operación de cálculo responde 501 con la
-restricción que la bloquea, en lugar de devolver un resultado inventado que
-alguien podría tomar por bueno.
+El cálculo ya está implementado: el modelo de referencia llegó el 31/08/2026 y
+el motor lo reproduce. Siguen respondiendo 501 las dos operaciones cuyo insumo
+falta de verdad —el contenedor con política de inmutabilidad para congelar, y
+los casos certificados para contrastar—, con la restricción que las bloquea en
+el cuerpo, en lugar de un resultado inventado que alguien podría tomar por
+bueno.
 """
 
 from __future__ import annotations
@@ -15,7 +17,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 
 from minsur_domain.estados import Perfil
+from minsur_engine.caso import DatosMaestros
 
+from ..dependencias import datos_maestros, repositorio
 from ..esquemas import (
     CorridaCongelada,
     Problema,
@@ -23,6 +27,8 @@ from ..esquemas import (
     ResultadoFidelidad,
     SolicitudCongelamiento,
 )
+from ..evaluacion import ejecutar, resultado_de
+from ..repositorio import CasoNoEncontrado, CasoSinInsumos, RepositorioDeCasos
 from ..seguridad import Usuario, requiere, usuario_actual
 
 router = APIRouter(prefix="/casos/{id_caso}", tags=["Evaluación"])
@@ -30,17 +36,22 @@ router = APIRouter(prefix="/casos/{id_caso}", tags=["Evaluación"])
 ID_CASO = Path(description="Identificador del caso", examples=["CASO-SR-2026-014"])
 
 
-def _pendiente_del_modelo(operacion: str) -> HTTPException:
+SIN_DATOS_MAESTROS = HTTPException(
+    status_code=status.HTTP_501_NOT_IMPLEMENTED,
+    detail={
+        "detalle": (
+            "No hay datos maestros cargados. Los parametros corporativos, las tasas de "
+            "depreciacion y las escalas de regalia e IEM los confirma y mantiene MINSUR."
+        ),
+        "restriccion": "R-32",
+    },
+)
+
+
+def _caso_no_encontrado() -> HTTPException:
     return HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail={
-            "detalle": (
-                f"{operacion} requiere el motor de cálculo, cuya construcción "
-                "no ha iniciado por estar pendiente la entrega del modelo "
-                "económico de referencia."
-            ),
-            "restriccion": "R-02",
-        },
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={"detalle": "No existe un caso con ese identificador.", "restriccion": None},
     )
 
 
@@ -48,7 +59,7 @@ def _pendiente_del_modelo(operacion: str) -> HTTPException:
     "/evaluar",
     response_model=ResultadoEvaluacion,
     summary="Ejecutar la evaluación económica",
-    responses={501: {"model": Problema}},
+    responses={404: {"model": Problema}, 409: {"model": Problema}, 501: {"model": Problema}},
 )
 async def evaluar(
     id_caso: str = ID_CASO,
@@ -59,6 +70,8 @@ async def evaluar(
             Perfil.INGENIERO_DE_PROYECTO,
         )
     ),
+    repo: RepositorioDeCasos = Depends(repositorio),
+    maestros: DatosMaestros | None = Depends(datos_maestros),
 ) -> ResultadoEvaluacion:
     """Calcula la evaluación y deja la corrida en estado *calculada*.
 
@@ -66,14 +79,35 @@ async def evaluar(
     guarda una referencia a la versión vigente del motor: guarda la versión
     exacta, para que publicar una versión nueva no altere corridas previas.
     """
-    raise _pendiente_del_modelo("Ejecutar una evaluación")
+    try:
+        caso = repo.obtener(id_caso)
+    except CasoNoEncontrado:
+        raise _caso_no_encontrado() from None
+
+    if maestros is None:
+        raise SIN_DATOS_MAESTROS
+
+    try:
+        corrida = ejecutar(caso, maestros, usuario=usuario.correo)
+    except CasoSinInsumos:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "detalle": (
+                    "El caso no tiene insumos cargados. Sube la plantilla antes de calcular."
+                ),
+                "restriccion": None,
+            },
+        ) from None
+
+    return resultado_de(repo.registrar_corrida(corrida))
 
 
 @router.post(
     "/congelar",
     response_model=CorridaCongelada,
     summary="Congelar la evaluación como sustento de decisión",
-    responses={403: {"model": Problema}, 409: {"model": Problema}},
+    responses={403: {"model": Problema}, 409: {"model": Problema}, 501: {"model": Problema}},
 )
 async def congelar(
     solicitud: SolicitudCongelamiento,
@@ -95,18 +129,31 @@ async def congelar(
     plataforma. Por eso el Ingeniero de Proyecto no aparece entre los
     perfiles autorizados.
     """
-    raise _pendiente_del_modelo("Congelar una evaluación")
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail={
+            "detalle": (
+                "Congelar exige depositar la imagen sellada en un contenedor con politica "
+                "de inmutabilidad. Ese contenedor se aprovisiona con la plantilla Bicep en "
+                "el tenant de MINSUR, que aun no esta habilitado. El sellado en si ya esta "
+                "implementado: lo que falta es donde depositarlo de forma irreversible."
+            ),
+            "restriccion": "R-23",
+        },
+    )
 
 
 @router.post(
     "/recalcular",
     response_model=ResultadoEvaluacion,
     summary="Recalcular una corrida congelada con el motor vigente",
-    responses={409: {"model": Problema}},
+    responses={404: {"model": Problema}, 409: {"model": Problema}},
 )
 async def recalcular(
     id_caso: str = ID_CASO,
     usuario: Usuario = Depends(usuario_actual),
+    repo: RepositorioDeCasos = Depends(repositorio),
+    maestros: DatosMaestros | None = Depends(datos_maestros),
 ) -> ResultadoEvaluacion:
     """Crea una corrida nueva a partir de una congelada. **No la modifica.**
 
@@ -114,7 +161,28 @@ async def recalcular(
     evidencia que sustentó una decisión deje de existir. La corrida nueva
     apunta a la anterior como origen.
     """
-    raise _pendiente_del_modelo("Recalcular una corrida")
+    try:
+        caso = repo.obtener(id_caso)
+    except CasoNoEncontrado:
+        raise _caso_no_encontrado() from None
+
+    anterior = repo.ultima_corrida(id_caso)
+    if anterior is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "detalle": "El caso no tiene ninguna corrida que recalcular.",
+                "restriccion": None,
+            },
+        )
+
+    if maestros is None:
+        raise SIN_DATOS_MAESTROS
+
+    # La corrida nueva apunta a la anterior y se anade al historial: registrar
+    # nunca sobrescribe, que es la regla del alcance sobre el recalculo.
+    nueva = ejecutar(caso, maestros, usuario=usuario.correo, origen=anterior.id_corrida)
+    return resultado_de(repo.registrar_corrida(nueva))
 
 
 @router.get(
@@ -144,4 +212,15 @@ async def verificar_fidelidad(
     Finanzas (`R-31`). Este endpoint es el que consulta la segunda de las
     cinco comprobaciones obligatorias de la ventana de pase.
     """
-    raise _pendiente_del_modelo("Contrastar contra el modelo de referencia")
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail={
+            "detalle": (
+                "El contraste contra el modelo de referencia exige los tres casos "
+                "certificados con sus inputs y resultados oficiales, que solo existen "
+                "dentro del tenant de MINSUR. El arnes N0-N3 ya corre sobre casos "
+                "sinteticos en cada integracion."
+            ),
+            "restriccion": "R-30",
+        },
+    )

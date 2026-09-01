@@ -11,8 +11,10 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from minsur_domain.carga_directa import CargaDirecta
+from minsur_engine.caso import DatosMaestros
 
 from .config import config
+from .repositorio import RepositorioDeCasos, RepositorioEnMemoria
 
 if TYPE_CHECKING:
     from azure.core.credentials import TokenCredential
@@ -43,3 +45,29 @@ def carga_directa() -> CargaDirecta:
             "configuracion de la aplicacion."
         )
     return CargaDirecta(cuenta=cfg.cuenta_almacenamiento, credencial=credencial())
+
+
+@lru_cache
+def repositorio() -> RepositorioDeCasos:
+    """Almacén de casos y corridas.
+
+    Devuelve el adaptador en memoria mientras Azure SQL no exista (`R-23`).
+    Sustituirlo por el definitivo es cambiar esta función, porque los routers
+    dependen del puerto y no del adaptador.
+    """
+    return RepositorioEnMemoria()
+
+
+def datos_maestros() -> DatosMaestros | None:
+    """Versión de datos maestros vigente: parámetros, tasas y escalas.
+
+    Los mantiene MINSUR (`R-32`) y todavía no han llegado, así que hoy devuelve
+    `None` y los endpoints que calculan responden 501 con esa restricción.
+    Inventar unos valores por defecto seria peor: alguien los tomaria por
+    oficiales y ningun contraste lo detectaria, porque el motor calcularia bien
+    sobre parametros equivocados.
+
+    Es una dependencia y no una lectura directa para que el entorno espejo
+    pueda inyectar un juego de prueba sin tocar los routers.
+    """
+    return None

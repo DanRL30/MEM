@@ -1010,6 +1010,15 @@ export interface operations {
                     "application/json": components["schemas"]["DetalleCaso"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problema"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -1017,15 +1026,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problema"];
                 };
             };
         };
@@ -1095,6 +1095,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problema"];
                 };
             };
             /** @description Conflict */
@@ -1171,6 +1180,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problema"];
+                };
+            };
         };
     };
     evaluar_api_casos__id_caso__evaluar_post: {
@@ -1194,6 +1212,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResultadoEvaluacion"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problema"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problema"];
                 };
             };
             /** @description Validation Error */
@@ -1401,6 +1437,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResultadoEvaluacion"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problema"];
                 };
             };
             /** @description Conflict */

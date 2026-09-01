@@ -4,21 +4,47 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from minsur_engine.cash_cost import cash_cost_unitario
+
+from ..dependencias import repositorio
 from ..esquemas import EstadosFinancieros, Problema, ResultadoExportacion, Tablero
+from ..evaluacion import indicadores_de
+from ..repositorio import CorridaAlmacenada, RepositorioDeCasos
 from ..seguridad import Usuario, usuario_actual
 
 router = APIRouter(tags=["Tablero"])
 
-PENDIENTE = HTTPException(
+SIN_CORRIDA = HTTPException(
+    status_code=status.HTTP_409_CONFLICT,
+    detail={
+        "detalle": "El caso no tiene ninguna corrida. Calculalo antes de abrir el tablero.",
+        "restriccion": None,
+    },
+)
+
+SIN_ALMACENAMIENTO = HTTPException(
     status_code=status.HTTP_501_NOT_IMPLEMENTED,
     detail={
         "detalle": (
-            "El tablero se alimenta del motor de calculo, cuya construccion "
-            "no ha iniciado por estar pendiente el modelo de referencia."
+            "La exportacion deposita el archivo en el almacenamiento y devuelve una firma "
+            "de lectura de corta vigencia. Esa cuenta se aprovisiona en el tenant de MINSUR, "
+            "que aun no esta habilitado."
         ),
-        "restriccion": "R-02",
+        "restriccion": "R-23",
     },
 )
+
+
+def _corrida(repo: RepositorioDeCasos, id_caso: str | None) -> CorridaAlmacenada:
+    """Ultima corrida del caso pedido, o la mas reciente si no se indica caso."""
+    if id_caso:
+        corrida = repo.ultima_corrida(id_caso)
+    else:
+        recientes, _ = repo.historial(limite=1)
+        corrida = recientes[0] if recientes else None
+    if corrida is None:
+        raise SIN_CORRIDA
+    return corrida
 
 
 @router.get(
@@ -30,13 +56,43 @@ PENDIENTE = HTTPException(
 async def tablero(
     caso: str | None = Query(default=None, description="Caso a mostrar"),
     usuario: Usuario = Depends(usuario_actual),
+    repo: RepositorioDeCasos = Depends(repositorio),
 ) -> Tablero:
     """Apertura comprometida por debajo de cinco segundos.
 
     Es la tercera de las cinco comprobaciones obligatorias de la ventana de
     pase, que mide esa latencia contra el objetivo del alcance.
     """
-    raise PENDIENTE
+    corrida = _corrida(repo, caso)
+    resultado = corrida.resultado
+    anos = resultado.caso.horizonte.anos_calendario
+    tributos = [
+        regalia + renta
+        for regalia, renta in zip(resultado.regalias, resultado.impuesto_renta, strict=True)
+    ]
+    return Tablero(
+        id_caso=corrida.id_caso,
+        indicadores=indicadores_de(corrida),
+        cascada=[
+            {"concepto": "Ventas", "valor": sum(resultado.ventas)},
+            {"concepto": "Cash cost", "valor": -sum(resultado.cash_cost)},
+            {"concepto": "Tributos", "valor": -sum(tributos)},
+            {"concepto": "Capital", "valor": -sum(resultado.capex)},
+        ],
+        curva_produccion=[
+            {"ano": ano, "valor": valor}
+            for ano, valor in zip(anos, resultado.concentrado_tratado, strict=True)
+        ],
+        curva_costo_unitario=[
+            {"ano": ano, "valor": cash_cost_unitario(costo, tratado)}
+            for ano, costo, tratado in zip(
+                anos, resultado.cash_cost, resultado.concentrado_tratado, strict=True
+            )
+        ],
+        capex_por_etapa=[
+            {"ano": ano, "valor": valor} for ano, valor in zip(anos, resultado.capex, strict=True)
+        ],
+    )
 
 
 @router.get(
@@ -48,6 +104,7 @@ async def tablero(
 async def estados_financieros(
     caso: str | None = Query(default=None),
     usuario: Usuario = Depends(usuario_actual),
+    repo: RepositorioDeCasos = Depends(repositorio),
 ) -> EstadosFinancieros:
     """Cada linea con un valor por ano del horizonte detectado.
 
@@ -55,7 +112,24 @@ async def estados_financieros(
     discrepancia contra el modelo de referencia en el bloque que la origina,
     y no solo constatar que el indicador final difiere.
     """
-    raise PENDIENTE
+    corrida = _corrida(repo, caso)
+    resultado = corrida.resultado
+    return EstadosFinancieros(
+        id_caso=corrida.id_caso,
+        anios=list(resultado.caso.horizonte.anos_calendario),
+        lineas={
+            "Ventas": list(resultado.ventas),
+            "Cash cost": list(resultado.cash_cost),
+            "Regalias": list(resultado.regalias),
+            "Participacion de trabajadores": list(resultado.participacion_trabajadores),
+            "Impuesto a la renta": list(resultado.impuesto_renta),
+            "EBITDA ajustado": list(resultado.flujo.ebitda_ajustado),
+            "Flujo operativo": list(resultado.flujo.flujo_operativo),
+            "Flujo de inversiones": list(resultado.flujo.flujo_de_inversiones),
+            "Flujo economico": list(resultado.flujo.flujo_economico),
+            "Variacion de capital de trabajo": list(resultado.variacion_capital_trabajo),
+        },
+    )
 
 
 @router.get(
@@ -82,4 +156,4 @@ async def exportar(
 
     Es la cuarta de las cinco comprobaciones obligatorias del pase.
     """
-    raise PENDIENTE
+    raise SIN_ALMACENAMIENTO

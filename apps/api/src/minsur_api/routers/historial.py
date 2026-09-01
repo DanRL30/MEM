@@ -8,19 +8,23 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from minsur_domain.estados import Perfil
 
+from ..dependencias import repositorio
 from ..esquemas import PaginaHistorial, Problema
+from ..evaluacion import entrada_de_historial
+from ..repositorio import RepositorioDeCasos
 from ..seguridad import Usuario, requiere, usuario_actual
 
 router = APIRouter(tags=["Historial"])
 
-PENDIENTE = HTTPException(
+BITACORA_PENDIENTE = HTTPException(
     status_code=status.HTTP_501_NOT_IMPLEMENTED,
     detail={
         "detalle": (
-            "El historial requiere la persistencia de corridas, cuyo esquema "
-            "depende de las plantillas definitivas de MINSUR."
+            "La bitacora encadenada se guarda en el almacen de solo escritura que la "
+            "plantilla Bicep aprovisiona en el tenant de MINSUR. El modelo de la bitacora "
+            "ya esta implementado; lo que falta es donde escribirla sin poder alterarla."
         ),
-        "restriccion": "R-07",
+        "restriccion": "R-23",
     },
 )
 
@@ -36,6 +40,7 @@ async def historial(
     caso: str | None = Query(default=None),
     continuacion: str | None = Query(default=None),
     usuario: Usuario = Depends(usuario_actual),
+    repo: RepositorioDeCasos = Depends(repositorio),
 ) -> PaginaHistorial:
     """Corridas ordenadas de la mas reciente a la mas antigua.
 
@@ -45,7 +50,18 @@ async def historial(
 
     Es la quinta de las cinco comprobaciones obligatorias del pase.
     """
-    raise PENDIENTE
+    desde = int(continuacion) if continuacion and continuacion.isdigit() else 0
+    corridas, total = repo.historial(limite=limite, desde=desde)
+    if caso:
+        corridas = [c for c in corridas if c.id_caso == caso]
+
+    nombres = {c.id_caso: c.nombre for c in repo.listar()}
+    siguiente = desde + limite
+    return PaginaHistorial(
+        corridas=[entrada_de_historial(c, nombres.get(c.id_caso, c.id_caso)) for c in corridas],
+        total=total,
+        continuacion=str(siguiente) if siguiente < total else None,
+    )
 
 
 @router.get(
@@ -67,4 +83,4 @@ async def auditoria(
     Las entradas van encadenadas: cada una incluye el resumen de la anterior,
     de modo que suprimir una intermedia rompe la cadena y se detecta.
     """
-    raise PENDIENTE
+    raise BITACORA_PENDIENTE

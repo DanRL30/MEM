@@ -158,11 +158,9 @@ class TestPendientes:
     @pytest.mark.parametrize(
         "ruta,restriccion",
         [
-            ("/api/tablero", "R-02"),
-            ("/api/estados-financieros", "R-02"),
-            ("/api/casos/C1/verificar-fidelidad", "R-02"),
-            ("/api/historial", "R-07"),
-            ("/api/casos", "R-07"),
+            ("/api/casos/C1/verificar-fidelidad", "R-30"),
+            ("/api/casos/C1/exportar", "R-23"),
+            ("/api/auditoria", "R-23"),
         ],
     )
     def test_declaran_la_restriccion_que_las_bloquea(
@@ -170,9 +168,21 @@ class TestPendientes:
     ):
         # Devolver 501 con la restricción es preferible a devolver un
         # resultado inventado que alguien pueda tomar por bueno.
+        #
+        # La lista encogio el 01/09/2026: el modelo de referencia llego y el
+        # motor calcula, asi que casos, historial, tablero y estados
+        # financieros dejaron de estar bloqueados. Lo que queda depende de
+        # infraestructura del tenant o de datos del cliente, no de nosotros.
         respuesta = cliente.get(ruta, headers={"Authorization": "Bearer x"})
         assert respuesta.status_code == 501
         assert respuesta.json()["detail"]["restriccion"] == restriccion
+
+    def test_lo_que_ya_calcula_no_responde_501(self, cliente: TestClient):
+        # La otra mitad, y la que evita que un bloqueo vuelva sin que nadie lo
+        # note: estas rutas ya no dependen de ningun insumo pendiente.
+        for ruta in ("/api/casos", "/api/historial"):
+            respuesta = cliente.get(ruta, headers={"Authorization": "Bearer x"})
+            assert respuesta.status_code == 200, ruta
 
 
 # --- Esquema -----------------------------------------------------------------

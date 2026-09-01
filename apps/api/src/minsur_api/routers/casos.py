@@ -2,35 +2,66 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
-from minsur_domain.estados import Perfil
+from minsur_domain.estados import Estado, Perfil, acciones_disponibles
 
-from ..esquemas import DetalleCaso, NuevoCaso, Problema, ResumenCaso
+from ..dependencias import repositorio
+from ..esquemas import DetalleCaso, NuevoCaso, Problema, ResumenCaso, Terna
+from ..evaluacion import terna_de
+from ..repositorio import (
+    CasoAlmacenado,
+    CasoNoEncontrado,
+    RepositorioDeCasos,
+    nuevo_id_de_caso,
+)
 from ..seguridad import Usuario, requiere, usuario_actual
 
 router = APIRouter(prefix="/casos", tags=["Casos"])
 
-PENDIENTE = HTTPException(
-    status_code=status.HTTP_501_NOT_IMPLEMENTED,
-    detail={
-        "detalle": (
-            "La persistencia de casos requiere el esquema de datos, cuya "
-            "definicion depende de las plantillas definitivas de MINSUR."
-        ),
-        "restriccion": "R-07",
-    },
-)
+NO_ENCONTRADO = "No existe un caso con ese identificador."
+
+
+def _resumen(caso: CasoAlmacenado) -> ResumenCaso:
+    return ResumenCaso(
+        id_caso=caso.id_caso,
+        nombre=caso.nombre,
+        tipo=caso.tipo,  # type: ignore[arg-type]
+        estado=caso.estado,
+        actualizado_en=caso.actualizado_en,
+        actualizado_por=caso.actualizado_por,
+    )
+
+
+def _detalle(caso: CasoAlmacenado, perfil: Perfil, terna: Terna | None) -> DetalleCaso:
+    return DetalleCaso(
+        **_resumen(caso).model_dump(),
+        descripcion=caso.descripcion,
+        terna=terna,
+        acciones_disponibles=list(acciones_disponibles(caso.estado, perfil)),
+    )
+
+
+def _buscar(repo: RepositorioDeCasos, id_caso: str) -> CasoAlmacenado:
+    try:
+        return repo.obtener(id_caso)
+    except CasoNoEncontrado:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"detalle": NO_ENCONTRADO, "restriccion": None},
+        ) from None
 
 
 @router.get("", response_model=list[ResumenCaso], summary="Listar casos")
 async def listar(
     tipo: str | None = Query(default=None, description="Filtra por tipo de caso"),
     usuario: Usuario = Depends(usuario_actual),
+    repo: RepositorioDeCasos = Depends(repositorio),
 ) -> list[ResumenCaso]:
-    raise PENDIENTE
+    return [_resumen(caso) for caso in repo.listar(tipo=tipo)]
 
 
 @router.post(
@@ -38,7 +69,7 @@ async def listar(
     response_model=DetalleCaso,
     status_code=status.HTTP_201_CREATED,
     summary="Crear o duplicar un caso",
-    responses={501: {"model": Problema}},
+    responses={404: {"model": Problema}},
 )
 async def crear(
     nuevo: NuevoCaso,
@@ -49,6 +80,7 @@ async def crear(
             Perfil.INGENIERO_DE_PROYECTO,
         )
     ),
+    repo: RepositorioDeCasos = Depends(repositorio),
 ) -> DetalleCaso:
     """Crea un caso en estado borrador.
 
@@ -56,7 +88,23 @@ async def crear(
     nace en borrador y con revision de inputs 1: es un caso nuevo, no una
     version del anterior.
     """
-    raise PENDIENTE
+    insumos = None
+    if nuevo.duplicar_de is not None:
+        insumos = _buscar(repo, nuevo.duplicar_de).insumos
+
+    caso = repo.guardar(
+        CasoAlmacenado(
+            id_caso=nuevo_id_de_caso(nuevo.tipo),
+            nombre=nuevo.nombre,
+            tipo=nuevo.tipo,
+            descripcion=nuevo.descripcion,
+            estado=Estado.BORRADOR,
+            actualizado_en=datetime.now(UTC),
+            actualizado_por=usuario.correo,
+            insumos=insumos,
+        )
+    )
+    return _detalle(caso, usuario.perfil, terna=None)
 
 
 @router.get(
@@ -68,20 +116,24 @@ async def crear(
 async def detalle(
     id_caso: str = Path(examples=["CASO-SR-2026-014"]),
     usuario: Usuario = Depends(usuario_actual),
+    repo: RepositorioDeCasos = Depends(repositorio),
 ) -> DetalleCaso:
     """Incluye las acciones disponibles para el perfil del solicitante."""
-    raise PENDIENTE
+    caso = _buscar(repo, id_caso)
+    corrida = repo.ultima_corrida(id_caso)
+    return _detalle(caso, usuario.perfil, terna_de(corrida) if corrida else None)
 
 
 @router.get(
     "/{id_caso}/comparar/{id_otro}",
     summary="Comparar dos casos",
-    responses={409: {"model": Problema}},
+    responses={404: {"model": Problema}, 409: {"model": Problema}},
 )
 async def comparar(
     id_caso: str,
     id_otro: str,
     usuario: Usuario = Depends(usuario_actual),
+    repo: RepositorioDeCasos = Depends(repositorio),
 ) -> dict[str, Any]:
     """Compara el caso sin proyecto contra uno o varios casos con proyecto.
 
@@ -90,4 +142,36 @@ async def comparar(
     version mayor distinta produce una diferencia que no es atribuible al
     proyecto.
     """
-    raise PENDIENTE
+    primera = repo.ultima_corrida(_buscar(repo, id_caso).id_caso)
+    segunda = repo.ultima_corrida(_buscar(repo, id_otro).id_caso)
+    if primera is None or segunda is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "detalle": "Ambos casos deben tener una corrida para poder compararse.",
+                "restriccion": None,
+            },
+        )
+
+    # Solo la version mayor importa: es la que significa que una regla de
+    # calculo cambio y que los resultados difieren por el motor, no por el caso.
+    comparables = primera.version_motor.split(".")[0] == segunda.version_motor.split(".")[0]
+    npv_primera = primera.resultado.indicadores.npv
+    npv_segunda = segunda.resultado.indicadores.npv
+
+    return {
+        "id_caso": id_caso,
+        "id_otro": id_otro,
+        "comparables": comparables,
+        "advertencia": None
+        if comparables
+        else (
+            "Las corridas se calcularon con versiones mayores distintas del motor. "
+            "La diferencia incluye el cambio de logica y no es atribuible al proyecto."
+        ),
+        "delta_npv_musd": (npv_segunda - npv_primera) / 1_000_000.0,
+        "versiones": {
+            id_caso: primera.version_motor,
+            id_otro: segunda.version_motor,
+        },
+    }
