@@ -165,17 +165,17 @@ secas, no `uv run`, asi que exige el entorno del proyecto activo o falla con `Mo
 
 ## 3. Estado verificado de las comprobaciones
 
-Reejecutado el 31/08/2026 sobre el arbol completo, con los cambios del directorio de trabajo
-incluidos. **Todas las puertas de [ci.yml](infra/pipelines/ci.yml) estan en verde.** Cualquier
-fallo es una regresion introducida despues, no deuda heredada.
+Reejecutado el 01/09/2026 sobre el arbol completo. **Todas las puertas de
+[ci.yml](infra/pipelines/ci.yml) estan en verde.** Cualquier fallo es una regresion introducida
+despues, no deuda heredada.
 
 | Comprobacion | Resultado |
 |---|---|
 | `verificar_convenciones.py` | Sin infracciones |
 | `ruff check .` | Limpio |
-| `ruff format --check .` | Limpio, 52 archivos |
-| `mypy packages apps/api/src` | Limpio en modo estricto, 28 archivos |
-| `pytest` | 77 de 77 |
+| `ruff format --check .` | Limpio, 82 archivos |
+| `mypy packages apps/api/src` | Limpio en modo estricto, 50 archivos |
+| `pytest` | 221 de 221, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
