@@ -1,0 +1,181 @@
+"""El caso: todo lo que hace falta para evaluar un proyecto, y nada más.
+
+Es la entrada del motor. Reúne las estructuras que cada bloque definió por su
+cuenta —el capital de `capex`, los costos de `cash_cost`, los metales de
+`ventas`, las escalas de `tributos`— y añade lo que ninguno necesitaba solo: el
+horizonte común, las unidades productivas y los datos del caso.
+
+**Un caso no nombra proyectos.** Declara unidades productivas con su tipo y sus
+series. Que una se llame Nazareth o Proyecto X no cambia una línea del cálculo,
+y esa es exactamente la propiedad que el modelo de referencia no tiene: donde el
+libro precablea 48 casos en 1 870 columnas, aquí hay una lista.
+
+**Los datos maestros no viven en el caso.** Parámetros corporativos, tasas de
+depreciación y escalas tributarias los mantiene MINSUR (`R-32`) y una corrida
+registra qué versión usó. Van juntos en `DatosMaestros` para que esa versión sea
+una sola cosa y no siete campos sueltos que puedan mezclarse.
+
+Ver [modelo-estandar.md](../../../../docs/modelo-economico/modelo-estandar.md).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+
+from minsur_engine.capex import CapitalDeUnidad
+from minsur_engine.depreciacion import TasasDeDepreciacion
+from minsur_engine.horizonte import Horizonte, Serie
+from minsur_engine.parametros import ParametrosCorporativos
+from minsur_engine.tributos import EscalaProgresiva
+
+TIPOS_DE_UNIDAD = ("mina", "preconcentracion", "concentradora", "relavera", "fundicion")
+
+
+class ErrorCaso(ValueError):
+    """El caso está mal formado y no se puede evaluar."""
+
+
+@dataclass(frozen=True)
+class ProduccionDeUnidad:
+    """Series de producción de una unidad, alineadas al horizonte del caso."""
+
+    mineral_tratado: Serie
+    """Base del cash cost unitario."""
+
+    concentrado_producido: Serie
+    """Lo que la unidad entrega a la fundición del complejo."""
+
+    metal_refinado_vendido: Serie = ()
+    """Contenido fino que se vende ya refinado, en tmf."""
+
+    metal_en_concentrado_vendido: Serie = ()
+    """Contenido fino que se vende dentro del concentrado, en tmf."""
+
+    capacidad_de_tratamiento: Serie = ()
+    """Solo en unidades de fundición: el tope que acota lo alimentado."""
+
+
+@dataclass(frozen=True)
+class UnidadProductiva:
+    """Una mina, una planta o una fundición, con todo lo suyo."""
+
+    nombre: str
+    tipo: str
+    produccion: ProduccionDeUnidad
+    costos: Mapping[str, Serie] = field(default_factory=dict)
+    """Conceptos de costo operativo. La lista es abierta: acuerdo 6 del 27/08/2026."""
+
+    capital: CapitalDeUnidad | None = None
+
+    def __post_init__(self) -> None:
+        if not self.nombre.strip():
+            raise ErrorCaso("Una unidad productiva sin nombre no se puede identificar.")
+        if self.tipo not in TIPOS_DE_UNIDAD:
+            raise ErrorCaso(
+                f"{self.nombre}: tipo {self.tipo!r} desconocido. Use {', '.join(TIPOS_DE_UNIDAD)}."
+            )
+        if self.capital is not None and self.capital.unidad != self.nombre:
+            raise ErrorCaso(
+                f"El capital declarado pertenece a {self.capital.unidad!r} y la unidad se llama "
+                f"{self.nombre!r}. Cruzar capitales entre unidades rompe el desglose por mina."
+            )
+
+    @property
+    def es_fundicion(self) -> bool:
+        return self.tipo == "fundicion"
+
+
+@dataclass(frozen=True)
+class TerminosComerciales:
+    """Precios y condiciones de venta del caso, por año.
+
+    El estaño refinado se vende al precio más un premio; el estaño en
+    concentrado, al precio afectado por el factor de metal pagable. Son los dos
+    caminos de ingreso que la hoja `Ventas` distingue.
+    """
+
+    precio_metal_refinado: Serie
+    premio_metal_refinado: Serie
+    precio_metal_en_concentrado: Serie
+    factor_metal_pagable: Serie
+    ajustes: Serie = ()
+    """Ajustes finales de la línea de venta, positivos o negativos."""
+
+
+@dataclass(frozen=True)
+class DatosComunes:
+    """Lo que es del caso y no de una unidad."""
+
+    gastos_administrativos: Serie
+    gestion_social: Serie = ()
+    otros_gastos: Serie = ()
+    estudios: Serie = ()
+    exploraciones: Serie = ()
+    predios: Serie = ()
+    intereses: Serie = ()
+    otros_flujo: Serie = ()
+    fletes_por_tonelada: Serie = ()
+    gasto_de_ventas_por_tonelada: Serie = ()
+    dias_por_cobrar: Serie = ()
+    dias_por_pagar: Serie = ()
+    cuentas_de_capital_trabajo_activas: bool = True
+    """Reproduce el interruptor `Control!$G$21` del libro."""
+
+    saldo_inicial_de_perdidas: float = 0.0
+    capacidad_para_intensidad: float = 0.0
+    """Denominador de la intensidad de capital. Cero significa que no se calcula."""
+
+
+@dataclass(frozen=True)
+class DatosMaestros:
+    """La versión de datos maestros con la que se calcula una corrida."""
+
+    parametros: ParametrosCorporativos
+    tasas_tributarias: TasasDeDepreciacion
+    tasas_financieras: TasasDeDepreciacion
+    escala_regalia: EscalaProgresiva
+    escala_iem: EscalaProgresiva
+    tasa_igv: float = 0.18
+
+    @property
+    def version(self) -> str:
+        return self.parametros.version_datos_maestros
+
+
+@dataclass(frozen=True)
+class Caso:
+    """Un proyecto a evaluar, sea cual sea su nombre."""
+
+    nombre: str
+    horizonte: Horizonte
+    unidades: tuple[UnidadProductiva, ...]
+    terminos: TerminosComerciales
+    datos_comunes: DatosComunes
+
+    def __post_init__(self) -> None:
+        if not self.unidades:
+            raise ErrorCaso(
+                f"El caso {self.nombre!r} no declara unidades productivas. Sin al menos una no hay "
+                "produccion que evaluar."
+            )
+        nombres = [u.nombre for u in self.unidades]
+        repetidos = {n for n in nombres if nombres.count(n) > 1}
+        if repetidos:
+            raise ErrorCaso(
+                f"El caso {self.nombre!r} repite la unidad {sorted(repetidos)}. El desglose por "
+                "mina exige nombres unicos."
+            )
+        if sum(1 for u in self.unidades if u.es_fundicion) > 1:
+            raise ErrorCaso(
+                f"El caso {self.nombre!r} declara mas de una fundicion. El tope de capacidad se "
+                "aplica sobre el concentrado del complejo y no sabria a cual acotar."
+            )
+
+    @property
+    def fundicion(self) -> UnidadProductiva | None:
+        return next((u for u in self.unidades if u.es_fundicion), None)
+
+    @property
+    def unidades_mineras(self) -> tuple[UnidadProductiva, ...]:
+        return tuple(u for u in self.unidades if not u.es_fundicion)
