@@ -1,0 +1,24 @@
+{
+  "id": "MODELO-REFERENCIA-NZ-SD",
+  "tipo": "modelo-referencia",
+  "descripcion": "Libro corporativo de evaluacion economica entregado por Finanzas. Contiene los casos de Nazareth Abr-26 y Santo Domingo 11.05.",
+  "origen": "Finanzas MINSUR",
+  "restricciones": [
+    "R-02",
+    "R-13",
+    "R-35"
+  ],
+  "archivo": "Modelo Nazareth Abr_26 + Santo Domingo 11.05 (MOD).xlsx",
+  "bytes": 6259910,
+  "sha256": "c4b53ab119fe43ca5f82ca65ac3ce787c7d551a7881c66a23d40437550050a64",
+  "recibido": "31/08/2026",
+  "custodia_local": "00-gestion/03-insumos-minsur/modelo-referencia/",
+  "uri_tenant": "",
+  "vigencia_confirmada": true,
+  "observacion_vigencia": "Finanzas confirma el 01/09/2026 que es el archivo vigente. El sufijo (MOD) indica que los datos fueron modificados por confidencialidad; las formulas son las correctas. En consecuencia este archivo sirve para contrastar logica, no cifras: el contraste numerico N1-N3 se ejecuta contra los casos certificados dentro del tenant (R-30).",
+  "version_motor_certificada": "",
+  "fecha_certificacion": "",
+  "certificado_por": "",
+  "confirmada_por": "Finanzas MINSUR",
+  "fecha_confirmacion": "01/09/2026"
+}
