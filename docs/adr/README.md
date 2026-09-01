@@ -34,6 +34,7 @@ Qué se vuelve fácil, qué se vuelve difícil, qué queda bloqueado.
 |---|---|---|---|
 | [0001](0001-python-como-lenguaje-del-motor.md) | Python como lenguaje del motor y de los servicios, pese al estándar .NET/C# | aceptada | 24/08/2026 |
 | [0008](0008-versionado-de-claude-md.md) | Versionar `CLAUDE.md` con su encabezado de origen | aceptada | 24/08/2026 |
+| [0009](0009-resolucion-de-la-circularidad-tributaria.md) | Resolver la circularidad participación-impuestos en forma cerrada, sin iterar | aceptada | 01/09/2026 |
 
 La numeración no sigue el orden de redacción. Los números de la tabla siguiente están reservados
 para decisiones ya identificadas, así que un ADR nuevo toma el primero libre por encima de ellas.
