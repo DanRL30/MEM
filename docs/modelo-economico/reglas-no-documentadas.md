@@ -25,6 +25,8 @@ que es lo que el motor necesita.
 | 007 | Configuración del libro | `calcOnSave=0` | Los valores guardados pueden no corresponder a las fórmulas guardadas | | | |
 | 008 | `InputsOpex`, 5 661 celdas | `IFERROR(x/y*10^3, 0)` | **Cero es el resultado esperado.** Una indeterminación como 0/0 no detiene el cálculo | Finanzas | 01/09/2026 | `cash_cost.py` |
 | 009 | `InputsCapex` | Ninguna fórmula propia: 5 394 enlaces externos y el resto valores | El capital entra al modelo ya calculado desde otros libros | | | |
+| 010 | `Ventas`, filas 61 a 66 | Las penalidades del concentrado se calculan y se suman al total de cargos, pero el valor neto que alimenta la venta no las incluye | Puede ser deliberado —penalidad liquidada aparte— o un arrastre. Se reproduce | | | `ventas.py` |
+| 011 | `Ventas`, filas 55 a 60 | El contenido pagable se valoriza sobre las toneladas vendidas y los cargos se cobran sobre las netas de merma | Asimetría deliberada de la liquidación comercial | | | `ventas.py` |
 
 ## Detalle de las que no caben en una fila
 
@@ -42,6 +44,18 @@ capacidad necesita otro número.
 poder cambiarla. Deja de ser una constante del motor y pasa al catálogo como *capacidad máxima de
 tratamiento*, un input por unidad productiva y por año. El valor de 90 000 sobrevive únicamente
 como el que traen los casos históricos al contrastarse.
+
+### 010 — Las penalidades no llegan a la venta
+
+El libro liquida el concentrado en dos totales distintos. Uno, `Total Concentrado Cu`, suma
+maquila, refinación **y penalidades**. Otro, `Valor neto`, suma solo el valor pagable menos maquila
+y refinación. El que alimenta la línea de venta es el segundo, así que las penalidades se calculan y
+no afectan al ingreso.
+
+Puede ser deliberado —una penalidad que se liquida por fuera del contrato principal— o un arrastre
+de una versión anterior. El motor reproduce el comportamiento y expone los dos totales por separado,
+de modo que la respuesta de Finanzas se implemente cambiando qué total consume el flujo, sin tocar
+la liquidación.
 
 ### 004 — Los tramos tributarios
 
@@ -99,8 +113,8 @@ utilidad`. Esa cancelación es lo que sostiene la decisión del ADR.
 4. **Precisión numérica** — se evalúa contra la tolerancia acordada y se documenta como aceptable
    sin corrección si queda dentro del umbral.
 
-Las nueve del registro son de tipo 2, salvo la 005 y la 007, que son de tipo 3: se reproducen y se
-reportan. Seis quedaron confirmadas por Finanzas el 01/09/2026; siguen abiertas la 003 (unidades de
+Las once del registro son de tipo 2, salvo la 005, la 007 y la 010, que son de tipo 3: se reproducen
+y se reportan. Seis quedaron confirmadas por Finanzas el 01/09/2026; siguen abiertas la 003 (unidades de
 medida), la 004 (tramos tributarios) y la 007 (valores guardados sin recalcular).
 
 Ver la bitácora de discrepancias abiertas en `bitacora-discrepancias.md`.
