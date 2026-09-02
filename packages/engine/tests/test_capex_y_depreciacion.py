@@ -293,7 +293,8 @@ class TestAgotamiento:
         )
         detalle = depreciacion_por_componente(horizonte, capital_con_computo, TASAS)
         assert set(detalle) == {"maquinaria", "equipos_de_computo"}
-        # Sin tasa propia usa la de maquinaria, que es lo que hace el libro.
+        # Comparten tasa porque comparten clasificacion contable: el computo es
+        # MAQ. Separar el componente separa el detalle, no la clase.
         assert detalle["equipos_de_computo"] == detalle["maquinaria"]
 
     def test_la_proyeccion_de_sap_viaja_aparte(self, horizonte: Horizonte) -> None:

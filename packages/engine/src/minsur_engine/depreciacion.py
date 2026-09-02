@@ -22,6 +22,11 @@ fracción del saldo que representa lo extraído sobre las reservas que quedaban.
 Un activo así no se agota en un número fijo de ejercicios, sino al ritmo al que
 se vacía el yacimiento, que es lo que la contabilidad financiera persigue.
 
+Los equipos de cómputo caen del lado del agotamiento aunque su clasificación
+contable sea la de la maquinaria, porque la fila que agota toma el capital de la
+unidad menos la maquinaria y menos lo no depreciable, y ahí el libro resta solo
+la fila de maquinaria. Se reproduce y está consultado: es la regla `036`.
+
 ## Cada componente se deprecia y se informa por separado
 
 El libro consolida los equipos de cómputo con la maquinaria bajo un solo código.
@@ -66,8 +71,8 @@ COMPONENTES_POR_AGOTAMIENTO = ("equipos_de_computo", "instalaciones", "edificaci
 """Lo que la vía financiera agota contra las reservas en vez de depreciar lineal.
 
 Es la lectura literal del libro: la fila que agota toma el capital de la unidad
-menos la maquinaria y menos lo no depreciable, de modo que los equipos de
-cómputo caen de este lado aunque la vía tributaria los sume con la maquinaria.
+menos la maquinaria y menos lo no depreciable, y al restar solo la fila de
+maquinaria deja dentro los equipos de cómputo, que comparten su clasificación.
 """
 
 PROYECCION_SAP = "Proyeccion SAP"
@@ -93,16 +98,18 @@ class TasasDeDepreciacion:
     del libro y engaña: no es que no se deprecie, es que no se reparte. Es el
     escudo del capital de cierre, y la regla `034`.
 
-    `equipos_de_computo` y `estudios` son opcionales y sin declarar usan la de
-    maquinaria y la de edificaciones, que es la tasa que el libro les aplica de
-    hecho. Declararlas es lo único que hace falta el día que MINSUR les dé una
-    propia; **el componente ya está separado y no hay que deshacer ninguna suma**.
+    **Los equipos de cómputo no llevan tasa propia, y no es un pendiente.** Su
+    clasificación contable es `MAQ`, la misma que la maquinaria, de modo que su
+    tasa es la de su clase. Que el componente se informe por separado no lo saca
+    de esa clase: separa el detalle, no la clasificación.
+
+    `estudios` sí es opcional, y sin declarar usa la de edificaciones, que es la
+    que el libro les aplica.
     """
 
     maquinaria: float
     instalaciones: float
     edificaciones: float
-    equipos_de_computo: float | None = None
     estudios: float | None = None
     no_depreciable: float = 1.0
 
@@ -111,7 +118,6 @@ class TasasDeDepreciacion:
             "maquinaria",
             "instalaciones",
             "edificaciones",
-            "equipos_de_computo",
             "estudios",
             "no_depreciable",
         ):
@@ -127,7 +133,8 @@ class TasasDeDepreciacion:
     def de(self, componente: str) -> float:
         if componente not in NATURALEZAS:
             raise ErrorDepreciacion(f"Naturaleza {componente!r} desconocida.")
-        if componente == "equipos_de_computo" and self.equipos_de_computo is None:
+        if componente == "equipos_de_computo":
+            # Su clasificacion contable es MAQ: la tasa es la de su clase.
             return self.maquinaria
         tasa: float = getattr(self, componente)
         return tasa

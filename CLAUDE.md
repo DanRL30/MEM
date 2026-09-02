@@ -401,7 +401,10 @@ plantilla de opex y el libro lo deprecia igual, en las dos vias. Una unidad
 puede depreciar sin haber invertido, con solo capitalizar un estudio.
 
 **Cada componente se deprecia y se informa por separado**, aunque el libro
-fusione los equipos de computo con la maquinaria bajo un mismo codigo. Un
+fusione los equipos de computo con la maquinaria bajo un mismo codigo. Su tasa
+sigue siendo la de la maquinaria, y no por falta de una propia: **su
+clasificacion contable es `MAQ`**, de modo que separar el componente separa el
+detalle y no la clase. Un
 proyecto nuevo puede traer componentes que hoy no existen, y una depreciacion
 que llega sumada no se puede volver a separar. `Corrida` lleva las dos vistas:
 el total por mina y el detalle por componente.
