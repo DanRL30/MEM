@@ -1,8 +1,9 @@
 """Pruebas del capital y de la depreciación.
 
-Tres reglas del libro se verifican aquí y conviene nombrarlas: el cuadre de las
-dos clasificaciones del capital, el ajuste de la última cuota al saldo, y que la
-depreciación no corre antes de que la unidad produzca.
+Cuatro reglas del libro se verifican aquí y conviene nombrarlas: el cuadre de las
+dos clasificaciones del capital, el ajuste de la última cuota al saldo, que la
+depreciación no corre antes de que la unidad produzca, y que la vía financiera
+agota el capital contra las reservas en vez de depreciarlo lineal.
 """
 
 from __future__ import annotations
@@ -19,13 +20,20 @@ from minsur_engine.capex import (
     capex_total,
 )
 from minsur_engine.depreciacion import (
+    PROYECCION_SAP,
+    Agotamiento,
     ErrorDepreciacion,
     TasasDeDepreciacion,
+    agotar,
     cronograma_de_inversion,
     cuota,
     depreciacion_de_unidad,
+    depreciacion_por_componente,
     depreciacion_por_mina,
     depreciar,
+    por_unidad,
+    saldo_de_reservas,
+    tasas_de_agotamiento,
     total_depreciado,
 )
 from minsur_engine.horizonte import Horizonte
@@ -172,7 +180,8 @@ class TestDesglosePorMina:
 
     def test_el_total_es_la_suma_del_desglose(self, horizonte: Horizonte) -> None:
         unidades = [capital(horizonte), capital(horizonte, unidad="Nazareth")]
-        por_mina = depreciacion_por_mina(horizonte, unidades, TASAS)
+        detalle = depreciacion_por_mina(horizonte, unidades, TASAS)
+        por_mina = por_unidad(horizonte, detalle)
         total = total_depreciado(horizonte, por_mina)
         assert total[0] == pytest.approx(por_mina["San Rafael"][0] + por_mina["Nazareth"][0])
 
@@ -181,6 +190,112 @@ class TestDesglosePorMina:
         produccion = {
             "Nazareth": horizonte.serie([0.0, 0.0, 0.0, 700.0] + [0.0] * 4, nombre="prod")
         }
-        por_mina = depreciacion_por_mina(horizonte, unidades, TASAS, produccion=produccion)
+        detalle = depreciacion_por_mina(horizonte, unidades, TASAS, produccion=produccion)
+        por_mina = por_unidad(horizonte, detalle)
         assert por_mina["San Rafael"][0] > 0.0
         assert por_mina["Nazareth"][:3] == (0.0, 0.0, 0.0)
+
+
+class TestAgotamiento:
+    """La vía financiera no deprecia lineal: agota contra las reservas."""
+
+    def _agotamiento(self, horizonte: Horizonte, reservas: float = 1_000.0) -> Agotamiento:
+        return Agotamiento(
+            extraido=horizonte.serie([100.0] * horizonte.anos, nombre="extraido"),
+            reservas=reservas,
+        )
+
+    def test_la_tasa_es_lo_extraido_sobre_lo_que_quedaba(self, horizonte: Horizonte) -> None:
+        # Cien de mil el primer ano; el segundo, cien de los novecientos que
+        # quedaron. La tasa sube a medida que el yacimiento se vacia.
+        tasas = tasas_de_agotamiento(horizonte, self._agotamiento(horizonte))
+        assert tasas[0] == pytest.approx(0.10)
+        assert tasas[1] == pytest.approx(100.0 / 900.0)
+
+    def test_el_saldo_de_reservas_rueda_y_se_redondea(self, horizonte: Horizonte) -> None:
+        # Regla 001: el saldo se redondea a tonelada entera.
+        agotamiento = Agotamiento(
+            extraido=horizonte.serie([100.5] * horizonte.anos, nombre="extraido"),
+            reservas=1_000.0,
+        )
+        cierres = saldo_de_reservas(horizonte, agotamiento)
+        assert cierres[0] == 900.0
+        assert cierres[1] == 800.0
+
+    def test_la_conversion_de_recursos_suma_al_saldo(self, horizonte: Horizonte) -> None:
+        # Es lo que permite el acuerdo 9: un recurso que pasa a reserva alarga
+        # la vida de la unidad.
+        agotamiento = Agotamiento(
+            extraido=horizonte.serie([100.0] * horizonte.anos, nombre="extraido"),
+            reservas=1_000.0,
+            conversion_de_recursos=horizonte.serie(
+                [0.0, 500.0] + [0.0] * (horizonte.anos - 2), nombre="conversion"
+            ),
+        )
+        cierres = saldo_de_reservas(horizonte, agotamiento)
+        assert cierres[1] == 1_300.0
+
+    def test_la_tasa_nunca_pasa_de_uno(self, horizonte: Horizonte) -> None:
+        # El libro omite el tope en una de las seis unidades. Sin el, una
+        # extraccion mayor que el saldo depreciaria mas capital del que queda.
+        agotamiento = Agotamiento(
+            extraido=horizonte.serie([5_000.0] * horizonte.anos, nombre="extraido"),
+            reservas=1_000.0,
+        )
+        assert all(tasa <= 1.0 for tasa in tasas_de_agotamiento(horizonte, agotamiento))
+
+    def test_agotar_deprecia_sobre_un_solo_saldo(self, horizonte: Horizonte) -> None:
+        # A diferencia de la lineal, no hay cronograma por ano de inversion: hay
+        # un saldo que recibe la inversion del ejercicio y se agota.
+        inversiones = horizonte.serie([1_000.0] + [0.0] * (horizonte.anos - 1), nombre="capex")
+        tasas = horizonte.serie([0.5, 0.5] + [0.0] * (horizonte.anos - 2), nombre="tasas")
+        cuotas = agotar(horizonte, inversiones, tasas)
+        assert cuotas[0] == pytest.approx(500.0)
+        assert cuotas[1] == pytest.approx(250.0)
+
+    def test_las_dos_vias_difieren_en_los_componentes_que_agotan(
+        self, horizonte: Horizonte
+    ) -> None:
+        capital_mixto = CapitalDeUnidad(
+            unidad="San Rafael",
+            por_etapa={"inicial": horizonte.serie([200.0] + [0.0] * 7, nombre="inicial")},
+            por_naturaleza={
+                "maquinaria": horizonte.serie([100.0] + [0.0] * 7, nombre="maq"),
+                "edificaciones": horizonte.serie([100.0] + [0.0] * 7, nombre="edi"),
+            },
+        )
+        tributaria = depreciacion_por_componente(horizonte, capital_mixto, TASAS)
+        financiera = depreciacion_por_componente(
+            horizonte, capital_mixto, TASAS, agotamiento=self._agotamiento(horizonte)
+        )
+        # La maquinaria no cambia de metodo entre una via y la otra.
+        assert tributaria["maquinaria"] == financiera["maquinaria"]
+        # Las edificaciones si: la tributaria las deprecia al 5 % y la
+        # financiera al ritmo al que se vacia el yacimiento.
+        assert tributaria["edificaciones"][0] == pytest.approx(5.0)
+        assert financiera["edificaciones"][0] == pytest.approx(10.0)
+
+    def test_computo_no_se_suma_a_maquinaria(self, horizonte: Horizonte) -> None:
+        # El libro los fusiona bajo un codigo; aqui cada componente se informa
+        # por separado para que un proyecto nuevo pueda tener el suyo.
+        capital_con_computo = CapitalDeUnidad(
+            unidad="San Rafael",
+            por_etapa={"inicial": horizonte.serie([200.0] + [0.0] * 7, nombre="inicial")},
+            por_naturaleza={
+                "maquinaria": horizonte.serie([100.0] + [0.0] * 7, nombre="maq"),
+                "equipos_de_computo": horizonte.serie([100.0] + [0.0] * 7, nombre="computo"),
+            },
+        )
+        detalle = depreciacion_por_componente(horizonte, capital_con_computo, TASAS)
+        assert set(detalle) == {"maquinaria", "equipos_de_computo"}
+        # Sin tasa propia usa la de maquinaria, que es lo que hace el libro.
+        assert detalle["equipos_de_computo"] == detalle["maquinaria"]
+
+    def test_la_proyeccion_de_sap_viaja_aparte(self, horizonte: Horizonte) -> None:
+        # No sale de ninguna inversion del caso: es lo ya contabilizado.
+        proyeccion = horizonte.serie([37.0] * horizonte.anos, nombre="sap")
+        detalle = depreciacion_por_componente(
+            horizonte, capital(horizonte), TASAS, proyeccion=proyeccion
+        )
+        assert detalle[PROYECCION_SAP] == proyeccion
+        assert PROYECCION_SAP not in capital(horizonte).por_naturaleza

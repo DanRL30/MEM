@@ -49,7 +49,12 @@ from minsur_engine.cash_cost import (
 )
 from minsur_engine.caso import Caso, DatosMaestros, UnidadProductiva, campos_con_dato
 from minsur_engine.corroboracion import Discrepancia, corroborar
-from minsur_engine.depreciacion import depreciacion_por_mina, total_depreciado
+from minsur_engine.depreciacion import (
+    Agotamiento,
+    depreciacion_por_mina,
+    por_unidad,
+    total_depreciado,
+)
 from minsur_engine.flujos import (
     ComponentesDeInversion,
     ComponentesOperativos,
@@ -185,6 +190,16 @@ class Corrida:
     capex: Serie
     depreciacion_tributaria_por_mina: dict[str, Serie]
     depreciacion_financiera_por_mina: dict[str, Serie]
+
+    depreciacion_tributaria_por_componente: dict[str, dict[str, Serie]]
+    depreciacion_financiera_por_componente: dict[str, dict[str, Serie]]
+    """La misma depreciacion, abierta por componente contable.
+
+    El libro consolida los equipos de computo con la maquinaria y la plataforma
+    no: un proyecto nuevo puede traer componentes que hoy no existen, y una
+    depreciacion que llega sumada no se puede volver a separar. Lleva ademas la
+    proyeccion ya contabilizada, que no sale de ninguna inversion del caso.
+    """
     tributos_por_ano: tuple[tributos.ResultadoTributario, ...]
     variacion_capital_trabajo: Serie
     flujo: FlujoDelCaso
@@ -225,12 +240,25 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     # una relavera de deposito no lo hacen nunca por diseno, de modo que la
     # puerta les anularia el escudo fiscal entero en vez de retrasarlo.
     con_produccion = {u.nombre: produccion_por_unidad[u.nombre] for u in caso.unidades if u.produce}
-    depreciacion_tributaria = depreciacion_por_mina(
-        horizonte, capital, maestros.tasas_tributarias, produccion=con_produccion
+    detalle_tributario = depreciacion_por_mina(
+        horizonte,
+        capital,
+        maestros.tasas_tributarias,
+        produccion=con_produccion,
+        proyecciones={u.nombre: u.proyeccion_tributaria for u in caso.unidades},
     )
-    depreciacion_financiera = depreciacion_por_mina(
-        horizonte, capital, maestros.tasas_financieras, produccion=con_produccion
+    # La via financiera agota contra las reservas en vez de depreciar lineal, y
+    # por eso lleva el agotamiento que la tributaria no necesita.
+    detalle_financiero = depreciacion_por_mina(
+        horizonte,
+        capital,
+        maestros.tasas_financieras,
+        produccion=con_produccion,
+        agotamientos={u.nombre: _agotamiento(u, horizonte) for u in caso.unidades},
+        proyecciones={u.nombre: u.proyeccion_financiera for u in caso.unidades},
     )
+    depreciacion_tributaria = por_unidad(horizonte, detalle_tributario)
+    depreciacion_financiera = por_unidad(horizonte, detalle_financiero)
 
     comunes = caso.datos_comunes
     fletes = _por_tonelada(comunes.fletes_por_tonelada, bloque.concentrado_alimentado, horizonte)
@@ -335,6 +363,8 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         capex=total_capex,
         depreciacion_tributaria_por_mina=depreciacion_tributaria,
         depreciacion_financiera_por_mina=depreciacion_financiera,
+        depreciacion_tributaria_por_componente=detalle_tributario,
+        depreciacion_financiera_por_componente=detalle_financiero,
         tributos_por_ano=resultados,
         variacion_capital_trabajo=variacion_wk,
         flujo=flujo,
@@ -594,6 +624,24 @@ def _cash_cost(caso: Caso) -> _CashCost:
         for nombre, costo in cash_cost_por_unidad(unidades).items():
             por_unidad[nombre][i] = costo
     return _CashCost(tuple(total), {n: tuple(v) for n, v in por_unidad.items()})
+
+
+def _agotamiento(unidad: UnidadProductiva, horizonte: Horizonte) -> Agotamiento:
+    """Con qué reservas se agota el capital de una unidad.
+
+    **Declararlas las convierte en dato; dejarlas vacías las convierte en
+    cálculo.** Una unidad en operación las trae de su plan de vida de mina; un
+    proyecto todavía no las tiene, y entonces son lo que su propio plan extrae en
+    el horizonte. Es la misma distinción que hace el libro, que las lee de otro
+    libro para las unidades en marcha y las suma de la producción para los
+    proyectos.
+    """
+    extraido = _serie(unidad.produccion.mineral_extraido, horizonte, f"{unidad.nombre}/extraido")
+    declaradas = unidad.reservas
+    return Agotamiento(
+        extraido=extraido,
+        reservas=declaradas if declaradas is not None else sum(extraido),
+    )
 
 
 def _capital_ajustado(caso: Caso) -> list[CapitalDeUnidad]:

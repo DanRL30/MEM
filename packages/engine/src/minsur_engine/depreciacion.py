@@ -1,38 +1,57 @@
-"""Depreciación tributaria y financiera, calculada por mina.
+"""Depreciación tributaria y financiera, por mina y por componente.
 
 Es el bloque más denso del libro: 58 767 fórmulas, y la desviación acordada
 `D-04` obliga además a calcularlo **separado por mina** en todos los casos, no
 solo en los que el libro lo hace.
 
-## La cuota, tal como la escribe el libro
+## Dos vías, y dos métodos distintos
 
-Cada año de inversión abre su propio cronograma, y la cuota de cada ejercicio
-sale de esta fórmula, leída de la fila 132 en adelante:
+Hasta el 02/09/2026 este módulo asumía que las dos vías compartían el mecanismo
+y solo cambiaban las tasas. La disección de la hoja mostró que no:
+
+| Componente | Tributaria | Financiera |
+|---|---|---|
+| Maquinaria, equipos y vehículos | Lineal | Lineal |
+| Equipos de cómputo | Lineal | **Agotamiento** |
+| Instalaciones y equipos diversos | Lineal | **Agotamiento** |
+| Edificaciones y construcciones | Lineal | **Agotamiento** |
+| No depreciable | Su tasa | Su tasa |
+
+**Agotamiento** es el método de unidades de producción: cada año se deprecia la
+fracción del saldo que representa lo extraído sobre las reservas que quedaban.
+Un activo así no se agota en un número fijo de ejercicios, sino al ritmo al que
+se vacía el yacimiento, que es lo que la contabilidad financiera persigue.
+
+## Cada componente se deprecia y se informa por separado
+
+El libro consolida los equipos de cómputo con la maquinaria bajo un solo código.
+La plataforma no lo hace: **un proyecto nuevo puede traer componentes que hoy no
+existen**, y si la depreciación llega ya sumada, separarla después es imposible.
+Por eso la salida es un mapa por componente y el total se obtiene sumándolo.
+
+## La cuota lineal, tal como la escribe el libro
 
     IF(base - acumulado > base * tasa,  base * tasa,  base - acumulado)
 
-Es depreciación lineal sobre el valor original, con la particularidad de que
-**la última cuota se ajusta al saldo**: cuando lo que queda por depreciar es
-menor que la cuota lineal, se deprecia el resto y el activo queda en cero. Sin
-ese ajuste, el último ejercicio arrastra un residuo que el contraste detecta
-como una diferencia pequeña y persistente.
+Depreciación lineal sobre el valor original, con **la última cuota ajustada al
+saldo**. Sin ese ajuste, el último ejercicio arrastra un residuo que el contraste
+detecta como una diferencia pequeña y persistente.
 
 ## La depreciación no corre antes de producir
 
-La fila que consolida la depreciación de maquinaria la condiciona a que haya
-producción acumulada:
-
     IF(SUM(produccion hasta el ano) = 0, 0, ...)
 
-Un activo construido antes del arranque no deprecia hasta que la unidad
-produce. Reproducirlo importa en los proyectos con años de construcción, que
-son justamente los que la plataforma va a evaluar.
+Un activo construido antes del arranque no deprecia hasta que la unidad produce.
+La condición se aplica **solo a las unidades que producen**: una refinería o un
+depósito de relaves no lo hacen nunca por diseño, y aplicársela les anularía el
+escudo fiscal entero en vez de retrasarlo.
 
-## Dos juegos de tasas, no dos métodos
+## La proyección de SAP no es un componente del capital
 
-La tributaria y la financiera comparten el mecanismo y difieren en las tasas y
-en qué activos entran. Por eso aquí hay una función y no dos: el juego de tasas
-es un parámetro.
+Es la depreciación ya contabilizada de los activos que existen antes del primer
+año del caso, y el libro la trae como supuesto por unidad y por vía. Viaja en el
+mismo mapa que los componentes porque se suma con ellos, pero no sale de ninguna
+inversión de este caso.
 """
 
 from __future__ import annotations
@@ -43,6 +62,17 @@ from dataclasses import dataclass
 from minsur_engine.capex import NATURALEZAS, CapitalDeUnidad
 from minsur_engine.horizonte import Horizonte, Serie
 
+COMPONENTES_POR_AGOTAMIENTO = ("equipos_de_computo", "instalaciones", "edificaciones")
+"""Lo que la vía financiera agota contra las reservas en vez de depreciar lineal.
+
+Es la lectura literal del libro: la fila que agota toma el capital de la unidad
+menos la maquinaria y menos lo no depreciable, de modo que los equipos de
+cómputo caen de este lado aunque la vía tributaria los sume con la maquinaria.
+"""
+
+PROYECCION_SAP = "Proyeccion SAP"
+"""Clave de la depreciación ya contabilizada, que no viene de este caso."""
+
 
 class ErrorDepreciacion(ValueError):
     """Las tasas o las bases de depreciación no son consistentes."""
@@ -50,32 +80,55 @@ class ErrorDepreciacion(ValueError):
 
 @dataclass(frozen=True)
 class TasasDeDepreciacion:
-    """Tasa anual por naturaleza contable, en tanto por uno.
+    """Tasa anual por componente contable, en tanto por uno.
 
-    `no_depreciable` no aparece: su tasa es cero por definición y declararla
-    invitaría a cambiarla.
+    `no_depreciable` no aparece: su tasa es cero mientras Finanzas no confirme la
+    regla `034`, que observa que el libro lo deduce entero en su año.
+
+    `equipos_de_computo` es opcional y sin declarar usa la de maquinaria, que es
+    lo que el libro hace de hecho al fusionarlos bajo un mismo código. Declararla
+    es lo único que hace falta el día que MINSUR le dé tasa propia.
     """
 
     maquinaria: float
     instalaciones: float
     edificaciones: float
+    equipos_de_computo: float | None = None
 
     def __post_init__(self) -> None:
-        for nombre in ("maquinaria", "instalaciones", "edificaciones"):
+        for nombre in ("maquinaria", "instalaciones", "edificaciones", "equipos_de_computo"):
             tasa = getattr(self, nombre)
+            if tasa is None:
+                continue
             if not 0.0 < tasa <= 1.0:
                 raise ErrorDepreciacion(
                     f"La tasa de {nombre} vale {tasa} y se espera una fraccion mayor que 0 y "
                     "hasta 1. Una tasa del 10 % se escribe 0.10."
                 )
 
-    def de(self, naturaleza: str) -> float:
-        if naturaleza == "no_depreciable":
+    def de(self, componente: str) -> float:
+        if componente == "no_depreciable":
             return 0.0
-        if naturaleza not in NATURALEZAS:
-            raise ErrorDepreciacion(f"Naturaleza {naturaleza!r} desconocida.")
-        tasa: float = getattr(self, naturaleza)
+        if componente not in NATURALEZAS:
+            raise ErrorDepreciacion(f"Naturaleza {componente!r} desconocida.")
+        if componente == "equipos_de_computo" and self.equipos_de_computo is None:
+            return self.maquinaria
+        tasa: float = getattr(self, componente)
         return tasa
+
+
+@dataclass(frozen=True)
+class Agotamiento:
+    """Lo que la vía financiera necesita para agotar el capital de una unidad.
+
+    Las reservas son un **saldo de apertura**, no una serie: el libro las lee una
+    vez y las rueda restando lo extraído y sumando lo convertido.
+    """
+
+    extraido: Serie
+    reservas: float
+    conversion_de_recursos: Serie = ()
+    """Recursos que pasan a reserva, que es lo que permite el acuerdo 9."""
 
 
 def cuota(base: float, tasa: float, acumulado: float) -> float:
@@ -101,7 +154,7 @@ def cronograma_de_inversion(base: float, tasa: float, ejercicios: int) -> Serie:
 
 
 def depreciar(horizonte: Horizonte, inversiones: Serie, tasa: float) -> Serie:
-    """Depreciación anual de una serie de inversiones.
+    """Depreciación anual lineal de una serie de inversiones.
 
     Cada año de inversión abre su cronograma y los cronogramas se superponen,
     que es exactamente la forma triangular que tiene la hoja: una fila por año
@@ -123,30 +176,118 @@ def depreciar(horizonte: Horizonte, inversiones: Serie, tasa: float) -> Serie:
     return tuple(total)
 
 
+def saldo_de_reservas(horizonte: Horizonte, agotamiento: Agotamiento) -> Serie:
+    """Reservas que quedan al cierre de cada ejercicio.
+
+    `reservas finales = reservas anteriores - extraido + conversion`, redondeado
+    a tonelada entera. El redondeo es la regla `001`, y esta pendiente de
+    reconfirmar con Finanzas.
+    """
+    saldo = agotamiento.reservas
+    cierres: list[float] = []
+    for i in range(horizonte.anos):
+        saldo = round(
+            saldo - _en(agotamiento.extraido, i) + _en(agotamiento.conversion_de_recursos, i)
+        )
+        cierres.append(saldo)
+    return tuple(cierres)
+
+
+def tasas_de_agotamiento(horizonte: Horizonte, agotamiento: Agotamiento) -> Serie:
+    """Fracción del saldo que se agota cada año: lo extraído sobre las reservas.
+
+    El primer ejercicio la mide contra las reservas de apertura y los siguientes
+    contra el saldo de cierre del anterior. **El tope del 100 % se aplica
+    siempre**: el libro lo omite en una de las seis unidades, y sin el una
+    extraccion mayor que el saldo depreciaria mas capital del que queda.
+    """
+    apertura = agotamiento.reservas
+    cierres = saldo_de_reservas(horizonte, agotamiento)
+    tasas: list[float] = []
+    for i in range(horizonte.anos):
+        disponible = apertura if i == 0 else cierres[i - 1]
+        extraccion = _en(agotamiento.extraido, i)
+        tasas.append(min(extraccion / disponible, 1.0) if disponible > 0.0 else 0.0)
+    return tuple(tasas)
+
+
+def agotar(horizonte: Horizonte, inversiones: Serie, tasas: Serie) -> Serie:
+    """Deprecia un saldo de capital al ritmo al que se vacía el yacimiento.
+
+    A diferencia de la lineal, no hay cronograma por año de inversión: hay **un
+    solo saldo** que recibe las inversiones del ejercicio y se agota por la tasa
+    del año. Es la forma que tiene la hoja, con su saldo inicial, su cuota y su
+    saldo final encadenados.
+    """
+    saldo = 0.0
+    cuotas: list[float] = []
+    for i in range(horizonte.anos):
+        saldo += _en(inversiones, i)
+        del_ano = saldo * _en(tasas, i)
+        cuotas.append(del_ano)
+        saldo -= del_ano
+    return tuple(cuotas)
+
+
+def depreciacion_por_componente(
+    horizonte: Horizonte,
+    capital: CapitalDeUnidad,
+    tasas: TasasDeDepreciacion,
+    *,
+    produccion: Serie | None = None,
+    agotamiento: Agotamiento | None = None,
+    proyeccion: Serie = (),
+) -> dict[str, Serie]:
+    """Depreciación de cada componente contable de una unidad.
+
+    Sin `agotamiento` todos los componentes se deprecian lineal, que es la vía
+    tributaria. Con él, los tres de `COMPONENTES_POR_AGOTAMIENTO` se agotan
+    contra las reservas y la maquinaria sigue lineal, que es la financiera.
+    """
+    ritmo = tasas_de_agotamiento(horizonte, agotamiento) if agotamiento is not None else ()
+    detalle: dict[str, Serie] = {}
+    for componente in NATURALEZAS:
+        inversiones = capital.naturaleza(componente, horizonte)
+        if not any(inversiones):
+            continue
+        if agotamiento is not None and componente in COMPONENTES_POR_AGOTAMIENTO:
+            detalle[componente] = agotar(horizonte, inversiones, ritmo)
+            continue
+        tasa = tasas.de(componente)
+        if tasa == 0.0:
+            continue
+        detalle[componente] = depreciar(horizonte, inversiones, tasa)
+
+    if any(proyeccion):
+        detalle[PROYECCION_SAP] = _alineada(horizonte, proyeccion)
+
+    if produccion is None:
+        return detalle
+    return {
+        componente: _sin_depreciar_antes_de_producir(horizonte, serie, produccion)
+        for componente, serie in detalle.items()
+    }
+
+
 def depreciacion_de_unidad(
     horizonte: Horizonte,
     capital: CapitalDeUnidad,
     tasas: TasasDeDepreciacion,
     *,
     produccion: Serie | None = None,
+    agotamiento: Agotamiento | None = None,
+    proyeccion: Serie = (),
 ) -> Serie:
-    """Depreciación de una unidad, sumando sus naturalezas contables.
-
-    Con `produccion`, aplica la condición del libro: no hay depreciación en los
-    años previos al primero con producción acumulada.
-    """
-    total = [0.0] * horizonte.anos
-    for naturaleza in NATURALEZAS:
-        tasa = tasas.de(naturaleza)
-        if tasa == 0.0:
-            continue
-        inversiones = capital.naturaleza(naturaleza, horizonte)
-        for i, valor in enumerate(depreciar(horizonte, inversiones, tasa)):
-            total[i] += valor
-
-    if produccion is None:
-        return tuple(total)
-    return _sin_depreciar_antes_de_producir(horizonte, tuple(total), produccion)
+    """Depreciación de una unidad, sumando sus componentes."""
+    detalle = depreciacion_por_componente(
+        horizonte,
+        capital,
+        tasas,
+        produccion=produccion,
+        agotamiento=agotamiento,
+        proyeccion=proyeccion,
+    )
+    return sumar(horizonte, detalle)
 
 
 def depreciacion_por_mina(
@@ -155,28 +296,58 @@ def depreciacion_por_mina(
     tasas: TasasDeDepreciacion,
     *,
     produccion: Mapping[str, Serie] | None = None,
-) -> dict[str, Serie]:
-    """Depreciación separada por unidad, que es lo que exige la desviación `D-04`.
+    agotamientos: Mapping[str, Agotamiento] | None = None,
+    proyecciones: Mapping[str, Serie] | None = None,
+) -> dict[str, dict[str, Serie]]:
+    """Depreciación separada por unidad y por componente, que es lo que exige `D-04`.
 
     MINSUR pidió expresamente que el cálculo sea por mina en todos los casos,
-    incluso donde el modelo de referencia consolida. Devolver el desglose y no
-    el total es lo que hace esa desviación verificable: el agregado se obtiene
-    sumando, pero el detalle no se puede recuperar de un agregado.
+    incluso donde el modelo de referencia consolida. Devolver el desglose y no el
+    total es lo que hace esa desviación verificable: el agregado se obtiene
+    sumando, pero el detalle no se puede recuperar de un agregado. Lo mismo vale
+    un nivel más abajo, entre los componentes.
     """
     series = produccion or {}
+    agota = agotamientos or {}
+    proyectada = proyecciones or {}
     return {
-        capital.unidad: depreciacion_de_unidad(
-            horizonte, capital, tasas, produccion=series.get(capital.unidad)
+        capital.unidad: depreciacion_por_componente(
+            horizonte,
+            capital,
+            tasas,
+            produccion=series.get(capital.unidad),
+            agotamiento=agota.get(capital.unidad),
+            proyeccion=proyectada.get(capital.unidad, ()),
         )
         for capital in capitales
     }
 
 
+def sumar(horizonte: Horizonte, detalle: Mapping[str, Serie]) -> Serie:
+    """Suma las series de un desglose, sea por componente o por unidad."""
+    if not detalle:
+        return horizonte.ceros()
+    return tuple(sum(valores) for valores in zip(*detalle.values(), strict=True))
+
+
+def por_unidad(
+    horizonte: Horizonte, detalle: Mapping[str, Mapping[str, Serie]]
+) -> dict[str, Serie]:
+    """Colapsa el desglose por componente y deja el total de cada unidad."""
+    return {unidad: sumar(horizonte, componentes) for unidad, componentes in detalle.items()}
+
+
 def total_depreciado(horizonte: Horizonte, por_mina: Mapping[str, Serie]) -> Serie:
     """Suma del desglose por mina, para las líneas que consolidan."""
-    if not por_mina:
-        return horizonte.ceros()
-    return tuple(sum(valores) for valores in zip(*por_mina.values(), strict=True))
+    return sumar(horizonte, por_mina)
+
+
+def _alineada(horizonte: Horizonte, serie: Serie) -> Serie:
+    return tuple(_en(serie, i) for i in range(horizonte.anos))
+
+
+def _en(serie: Sequence[float], i: int) -> float:
+    return serie[i] if i < len(serie) else 0.0
 
 
 def _sin_depreciar_antes_de_producir(

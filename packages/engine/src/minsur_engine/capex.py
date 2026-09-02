@@ -29,7 +29,20 @@ from dataclasses import dataclass
 from minsur_engine.horizonte import Horizonte, Serie
 
 ETAPAS = ("inicial", "sostenimiento", "cierre", "otros")
-NATURALEZAS = ("no_depreciable", "maquinaria", "instalaciones", "edificaciones")
+NATURALEZAS = (
+    "no_depreciable",
+    "equipos_de_computo",
+    "maquinaria",
+    "instalaciones",
+    "edificaciones",
+)
+"""Los cinco componentes contables, y son cinco a proposito.
+
+El libro junta los equipos de computo con la maquinaria bajo un solo codigo
+para depreciar, y aqui **no se consolidan**: cada componente se deprecia y se
+informa por separado, de modo que un proyecto nuevo con componentes que hoy no
+existen pueda tener el suyo sin que nadie tenga que deshacer una suma.
+"""
 
 TOLERANCIA_CUADRE = 1e-6
 

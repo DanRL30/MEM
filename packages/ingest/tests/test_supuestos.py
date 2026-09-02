@@ -103,8 +103,8 @@ def supuestos(tmp_path: Path) -> Path:
 
     libro = load_workbook(ruta)
     _llenar(libro["Comunes"], [float(i) for i in range(len(CON_DATO_DE_SUPUESTOS))])
-    _llenar(libro["Proyecto X"], [30_000.0, 37_000.0, 95.0])
-    _llenar(libro["Proyecto Y"], [18_000.0, 52_000.0, 70.0])
+    _llenar(libro["Proyecto X"], [30_000.0, 37_000.0, 12_000.0, 95.0, 100.0])
+    _llenar(libro["Proyecto Y"], [18_000.0, 52_000.0, 0.0, 70.0, 85.0])
     libro.save(ruta)
     return ruta
 
@@ -159,7 +159,7 @@ class TestSupuestosDelCaso:
         # la frontera y el motor trabaja siempre en dolares.
         de_x = leer_supuestos(supuestos).supuestos
         assert de_x is not None
-        assert de_x.por_unidad["Proyecto X"]["depreciacion_tributaria"] == (
+        assert de_x.por_unidad["Proyecto X"]["proyeccion_tributaria"] == (
             30_000_000.0,
             30_000_000.0,
             30_000_000.0,

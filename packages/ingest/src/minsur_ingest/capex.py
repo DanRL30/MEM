@@ -10,11 +10,12 @@ ella, y aquí lo calcula el motor.
 Por eso esta plantilla no lleva filas corroborables: no hay dos valores que
 comparar, igual que en opex.
 
-Cinco filas y cuatro naturalezas. `Equipos de cómputo` y `Maquinaria` comparten
-el código `MAQ` del libro y se consolidan al leer, que es lo que hace la vía
-tributaria. Se piden separadas porque así llega el dato y porque los equipos de
-cómputo suelen depreciarse más rápido: el día que Finanzas confirme una tasa
-propia, se le da sin volver a pedir los datos ni cambiar la plantilla.
+Cinco filas y cinco componentes. El libro junta los equipos de cómputo con la
+maquinaria bajo un solo código para depreciar, y la plataforma **no los
+consolida**: cada componente se deprecia y se informa por separado, para que un
+proyecto nuevo con componentes que hoy no existen tenga el suyo sin deshacer una
+suma. Mientras Finanzas no confirme una tasa propia para el cómputo, se usa la de
+maquinaria, que es lo que el libro hace de hecho.
 """
 
 from __future__ import annotations
@@ -56,7 +57,7 @@ class FilaDeCapex:
 FILAS_DE_CAPEX = (
     FilaDeCapex("Clasificación contable", SECCION),
     FilaDeCapex("No depreciable", MEDIDA, "no_depreciable"),
-    FilaDeCapex("Equipos de cómputo", MEDIDA, "maquinaria"),
+    FilaDeCapex("Equipos de cómputo", MEDIDA, "equipos_de_computo"),
     FilaDeCapex("Maquinaria, equipos y vehículos", MEDIDA, "maquinaria"),
     FilaDeCapex("Instalaciones y equipos diversos y de comunicaciones", MEDIDA, "instalaciones"),
     FilaDeCapex("Edificaciones y construcciones", MEDIDA, "edificaciones"),
@@ -76,7 +77,7 @@ class CapexDeUnidad:
     conceptos: dict[str, Serie] = field(default_factory=dict)
 
     def por_naturaleza(self, horizonte: Horizonte) -> dict[str, Serie]:
-        """Consolida los cinco conceptos en las cuatro naturalezas del motor."""
+        """Alinea los cinco conceptos con los cinco componentes del motor."""
         acumulado: dict[str, list[float]] = {}
         for fila in CON_DATO_DE_CAPEX:
             serie = self.conceptos.get(fila.etiqueta, ())

@@ -186,6 +186,12 @@ La naturaleza contable es la que gobierna la depreciacion, y por eso `Depreciaci
 bloque por unidad. La desviacion acordada `D-04` obliga a que ese calculo sea **separado por mina**
 en todos los casos.
 
+**Dos inputs mas por unidad, y los dos viven en la plantilla de supuestos.** Las **reservas de
+apertura**, en `kt`, que la via financiera agota: declararlas las convierte en dato y dejarlas
+vacias en calculo, que es la distincion que hace el libro entre una unidad en operacion y un
+proyecto. Y la **`Proyeccion SAP`**, en `k$` y una por via, que es la depreciacion ya contabilizada
+de los activos anteriores al caso.
+
 **Una clase de unidad mas: la relavera de deposito.** Recibe relave, no extrae mineral, y de ella
 solo hay capital y depreciacion; su costo operativo se carga en la linea `Relavera` de la mina a la
 que sirve. No lleva pestana en el libro de produccion, si en los de opex y capex.

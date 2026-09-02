@@ -104,8 +104,14 @@ FILAS_DE_SUPUESTOS = (
 
 FILAS_POR_UNIDAD = (
     FilaDeSupuesto("Depreciacion", SECCION),
-    FilaDeSupuesto("Depreciacion Tributaria", "k$", "depreciacion_tributaria"),
-    FilaDeSupuesto("Depreciacion Financiera", "k$", "depreciacion_financiera"),
+    # El libro las llama `Proyeccion SAP`: es la depreciacion ya contabilizada de
+    # los activos que existen antes del primer ano del caso, y la trae por unidad
+    # y por via. No sale de ninguna inversion del caso.
+    FilaDeSupuesto("Proyeccion SAP Tributaria", "k$", "proyeccion_tributaria"),
+    FilaDeSupuesto("Proyeccion SAP Financiera", "k$", "proyeccion_financiera"),
+    # La via financiera agota el capital contra las reservas. Declararlas las
+    # convierte en dato; dejarlas vacias las convierte en calculo.
+    FilaDeSupuesto("Reservas", "kt", "reservas"),
     FilaDeSupuesto("Refineria", SECCION),
     FilaDeSupuesto("Recuperacion de Sn en la refineria", "%", "recuperacion_en_la_refineria"),
     FilaDeSupuesto("Gastos", SECCION),
@@ -297,6 +303,28 @@ def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProdu
             fraccion_gestion_social_deducible=propios_de[unidad.nombre].get(
                 "fraccion_gestion_social_deducible", unidad.fraccion_gestion_social_deducible
             ),
+            proyeccion_tributaria=propios_de[unidad.nombre].get(
+                "proyeccion_tributaria", unidad.proyeccion_tributaria
+            ),
+            proyeccion_financiera=propios_de[unidad.nombre].get(
+                "proyeccion_financiera", unidad.proyeccion_financiera
+            ),
+            reservas=_reservas(propios_de[unidad.nombre], unidad.reservas),
         )
         for unidad in caso.unidades
     )
+
+
+def _reservas(propios: dict[str, Serie], declaradas: float | None) -> float | None:
+    """Reservas de apertura de una unidad, si la plantilla las declara.
+
+    Es un saldo, no una serie: el libro lo lee una vez y lo rueda. Se toma el
+    primer valor que la fila traiga, de modo que da igual en que ejercicio se
+    escriba. **Una fila vacia no son cero reservas: es que se calculan** a partir
+    de lo que la unidad extrae en el horizonte.
+    """
+    serie = propios.get("reservas", ())
+    for valor in serie:
+        if valor:
+            return valor
+    return declaradas

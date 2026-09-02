@@ -151,6 +151,24 @@ class UnidadProductiva:
 
     capital: CapitalDeUnidad | None = None
 
+    reservas: float | None = None
+    """Reservas de apertura, en toneladas, tal como las declara quien configura.
+
+    **Vacío no es cero: es que se calculan.** Una unidad en operación las trae de
+    su plan de vida de mina y se cargan como dato; un proyecto no las tiene
+    todavía, y entonces salen de su propio plan, como la suma de lo que extrae en
+    el horizonte. Es la misma distinción que hace el libro entre las unidades que
+    las leen de otro libro y las que las derivan de la producción.
+    """
+
+    proyeccion_tributaria: Serie = ()
+    proyeccion_financiera: Serie = ()
+    """Depreciación ya contabilizada de los activos que existen antes del caso.
+
+    El libro la llama `Proyección SAP` y la trae de los supuestos, por unidad y
+    por vía. No sale de ninguna inversión de este caso: se suma a la que sí.
+    """
+
     origen: str = "yacimiento"
     """De dónde sale el mineral. `relave` es una relavera cerrada que se reprocesa."""
 

@@ -182,7 +182,7 @@ despues, no deuda heredada.
 | `ruff check .` | Limpio |
 | `ruff format --check .` | Limpio, 99 archivos |
 | `mypy packages apps/api/src` | Limpio en modo estricto, 63 archivos |
-| `pytest` | 352 de 352, de las que 31 son el contraste de fidelidad |
+| `pytest` | 362 de 362, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -372,6 +372,47 @@ lo contrario seria prometer una comprobacion que no existe.
 leer**, que es lo que hace la via tributaria del libro. Se piden separados porque
 asi llega el dato y porque la via financiera los trata distinto: el dia que
 Finanzas confirme una tasa propia, se le da sin volver a pedir los datos.
+
+### La depreciacion tiene dos vias y dos metodos, no dos juegos de tasas
+
+Hasta el 02/09/2026 el motor asumia que la tributaria y la financiera
+compartian el mecanismo y solo cambiaban las tasas. La diseccion de la hoja
+mostro que no.
+
+| Componente | Tributaria | Financiera |
+|---|---|---|
+| Maquinaria, equipos y vehiculos | Lineal | Lineal |
+| Equipos de computo | Lineal | **Agotamiento** |
+| Instalaciones y equipos diversos | Lineal | **Agotamiento** |
+| Edificaciones y construcciones | Lineal | **Agotamiento** |
+| No depreciable | Su tasa | Su tasa |
+
+**Agotamiento** es el metodo de unidades de produccion: cada ano se deprecia la
+fraccion del saldo que representa lo extraido sobre las reservas que quedaban.
+No hay cronograma por ano de inversion, hay **un solo saldo** que recibe las
+inversiones y se agota al ritmo al que se vacia el yacimiento.
+
+**Cada componente se deprecia y se informa por separado**, aunque el libro
+fusione los equipos de computo con la maquinaria bajo un mismo codigo. Un
+proyecto nuevo puede traer componentes que hoy no existen, y una depreciacion
+que llega sumada no se puede volver a separar. `Corrida` lleva las dos vistas:
+el total por mina y el detalle por componente.
+
+**Las reservas son un saldo de apertura y ruedan.** `reservas finales =
+anteriores - extraido + conversion`, redondeado a tonelada entera, que es la
+regla `001`. La tasa del primer ejercicio se mide contra la apertura y la de los
+siguientes contra el cierre del anterior.
+
+**Declararlas las convierte en dato; dejarlas vacias, en calculo.** Es la
+distincion que hace el libro entre las unidades en operacion, que las leen de su
+plan de vida de mina, y los proyectos, que las derivan de lo que su propio plan
+extrae. En la plantilla de supuestos es una fila por unidad: vacia no son cero
+reservas.
+
+**La `Proyeccion SAP` no es un componente del capital.** Es la depreciacion ya
+contabilizada de los activos que existen antes del primer ano del caso, viene de
+los supuestos por unidad y por via, y viaja en el mismo mapa que los componentes
+porque se suma con ellos.
 
 ### La relavera de deposito es una tercera clase de unidad
 

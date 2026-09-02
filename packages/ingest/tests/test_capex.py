@@ -112,7 +112,8 @@ def _caso() -> Caso:
                 nombre="Mina Alfa",
                 tipo="mina",
                 produccion=ProduccionDeUnidad(
-                    mineral_tratado=horizonte.serie((0.0, 1_000.0, 1_000.0), nombre="tratado")
+                    mineral_tratado=horizonte.serie((0.0, 1_000.0, 1_000.0), nombre="tratado"),
+                    mineral_extraido=horizonte.serie((0.0, 1_000.0, 1_000.0), nombre="extraido"),
                 ),
             ),
             UnidadProductiva(
@@ -161,12 +162,14 @@ class TestIdaYVuelta:
             ]
             assert leidas == esperadas
 
-    def test_computo_y_maquinaria_se_consolidan(self, libro_de_capex: Path) -> None:
-        # El libro los junta bajo el codigo MAQ para depreciar, y se piden
-        # separados porque asi llega el dato.
+    def test_computo_no_se_consolida_con_maquinaria(self, libro_de_capex: Path) -> None:
+        # El libro los junta bajo el codigo MAQ y la plataforma no: un proyecto
+        # nuevo puede traer componentes que hoy no existen, y una depreciacion
+        # que llega sumada no se puede volver a separar.
         capital = _con_capex(libro_de_capex).unidades[0].capital
         assert capital is not None
-        assert capital.por_naturaleza["maquinaria"] == (1_000_000.0, 200_000.0, 0.0)
+        assert capital.por_naturaleza["maquinaria"] == (1_000_000.0, 0.0, 0.0)
+        assert capital.por_naturaleza["equipos_de_computo"] == (0.0, 200_000.0, 0.0)
 
     def test_una_unidad_sin_capital_no_declara_ninguno(self, libro_de_capex: Path) -> None:
         # No es lo mismo que declararlo en ceros: el desglose por mina se
@@ -256,6 +259,36 @@ class TestElAjusteDeCapex:
         assert con_ajuste.capex == pytest.approx(tuple(v * 1.5 for v in sin_ajuste.capex))
         assert con_ajuste.depreciacion_tributaria_por_mina["Mina Alfa"] == pytest.approx(
             tuple(v * 1.5 for v in sin_ajuste.depreciacion_tributaria_por_mina["Mina Alfa"])
+        )
+
+
+class TestLasReservas:
+    def test_sin_declarar_salen_del_plan_de_la_unidad(self, libro_de_capex: Path) -> None:
+        # Es la distincion del libro: la unidad en operacion las trae de su plan
+        # de vida de mina y el proyecto las deriva de lo que extrae.
+        caso = _con_capex(libro_de_capex)
+        assert caso.unidades[0].reservas is None
+        corrida = calcular(caso, MAESTROS)
+        # Sin reservas declaradas, la unidad se agota exactamente al terminar su
+        # plan: la ultima tasa de agotamiento vale uno.
+        financiera = corrida.depreciacion_financiera_por_componente["Mina Alfa"]
+        assert any(any(serie) for serie in financiera.values())
+
+    def test_declararlas_cambia_el_ritmo(self, libro_de_capex: Path) -> None:
+        caso = _con_capex(libro_de_capex)
+        sin_declarar = calcular(caso, MAESTROS)
+        con_declarar = calcular(
+            replace(
+                caso,
+                unidades=(replace(caso.unidades[0], reservas=100_000.0), *caso.unidades[1:]),
+            ),
+            MAESTROS,
+        )
+        # Con mas reservas que lo que el plan extrae, cada ano se agota una
+        # fraccion menor del saldo.
+        assert (
+            con_declarar.depreciacion_financiera_por_mina["Mina Alfa"][1]
+            < sin_declarar.depreciacion_financiera_por_mina["Mina Alfa"][1]
         )
 
 
