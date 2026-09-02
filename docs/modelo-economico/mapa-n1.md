@@ -6,8 +6,8 @@ modulo responsable, de modo que una discrepancia se localiza en un archivo.
 | Bloque del contraste N1 | Modulo | Prueba |
 |---|---|---|
 | Produccion y toneladas finas | `produccion.py` | `test_n1_bloques.py::test_produccion` |
-| Metal pagable y deducciones | `ventas.py` | `::test_metal_pagable` |
-| Ventas por metal | `ventas.py` | `::test_ventas` |
+| Metal pagable y deducciones | `ventas.py` | `test_n0_a_n3.py::TestN1::test_metal_pagable` |
+| Ventas por metal | `ventas.py` | `test_n0_a_n3.py::TestN1::test_ventas_del_concentrado` |
 | Cash cost | `cash_cost.py` | `::test_cash_cost` |
 | Reservas | `produccion.py` | `::test_reservas` |
 | EBITDA ajustado | `flujos.py` | `::test_ebitda` |
@@ -22,6 +22,10 @@ modulo responsable, de modo que una discrepancia se localiza en un archivo.
 | Costos de cierre | `capex.py` | `::test_costos_cierre` |
 | Valor residual | **No aplica.** Ver la nota 3 | |
 | Capital de trabajo | `capital_trabajo.py` | `::test_working_capital` |
+
+Las dos filas de ventas citan las pruebas que existen. Las trece restantes apuntan a un
+`test_n1_bloques.py` que nunca se escribio: el contraste vive hoy en
+`tests/fidelidad/niveles/test_n0_a_n3.py`. Queda registrado y se corrige al cerrar cada bloque.
 
 Tolerancia N1: diferencia relativa hasta 0,1 % o absoluta hasta US$ 10 000 por linea y ano.
 Valor provisional hasta que Finanzas cierre `R-31`. El estandar `DM-STD-PE-27` no fija tolerancias:

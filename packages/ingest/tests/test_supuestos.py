@@ -104,8 +104,11 @@ def supuestos(tmp_path: Path) -> Path:
 
     libro = load_workbook(ruta)
     _llenar(libro["Comunes"], [float(i) for i in range(len(CON_DATO_DE_SUPUESTOS))])
-    _llenar(libro["Proyecto X"], [30_000.0, 37_000.0, 12_000.0, 400.0, 95.0, 100.0])
-    _llenar(libro["Proyecto Y"], [18_000.0, 52_000.0, 0.0, 0.0, 70.0, 85.0])
+    _llenar(
+        libro["Proyecto X"],
+        [30_000.0, 37_000.0, 12_000.0, 400.0, 95.0, 25.0, 100.0, 3.0, 100.0],
+    )
+    _llenar(libro["Proyecto Y"], [18_000.0, 52_000.0, 0.0, 0.0, 70.0, 20.0, 50.0, 2.0, 85.0])
     libro.save(ruta)
     return ruta
 
@@ -276,6 +279,53 @@ class TestAplicarAlCaso:
         corrida = calcular(caso, MAESTROS)
         assert corrida.concentrado_liquidado_por_unidad["Mina Alfa"][1] != 0.0
         assert corrida.ventas[1] != 0.0
+
+    def test_ningun_termino_comercial_se_lee_y_se_tira(self, comite: Path, supuestos: Path) -> None:
+        """Los seis campos que la plantilla pedia y `aplicar` descartaba.
+
+        Es el fallo sin sintoma: el usuario los llena, el caso se lee sin
+        incidencias y el dato no interviene en el calculo. Ya paso una vez en
+        produccion y esta prueba es lo que impide que vuelva a pasar aqui.
+        """
+        del_caso = leer_supuestos(supuestos).supuestos
+        assert del_caso is not None
+        caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
+        assert caso.terminos.concentrado is not None
+        cobre, plata = caso.terminos.concentrado.metales
+        comunes = del_caso.comunes
+
+        assert cobre.deduccion_minima == comunes["deduccion_minima_cu"]
+        assert cobre.factor_pagable == comunes["factor_pagable_cu"]
+        assert cobre.tarifa_de_refinacion == comunes["tarifa_refinacion_cu"]
+        assert cobre.penalidades_por_tonelada == comunes["penalidades_cu"]
+        assert plata.deduccion_minima == comunes["deduccion_minima_ag"]
+        assert plata.factor_pagable == comunes["factor_pagable_ag"]
+        assert plata.tarifa_de_refinacion == comunes["tarifa_refinacion_ag"]
+        assert plata.penalidades_por_tonelada == comunes["penalidades_ag"]
+
+    def test_los_ajustes_de_venta_llegan_a_los_terminos(
+        self, comite: Path, supuestos: Path
+    ) -> None:
+        # Fila 25 de la hoja `Ventas`, una de sus dos unicas celdas tecleadas.
+        del_caso = leer_supuestos(supuestos).supuestos
+        assert del_caso is not None
+        caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
+        assert caso.terminos.ajustes == del_caso.comunes["ajustes_de_venta"]
+
+    def test_la_ley_pagable_declarada_cuelga_de_la_unidad(
+        self, comite: Path, supuestos: Path
+    ) -> None:
+        # Sale de la ley del concentrado de esa unidad: dos minas con distinta
+        # ley de cobre no caben en una fila unica del caso.
+        del_caso = leer_supuestos(supuestos).supuestos
+        assert del_caso is not None
+        caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
+        mina = caso.unidades[0]
+        assert mina.ley_pagable_declarada["Cu"] == pytest.approx((0.25, 0.25, 0.25))
+        assert mina.ley_pagable_declarada["Ag"] == (100.0, 100.0, 100.0)
+        assert mina.refinacion_declarada["Ag"] == (3.0, 3.0, 3.0)
+        assert caso.terminos.concentrado is not None
+        assert caso.terminos.concentrado.metales[0].ley_pagable == ()
 
     def test_los_reguladores_del_caso_ganan_a_la_tasa_de_referencia(
         self, comite: Path, supuestos: Path

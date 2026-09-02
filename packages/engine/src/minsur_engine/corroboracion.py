@@ -21,6 +21,17 @@ Las divisiones van envueltas en `IFERROR(..., 0)` en el libro, y aquí un
 denominador nulo devuelve cero por lo mismo: una indeterminación no puede
 detener la corrida.
 
+El bloque comercial entra en el mismo trato. La hoja `Supuestos` declara como si
+fueran datos tres filas que el libro deriva, y aquí se rehacen igual:
+
+    Ley Pagable Cu   = max(0, min(ley - deduccion minima, ley x factor pagable))
+    Refinacion Cu    = tarifa por libra x 2204,62
+    Refinacion Ag    = ley pagable de la plata / 31,1035 x tarifa por onza
+
+Son las reglas 023, 021 y 022. **La ley pagable de la plata no se corrobora**: la
+fórmula del libro multiplica por cien una ley que viene en onzas por tonelada, y
+sin la respuesta de Finanzas —regla 045— no hay contra qué compararla.
+
 **Corroborar nunca detiene el cálculo.** Devuelve la lista de discrepancias y la
 corrida sigue, para que una ley mal tecleada llegue hasta el NPV y se vea su
 efecto.
@@ -28,10 +39,20 @@ efecto.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
-from minsur_engine.caso import Caso, ProduccionDeUnidad, UnidadProductiva
+from minsur_engine.caso import (
+    Caso,
+    ProduccionDeUnidad,
+    TerminosDelConcentrado,
+    UnidadProductiva,
+)
+from minsur_engine.ventas import (
+    cargo_de_refinacion_de_la_plata,
+    cargo_de_refinacion_del_cobre,
+    ley_pagable,
+)
 
 TOLERANCIA_POR_DEFECTO = 0.005
 """Diferencia relativa a partir de la cual se reporta una celda.
@@ -73,11 +94,14 @@ class Discrepancia:
 def corroborar(
     caso: Caso, *, tolerancia: float = TOLERANCIA_POR_DEFECTO
 ) -> tuple[Discrepancia, ...]:
-    """Recorre la producción del caso y devuelve lo que no cuadra."""
+    """Recorre la producción y el bloque comercial y devuelve lo que no cuadra."""
     anos = caso.horizonte.anos_calendario
+    condiciones = caso.terminos.concentrado
     halladas: list[Discrepancia] = []
     for unidad in caso.unidades:
         halladas.extend(_de_la_unidad(unidad, anos, tolerancia))
+        if condiciones is not None:
+            halladas.extend(_del_concentrado_de(unidad, condiciones, anos, tolerancia))
     return tuple(halladas)
 
 
@@ -118,6 +142,108 @@ def _de_la_unidad(
             yield from _comparar(
                 unidad.nombre, concepto, ano, _en(cargada, i), recalculado, tolerancia
             )
+
+
+def _del_concentrado_de(
+    unidad: UnidadProductiva,
+    condiciones: TerminosDelConcentrado,
+    anos: Sequence[int],
+    tolerancia: float,
+) -> Iterator[Discrepancia]:
+    """Rehace las tres filas comerciales que el libro deriva y las compara.
+
+    Solo corrobora lo que puede rehacer: sin la tarifa de refinación no hay con
+    qué recalcular el cargo, y sin el factor pagable no hay con qué recalcular la
+    ley. Callar es lo correcto ahí, porque una alarma contra cero diría que
+    sobra un dato que en realidad falta.
+    """
+    if not unidad.produccion.concentrado_de_cu:
+        return
+    for metal in condiciones.metales:
+        ley_cargada = _declarada(unidad.ley_pagable_declarada, metal.ley_pagable, metal.nombre)
+        refinacion = _declarada(
+            unidad.refinacion_declarada, metal.cargo_de_refinacion, metal.nombre
+        )
+        ley_bruta = _ley_del_concentrado(unidad, metal.nombre)
+        for i, ano in enumerate(anos):
+            # La ley pagable de la plata no se rehace: es la regla 045.
+            if ley_cargada and metal.factor_pagable and not metal.en_onzas_troy:
+                yield from _comparar(
+                    unidad.nombre,
+                    f"Ley Pagable {metal.nombre}",
+                    ano,
+                    _en(ley_cargada, i),
+                    ley_pagable(
+                        _en(ley_bruta, i),
+                        _en(metal.deduccion_minima, i),
+                        _en(metal.factor_pagable, i),
+                    ),
+                    tolerancia,
+                )
+            if refinacion and metal.tarifa_de_refinacion:
+                esperado = (
+                    cargo_de_refinacion_de_la_plata(
+                        _en(ley_cargada, i), _en(metal.tarifa_de_refinacion, i)
+                    )
+                    if metal.en_onzas_troy
+                    else cargo_de_refinacion_del_cobre(_en(metal.tarifa_de_refinacion, i))
+                )
+                yield from _comparar(
+                    unidad.nombre,
+                    f"Refinacion {metal.nombre}",
+                    ano,
+                    _en(refinacion, i),
+                    esperado,
+                    tolerancia,
+                )
+
+
+def series_comerciales_calculadas(
+    unidad: UnidadProductiva, condiciones: TerminosDelConcentrado, anos: int
+) -> dict[str, list[float]]:
+    """Rehace las filas comerciales derivadas, para mostrarlas junto a las cargadas.
+
+    Es la vista que acompaña a la alarma, igual que en producción: sin el valor
+    recalculado, la diferencia no dice qué esperaba el sistema.
+    """
+    salida: dict[str, list[float]] = {}
+    for metal in condiciones.metales:
+        ley_cargada = _declarada(unidad.ley_pagable_declarada, metal.ley_pagable, metal.nombre)
+        ley_bruta = _ley_del_concentrado(unidad, metal.nombre)
+        if metal.factor_pagable and not metal.en_onzas_troy:
+            salida[f"ley_pagable_{metal.nombre.lower()}"] = [
+                ley_pagable(
+                    _en(ley_bruta, i), _en(metal.deduccion_minima, i), _en(metal.factor_pagable, i)
+                )
+                for i in range(anos)
+            ]
+        if metal.tarifa_de_refinacion:
+            salida[f"refinacion_{metal.nombre.lower()}"] = [
+                cargo_de_refinacion_de_la_plata(
+                    _en(ley_cargada, i), _en(metal.tarifa_de_refinacion, i)
+                )
+                if metal.en_onzas_troy
+                else cargo_de_refinacion_del_cobre(_en(metal.tarifa_de_refinacion, i))
+                for i in range(anos)
+            ]
+    return salida
+
+
+def _declarada(
+    por_unidad: Mapping[str, Sequence[float]], del_caso: Sequence[float], metal: str
+) -> Sequence[float]:
+    """Serie que el usuario cargó: la de la unidad manda sobre la del caso."""
+    propia = por_unidad.get(metal, ())
+    return propia if propia else del_caso
+
+
+def _ley_del_concentrado(unidad: UnidadProductiva, metal: str) -> Sequence[float]:
+    """Ley del metal en el concentrado comercial, tal como la carga producción."""
+    if metal == "Cu":
+        return unidad.produccion.ley_cu
+    if metal == "Ag":
+        return unidad.produccion.ley_ag
+    return ()
 
 
 def series_calculadas(produccion: ProduccionDeUnidad, anos: int) -> dict[str, list[float]]:

@@ -34,11 +34,11 @@ que es lo que el motor necesita.
 | 016 | `InputsProd`, filas 104 a 106 | La fila se rotula `Recuperación Sn NZ + SRP`, pero en la fórmula del refinado San Rafael Potencial usa la recuperación de `SR + B2`. Solo Nazareth usa la segunda | La etiqueta está mal: en `Supuestos` la misma fila se llama `Recuperación Nazareth`. **Resuelta el 01/09/2026 sin reproducir el agrupamiento**: la plataforma calcula por componente, ver abajo | Project Manager | 01/09/2026 | `refineria.py` |
 | 017 | `InputsProd`, fila 106 | Santo Domingo entra al refinado como `(alimentado − excedente)`: **el recorte por capacidad se le resta entero a esa unidad**, no se prorratea | Puede ser un orden de despacho deliberado —la última unidad en entrar absorbe el recorte— o un arrastre | | | |
 | 018 | `InputsProd`, filas 100 y 109 frente a `Supuestos!H120` | La capacidad de 90 000 está escrita dentro de la fórmula aunque `Supuestos` declara `Capacidad Máxima de Pisco` con ese mismo valor. La fórmula no lee esa celda | Dato duplicado en dos sitios que pueden divergir. Refina la regla `002` | | | `produccion.py` |
-| 019 | `InputsProd`, fila 111 | La venta spot del excedente vale `excedente × ley`, sin factor de recuperación, pese a llamarse `Producción Sn Refinado`. La fila 106 sí multiplica por la recuperación | O es metal contenido y la etiqueta engaña, o falta la recuperación | | | |
+| 019 | `InputsProd`, fila 111 | La venta spot del excedente vale `excedente × ley`, sin factor de recuperación, pese a llamarse `Producción Sn Refinado`. La fila 106 sí multiplica por la recuperación | O es metal contenido y la etiqueta engaña, o falta la recuperación | | | `refineria.py` |
 | 020 | `InputsProd`, filas 90 a 93 | El concentrado que San Rafael y B2 entregan a Pisco viene de un libro externo y es el mismo en las 48 bandas, mientras sus bloques de mina de esta hoja calculan su propia producción de concentrado | Dos fuentes para el mismo dato, que el libro no cuadra entre sí | | | |
-| 021 | `Supuestos!H62` | El cargo de refinacion del cobre esta escrito como `0,02 x 2204,62` | Dos centavos de dolar por libra, convertidos a tonelada dentro de la formula. Constante incrustada | | | |
-| 022 | `Supuestos!H63` | El cargo de refinacion de la plata es `ley pagable x 0,6 / 31,1035` | Sesenta centavos por onza troy, tambien incrustado. Ademas **no es un dato: se deriva de la ley pagable**, que a su vez sale de la produccion | | | |
-| 023 | `Supuestos!H57` y `H58` | La ley pagable es `max(0, min(ley x 100 - deduccion minima, ley x factor pagable))` | Se calcula desde la ley del concentrado, la deduccion minima y el factor pagable. La de plata repite la formula del cobre, con un `x 100` que solo tiene sentido sobre un porcentaje mientras la plata va en onzas por tonelada | | | |
+| 021 | `Supuestos!H62` | El cargo de refinacion del cobre esta escrito como `0,02 x 2204,62` | Dos centavos de dolar por libra, convertidos a tonelada dentro de la formula. Constante incrustada. **La tarifa pasa a ser dato de la plantilla y la conversion vive en el motor** | | | `ventas.py` |
+| 022 | `Supuestos!H63` | El cargo de refinacion de la plata es `ley pagable x 0,6 / 31,1035` | Sesenta centavos por onza troy, tambien incrustado. Ademas **no es un dato: se deriva de la ley pagable**, que a su vez sale de la produccion. Se calcula por unidad y se corrobora | | | `ventas.py` |
+| 023 | `Supuestos!H57` y `H58` | La ley pagable es `max(0, min(ley x 100 - deduccion minima, ley x factor pagable))` | Se calcula desde la ley del concentrado, la deduccion minima y el factor pagable. El `x 100` es de la escala del libro y desaparece al convertir en la frontera. **La de plata queda fuera**: ver la regla `045` | | | `ventas.py` |
 | 024 | `Supuestos!H123` y `H124` | OEFA va 0,07 %, 0,07 %, 0,06 % y despues constante; OSINERGMIN 0,12 %, 0,11 %, 0,10 % | **Son series por ano y decrecientes, no tasas fijas.** MINSUR confirmo el 01/09/2026 que es deliberado: los supuestos pueden variar los primeros ejercicios porque hay mejor informacion sobre ellos. Los valores del servicio (OEFA 0,10 %, Osinergmin 0,14 %) son la tasa de referencia, y el caso la sobrescribe | MINSUR | 01/09/2026 | `corrida.py` |
 | 025 | `Supuestos!H120` | La capacidad maxima de la refineria es un solo valor, no una serie por ano | Refina la regla `002`: el libro la declara una vez y la repite incrustada en las formulas de `InputsProd` | | | `refineria.py` |
 | 026 | `InputsOpex`, filas 131, 142, 155 y 166 | `Planilla = total del cash cost de la unidad x Supuestos!H111` | La planilla no es un dato: se deriva del costo. La plataforma la calcula y no la pide | Derivada del libro | 02/09/2026 | `cash_cost.py` |
@@ -57,6 +57,10 @@ que es lo que el motor necesita.
 | 039 | `Depreciacion`, fila 941 | La tasa de agotamiento de una de las seis unidades no lleva el tope `MIN(..., 100 %)` que llevan las otras cinco | Omision del libro. Sin el tope, una extraccion mayor que el saldo deprecia mas capital del que queda. **La plataforma aplica el tope en todas las unidades, presentes y futuras**: la evaluacion de un proyecto X, Y o Z usa los mismos conceptos y las mismas reglas que las unidades actuales, y una excepcion que vive en la formula de una unidad concreta no tiene donde alojarse. Pendiente del acta que lo registre como desviacion | Project Manager | 02/09/2026 | `depreciacion.py` |
 | 040 | `Supuestos`, filas 69 a 79 | Dos bloques de `Proyeccion SAP`, uno por via, con un valor por unidad en `k$` | Depreciacion ya contabilizada de los activos que existen antes del primer ano del caso. La via tributaria la consume agregada y la financiera por unidad; la plataforma la lleva por unidad en las dos, que es lo que pide `D-04` | Derivada del libro | 02/09/2026 | `depreciacion.py` |
 | 041 | `Depreciacion`, filas 786 y 787 frente a la regla `013` | El total de la depreciacion financiera de cada unidad se multiplica por `Ano con produccion`, una bandera de ese ejercicio, mientras la tributaria acumula con `IF(SUM(produccion hasta el ano)=0,...)` | **Las dos vias miran la produccion de forma distinta.** Un ano de parada a mitad de vida no difiere la cuota financiera: la pierde. La tributaria sigue depreciando | Derivada del libro | 02/09/2026 | `depreciacion.py` |
+| 042 | `Ventas`, filas 25 y 26 | Las dos unicas celdas tecleadas de la hoja: `Ajustes finales` y una fila rotulada `xxx`. Todo lo demas es formula | El ajuste es un dato del caso y se pide. La segunda es una ranura reservada y sin nombre, como la cuarta etapa del capex: **no se reproduce** | | | `supuestos.py` |
+| 043 | `Ventas`, filas 23 y 24 | El precio unitario del concentrado es `IFERROR(valor neto / toneladas, 0)` y la venta lo vuelve a multiplicar por esas toneladas | El rodeo se cancela y el resultado es el valor neto. La unica diferencia observable seria un embarque nulo, y ahi el `IFERROR` devuelve cero, que es lo mismo que dejar el termino fuera | Derivada del libro | 02/09/2026 | `ventas.py` |
+| 044 | `Ventas`, fila 61 | La fila de penalidades copia `Supuestos!H66` —la tarifa de la plata, en dolares por tonelada— sin multiplicarla por el embarque, y la de cobre (`Supuestos!H65`) no se referencia en ninguna parte | Arrastre: una tarifa colocada en una columna de totales. Su efecto esta acotado por la regla `010`, que deja las penalidades fuera de la venta. **La plataforma las lleva por metal y multiplicadas por lo embarcado**, que es lo que la tarifa dice cobrar | | | `ventas.py` |
+| 045 | `Supuestos!H58`, refina la `023` | La ley pagable de la plata aplica `ley x 100 - deduccion minima` sobre una ley que viene en onzas troy por tonelada, mientras su deduccion va en gramos por tonelada | Mezcla de unidades: el factor entre onzas troy y gramos es 31,1035, no 100. Corregirlo seria corregir el modelo y reproducirlo seria propagar un error dimensional. **La fila se carga como dato, se usa tal cual y no se corrobora** hasta la respuesta | | | |
 
 ## Detalle de las que no caben en una fila
 
@@ -181,7 +185,8 @@ omision del libro que la plataforma **no reproduce**, por decision expresa. La 0
 mismo dia como deliberada, de modo que paso a tipo 2. La 015 es la única donde el motor **no** reproduce el libro, porque las dos
 hojas del libro se contradicen entre sí: sigue a `FC NZ`, que es la hoja del caso. Seis quedaron confirmadas por Finanzas el 01/09/2026; siguen abiertas la 003 (unidades de
 medida), la 004 (tramos tributarios), la 007 (valores guardados sin recalcular), la 027 (fraccion
-deducible de la gestion social) y la 033 (el rango del ajuste de capex). La 028 queda contestada por
+deducible de la gestion social), la 033 (el rango del ajuste de capex), la 044 (la penalidad sin
+multiplicar) y la 045 (la ley pagable de la plata). La 028 queda contestada por
 la 037, y la 028, la 034, la 036 y la 037 se resolvieron el 02/09/2026 por decision del Project
 Manager: **se hace lo que hace el libro, sin fusionar los componentes**. Ninguna de las cuatro sigue
 consultada.
@@ -195,7 +200,13 @@ quedaba cerrado, y es de tipo 2: la via financiera cierra la puerta ano a ano y 
 como desviaciones acordadas; hasta entonces, la linea que difiera del modelo por su causa se
 sustenta en este registro.
 
-Ver la bitácora de discrepancias abiertas en `bitacora-discrepancias.md`.
+**Cuatro reglas mas salieron de leer la hoja `Ventas` fila a fila el 02/09/2026**, y estan en
+[brechas-plantilla-ventas.md](brechas-plantilla-ventas.md). La `042` y la `043` son de tipo 2 y
+quedan resueltas —una ranura reservada que no se reproduce y un rodeo aritmetico que se cancela—.
+La `044` y la `045` son de tipo 3 y siguen consultadas: la primera describe una tarifa copiada a
+una columna de totales sin multiplicar, y la segunda, una formula dimensionalmente incorrecta que
+**no se reproduce ni se corrige**, de modo que la ley pagable de la plata se carga como dato y no
+se corrobora.
 
 ## La regla de oro de la refineria: nada se agrupa
 

@@ -12,6 +12,7 @@ importa para el contraste estructural:
     refinería            minas que alimentan una refineria con tope de capacidad
     dos proyectos       una operacion en marcha y un proyecto que entra tarde
     agotamiento         minas cuyo capital se agota contra sus reservas
+    polimetálico        dos minas que liquidan concentrado de cobre con plata
 
 Los casos certificados con datos reales son otra cosa: viven en el tenant de
 MINSUR, se referencian por manifiesto en `fixtures/certificados/` y sus pruebas
@@ -25,8 +26,10 @@ from minsur_engine.caso import (
     Caso,
     DatosComunes,
     DatosMaestros,
+    MetalDelConcentrado,
     ProduccionDeUnidad,
     TerminosComerciales,
+    TerminosDelConcentrado,
     UnidadProductiva,
 )
 from minsur_engine.depreciacion import TasasDeDepreciacion
@@ -287,6 +290,118 @@ def caso_con_agotamiento() -> Caso:
             premio_metal_refinado=horizonte.ceros(),
             precio_metal_en_concentrado=horizonte.ceros(),
             factor_metal_pagable=horizonte.ceros(),
+        ),
+        datos_comunes=DatosComunes(gastos_administrativos=horizonte.ceros()),
+    )
+
+
+# --- Concentrado polimetalico --------------------------------------------------
+
+MERMA = 0.10
+MAQUILA = 100.0
+DEDUCCION_MINIMA_CU = 0.01
+FACTOR_PAGABLE_CU = 0.90
+PRECIO_CU = 10_000.0
+PRECIO_AG = 30.0
+TARIFA_RC_CU = 0.02
+"""Dolares por libra: es la tarifa que el libro incrusta en la formula."""
+
+TARIFA_RC_AG = 0.60
+"""Dolares por onza troy."""
+
+PENALIDAD_CU = 5.0
+PENALIDAD_AG = 2.0
+
+LEY_CU_ALFA = 0.30
+LEY_CU_BETA = 0.20
+LEY_PAGABLE_AG_ALFA = 100.0
+LEY_PAGABLE_AG_BETA = 50.0
+"""Gramos por tonelada. La de plata se declara: el libro la calcula con un factor
+cien sobre una ley en onzas por tonelada y esa formula esta consultada (regla 045).
+"""
+
+
+def caso_polimetalico() -> Caso:
+    """Dos minas que venden concentrado de cobre con plata dentro.
+
+    Las dos leyes de cobre son distintas a proposito: **es lo que hace observable
+    la regla de oro**. Con 0,30 la ley pagable la fija el factor y con 0,20 la
+    fija tambien el factor, pero el valor liquidado de cada una es suyo y no se
+    puede reconstruir desde un total agregado.
+
+    Ninguna declara ley pagable de cobre ni cargo de refinacion: los dos salen de
+    las condiciones del contrato, que es lo que hace el libro en su hoja de
+    supuestos. La de plata si se declara, porque su formula esta consultada.
+    """
+    horizonte = Horizonte(primer_ano=2027, anos=3)
+
+    def mina(
+        nombre: str, concentrado: float, ley_cu: float, ley_pagable_ag: float, costo: float
+    ) -> UnidadProductiva:
+        return UnidadProductiva(
+            nombre=nombre,
+            tipo="mina",
+            produccion=ProduccionDeUnidad(
+                mineral_tratado=horizonte.serie(
+                    [0.0, concentrado * 10.0, concentrado * 10.0], nombre=f"{nombre}/tratado"
+                ),
+                mineral_extraido=horizonte.serie(
+                    [0.0, concentrado * 10.0, concentrado * 10.0], nombre=f"{nombre}/extraido"
+                ),
+                concentrado_producido=horizonte.ceros(),
+                concentrado_de_cu=horizonte.serie(
+                    [0.0, concentrado, concentrado], nombre=f"{nombre}/concentrado de Cu"
+                ),
+                ley_cu=horizonte.serie([ley_cu] * 3, nombre=f"{nombre}/ley Cu"),
+            ),
+            ley_pagable_declarada={"Ag": horizonte.serie([ley_pagable_ag] * 3, nombre="Ag")},
+            costos={"Mina": horizonte.serie([0.0, costo, costo], nombre="mina")},
+        )
+
+    return Caso(
+        nombre="Sintetico: concentrado polimetalico",
+        horizonte=horizonte,
+        unidades=(
+            mina("Mina Alfa", 1_000.0, LEY_CU_ALFA, LEY_PAGABLE_AG_ALFA, 1_000_000.0),
+            mina("Mina Beta", 500.0, LEY_CU_BETA, LEY_PAGABLE_AG_BETA, 400_000.0),
+        ),
+        terminos=TerminosComerciales(
+            precio_metal_refinado=horizonte.ceros(),
+            premio_metal_refinado=horizonte.ceros(),
+            precio_metal_en_concentrado=horizonte.ceros(),
+            factor_metal_pagable=horizonte.ceros(),
+            ajustes=horizonte.serie([0.0, 50_000.0, 0.0], nombre="ajustes"),
+            concentrado=TerminosDelConcentrado(
+                merma=horizonte.serie([MERMA] * 3, nombre="merma"),
+                maquila_por_tonelada=horizonte.serie([MAQUILA] * 3, nombre="maquila"),
+                metales=(
+                    MetalDelConcentrado(
+                        nombre="Cu",
+                        ley_pagable=(),
+                        precio=horizonte.serie([PRECIO_CU] * 3, nombre="precio Cu"),
+                        cargo_de_refinacion=(),
+                        deduccion_minima=horizonte.serie(
+                            [DEDUCCION_MINIMA_CU] * 3, nombre="deduccion Cu"
+                        ),
+                        factor_pagable=horizonte.serie([FACTOR_PAGABLE_CU] * 3, nombre="factor Cu"),
+                        tarifa_de_refinacion=horizonte.serie([TARIFA_RC_CU] * 3, nombre="RC Cu"),
+                        penalidades_por_tonelada=horizonte.serie(
+                            [PENALIDAD_CU] * 3, nombre="penalidad Cu"
+                        ),
+                    ),
+                    MetalDelConcentrado(
+                        nombre="Ag",
+                        ley_pagable=(),
+                        precio=horizonte.serie([PRECIO_AG] * 3, nombre="precio Ag"),
+                        cargo_de_refinacion=(),
+                        en_onzas_troy=True,
+                        tarifa_de_refinacion=horizonte.serie([TARIFA_RC_AG] * 3, nombre="RC Ag"),
+                        penalidades_por_tonelada=horizonte.serie(
+                            [PENALIDAD_AG] * 3, nombre="penalidad Ag"
+                        ),
+                    ),
+                ),
+            ),
         ),
         datos_comunes=DatosComunes(gastos_administrativos=horizonte.ceros()),
     )

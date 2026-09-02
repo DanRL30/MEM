@@ -22,9 +22,13 @@ from minsur_engine.cash_cost import (
 )
 from minsur_engine.ventas import (
     GRAMOS_POR_ONZA_TROY,
+    LIBRAS_POR_TONELADA,
     ErrorVentas,
     LiquidacionConcentrado,
     MetalPagable,
+    cargo_de_refinacion_de_la_plata,
+    cargo_de_refinacion_del_cobre,
+    ley_pagable,
     liquidar_concentrado,
     venta_de_metal_en_concentrado,
     venta_de_metal_refinado,
@@ -44,7 +48,13 @@ def concentrado_de_prueba(
         toneladas_vendidas=toneladas_vendidas,
         merma=merma,
         metales=[
-            MetalPagable(nombre="Cu", ley_pagable=0.25, precio=9_000.0, cargo_de_refinacion=50.0),
+            MetalPagable(
+                nombre="Cu",
+                ley_pagable=0.25,
+                precio=9_000.0,
+                cargo_de_refinacion=50.0,
+                penalidades=penalidades,
+            ),
             MetalPagable(
                 nombre="Ag",
                 ley_pagable=100.0,
@@ -54,8 +64,43 @@ def concentrado_de_prueba(
             ),
         ],
         maquila_por_tonelada=maquila_por_tonelada,
-        penalidades=penalidades,
     )
+
+
+class TestLeyPagable:
+    """Regla 023: el comprador descuenta y ademas reconoce una fraccion."""
+
+    def test_manda_la_menor_de_las_dos_deducciones(self) -> None:
+        # 0,25 - 0,01 = 0,24 frente a 0,25 x 0,90 = 0,225: paga la menor.
+        assert ley_pagable(0.25, 0.01, 0.90) == pytest.approx(0.225)
+
+    def test_la_deduccion_minima_puede_ser_la_que_manda(self) -> None:
+        assert ley_pagable(0.25, 0.05, 0.99) == pytest.approx(0.20)
+
+    def test_una_deduccion_mayor_que_la_ley_no_da_negativo(self) -> None:
+        # El tope inferior en cero es del libro: un concentrado pobre no paga.
+        assert ley_pagable(0.02, 0.05, 0.90) == 0.0
+
+
+class TestCargoDeRefinacion:
+    """Reglas 021 y 022: la tarifa es dato y la conversion es fisica."""
+
+    def test_el_cobre_convierte_la_tarifa_por_libra(self) -> None:
+        assert cargo_de_refinacion_del_cobre(0.02) == pytest.approx(0.02 * LIBRAS_POR_TONELADA)
+
+    def test_dos_tarifas_distintas_dan_dos_cargos_distintos(self) -> None:
+        # Es lo que fija que la tarifa sea parametro y no una constante del codigo.
+        assert cargo_de_refinacion_del_cobre(0.03) > cargo_de_refinacion_del_cobre(0.02)
+
+    def test_la_plata_cobra_por_onza_del_contenido_pagable(self) -> None:
+        esperado = 100.0 / GRAMOS_POR_ONZA_TROY * 0.60
+        assert cargo_de_refinacion_de_la_plata(100.0, 0.60) == pytest.approx(esperado)
+
+    def test_el_cargo_de_la_plata_sigue_a_su_ley(self) -> None:
+        # No es un dato: se deriva de la ley pagable, que sale de la produccion.
+        assert cargo_de_refinacion_de_la_plata(200.0, 0.60) == pytest.approx(
+            2 * cargo_de_refinacion_de_la_plata(100.0, 0.60)
+        )
 
 
 class TestVentaDeEstano:
@@ -99,6 +144,13 @@ class TestLiquidacionDelConcentrado:
         assert con_penalidad.total_con_penalidades == pytest.approx(
             sin_penalidad.valor_neto - 50_000.0
         )
+
+    def test_el_volumen_pagable_sale_por_metal_y_en_su_unidad(self) -> None:
+        # Filas 70 a 72 del libro: toneladas de cobre y onzas troy de plata.
+        liquidacion = concentrado_de_prueba()
+        cobre, plata = liquidacion.metales
+        assert cobre.volumen_pagable == pytest.approx(0.25 * 1_000.0)
+        assert plata.volumen_pagable == pytest.approx(100.0 / GRAMOS_POR_ONZA_TROY * 1_000.0)
 
     def test_una_merma_fuera_de_rango_es_error(self) -> None:
         with pytest.raises(ErrorVentas, match="merma"):

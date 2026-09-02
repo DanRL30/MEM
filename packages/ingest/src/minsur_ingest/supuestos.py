@@ -82,15 +82,18 @@ FILAS_DE_SUPUESTOS = (
     FilaDeSupuesto("Deduccion Minima Ag", "g/t", "deduccion_minima_ag"),
     FilaDeSupuesto("Factor Metal Pagable Cu", "%", "factor_pagable_cu"),
     FilaDeSupuesto("Factor Metal Pagable Ag", "%", "factor_pagable_ag"),
-    # El libro las deriva de la ley del concentrado, la deduccion minima y el
-    # factor pagable. Se piden igual y se corroboran.
-    FilaDeSupuesto("Ley Pagable Cu", "%", "ley_pagable_cu", calculada=True),
-    FilaDeSupuesto("Ley Pagable Ag", "g/t", "ley_pagable_ag", calculada=True),
     FilaDeSupuesto("Maquila", "$/t", "maquila"),
-    FilaDeSupuesto("Refinacion Cu", "$/t", "refinacion_cu"),
-    FilaDeSupuesto("Refinacion Ag", "$/t", "refinacion_ag", calculada=True),
+    # El libro escribe el cargo del cobre como `0,02 x 2204,62`: la tarifa es el
+    # dato y la conversion de libra a tonelada la hace el motor (regla 021). El
+    # cargo queda como fila calculada, para corroborar lo que se cargue.
+    FilaDeSupuesto("Tarifa de Refinacion Cu", "$/lb", "tarifa_refinacion_cu"),
+    FilaDeSupuesto("Refinacion Cu", "$/t", "refinacion_cu", calculada=True),
+    FilaDeSupuesto("Tarifa de Refinacion Ag", "$/oz", "tarifa_refinacion_ag"),
     FilaDeSupuesto("Penalidades Cu", "$/t", "penalidades_cu"),
     FilaDeSupuesto("Penalidades Ag", "$/t", "penalidades_ag"),
+    # Fila 25 de la hoja `Ventas`, una de las dos unicas celdas tecleadas de esa
+    # hoja. La 26 esta rotulada `xxx` y no se pide: es ranura reservada.
+    FilaDeSupuesto("Ajustes de Venta", "$", "ajustes_de_venta"),
     FilaDeSupuesto("Otros Supuestos", SECCION),
     FilaDeSupuesto("Costo de Transporte de Concentrado", "$/t conc", "transporte"),
     FilaDeSupuesto("Costo de Fundicion", "$/tmf", "costo_de_fundicion"),
@@ -135,6 +138,16 @@ FILAS_POR_UNIDAD = (
     FilaDeSupuesto("Conversion de Recursos", "kt", "conversion_de_recursos"),
     FilaDeSupuesto("Refineria", SECCION),
     FilaDeSupuesto("Recuperacion de Sn en la refineria", "%", "recuperacion_en_la_refineria"),
+    FilaDeSupuesto("Concentrado", SECCION),
+    # Las tres salen de la ley del concentrado de esta unidad, de modo que van
+    # con ella y no en la pestana comun: dos minas con distinta ley de cobre no
+    # caben en una fila unica. El libro las declara una vez porque hoy solo una
+    # unidad vende concentrado polimetalico.
+    FilaDeSupuesto("Ley Pagable Cu", "%", "ley_pagable_cu", calculada=True),
+    # La de plata no se corrobora: la formula del libro le aplica un factor cien
+    # sobre una ley en onzas por tonelada. Es la regla 045, consultada.
+    FilaDeSupuesto("Ley Pagable Ag", "g/t", "ley_pagable_ag"),
+    FilaDeSupuesto("Refinacion Ag", "$/t", "refinacion_ag", calculada=True),
     FilaDeSupuesto("Gastos", SECCION),
     # El libro escribe la fila deducible como copia de la gestion social y en
     # dos escenarios la afecta por una fraccion. Sin declarar, es entera.
@@ -233,6 +246,7 @@ def aplicar(caso: Caso, supuestos: SupuestosDelCaso, comite: ComiteDePrecios | N
             comite.sn if comite else caso.terminos.precio_metal_en_concentrado
         ),
         factor_metal_pagable=comunes.get("pagable_sn", caso.terminos.factor_metal_pagable),
+        ajustes=comunes.get("ajustes_de_venta", caso.terminos.ajustes),
         concentrado=_terminos_del_concentrado(comunes, comite),
     )
     unidades = _con_supuestos(caso, supuestos)
@@ -269,22 +283,31 @@ def _terminos_del_concentrado(
     return TerminosDelConcentrado(
         merma=comunes.get("merma", ()),
         maquila_por_tonelada=comunes.get("maquila", ()),
-        penalidades_por_tonelada=comunes.get("penalidades_cu", ()),
         metales=(
             MetalDelConcentrado(
                 nombre="Cu",
-                ley_pagable=comunes.get("ley_pagable_cu", ()),
+                # La ley pagable la declara cada unidad; lo que llega aqui son
+                # las condiciones del contrato, que son del caso.
+                ley_pagable=(),
                 precio=comite.cu,
                 cargo_de_refinacion=comunes.get("refinacion_cu", ()),
+                deduccion_minima=comunes.get("deduccion_minima_cu", ()),
+                factor_pagable=comunes.get("factor_pagable_cu", ()),
+                tarifa_de_refinacion=comunes.get("tarifa_refinacion_cu", ()),
+                penalidades_por_tonelada=comunes.get("penalidades_cu", ()),
             ),
             # La plata se cotiza por onza troy y su ley pagable viene en gramos
             # por tonelada: la conversion la hace `liquidar_concentrado`.
             MetalDelConcentrado(
                 nombre="Ag",
-                ley_pagable=comunes.get("ley_pagable_ag", ()),
+                ley_pagable=(),
                 precio=comite.ag,
-                cargo_de_refinacion=comunes.get("refinacion_ag", ()),
+                cargo_de_refinacion=(),
                 en_onzas_troy=True,
+                deduccion_minima=comunes.get("deduccion_minima_ag", ()),
+                factor_pagable=comunes.get("factor_pagable_ag", ()),
+                tarifa_de_refinacion=comunes.get("tarifa_refinacion_ag", ()),
+                penalidades_por_tonelada=comunes.get("penalidades_ag", ()),
             ),
         ),
     )
@@ -335,9 +358,27 @@ def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProdu
             conversion_de_recursos=propios_de[unidad.nombre].get(
                 "conversion_de_recursos", unidad.conversion_de_recursos
             ),
+            ley_pagable_declarada=_por_metal(
+                propios_de[unidad.nombre], {"Cu": "ley_pagable_cu", "Ag": "ley_pagable_ag"}
+            ),
+            refinacion_declarada=_por_metal(propios_de[unidad.nombre], {"Ag": "refinacion_ag"}),
         )
         for unidad in caso.unidades
     )
+
+
+def _por_metal(propios: dict[str, Serie], campos: Mapping[str, str]) -> dict[str, Serie]:
+    """Series que la unidad declara para cada metal del concentrado.
+
+    Una fila vacia no se guarda: declararla la convierte en dato y dejarla vacia
+    deja que el motor la calcule, que es la misma distincion de las reservas.
+    """
+    declaradas = {}
+    for metal, campo in campos.items():
+        serie = propios.get(campo, ())
+        if serie:
+            declaradas[metal] = serie
+    return declaradas
 
 
 TASAS_DE_DEPRECIACION = {

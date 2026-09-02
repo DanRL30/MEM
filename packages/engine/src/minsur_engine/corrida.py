@@ -47,7 +47,13 @@ from minsur_engine.cash_cost import (
     parte_deducible,
     planilla,
 )
-from minsur_engine.caso import Caso, DatosMaestros, UnidadProductiva, campos_con_dato
+from minsur_engine.caso import (
+    Caso,
+    DatosMaestros,
+    MetalDelConcentrado,
+    UnidadProductiva,
+    campos_con_dato,
+)
 from minsur_engine.corroboracion import Discrepancia, corroborar
 from minsur_engine.depreciacion import (
     Agotamiento,
@@ -76,6 +82,9 @@ from minsur_engine.refineria import BloqueDeLaRefineria
 from minsur_engine.ventas import (
     LiquidacionConcentrado,
     MetalPagable,
+    cargo_de_refinacion_de_la_plata,
+    cargo_de_refinacion_del_cobre,
+    ley_pagable,
     liquidar_concentrado,
     venta_de_metal_en_concentrado,
     venta_de_metal_refinado,
@@ -102,10 +111,13 @@ class Indicadores:
 
 @dataclass(frozen=True)
 class _Ventas:
-    """La venta del año y su desglose por unidad."""
+    """La venta del año y su desglose por unidad y por camino."""
 
     total: Serie
     concentrado_liquidado_por_unidad: dict[str, Serie]
+    por_unidad: dict[str, Serie]
+    por_camino: dict[str, Serie]
+    volumen_pagable_por_unidad: dict[str, dict[str, Serie]]
 
 
 @dataclass(frozen=True)
@@ -165,6 +177,21 @@ class Corrida:
 
     concentrado_liquidado_por_unidad: dict[str, Serie]
     """Valor neto del concentrado polimetalico que liquida cada unidad."""
+
+    ventas_por_unidad: dict[str, Serie]
+    """Lo que vende cada unidad, sin agrupar."""
+
+    ventas_por_camino: dict[str, Serie]
+    """Las cuatro lineas de venta del libro, antes de totalizarlas.
+
+    El estano refinado, el estano en concentrado, el concentrado polimetalico y
+    los ajustes finales. Una diferencia contra el modelo cae en una de las
+    cuatro, y verlas sumadas obliga a buscarla en las cuatro a la vez.
+    """
+
+    volumen_pagable_por_unidad: dict[str, dict[str, Serie]]
+    """Contenido pagable de cada metal, por unidad: toneladas de cobre y onzas
+    troy de plata. Es la mitad observable del bloque N1 de metal pagable."""
 
     campos_con_dato_por_unidad: dict[str, frozenset[str]]
     """Filas que cada unidad llena de verdad.
@@ -367,6 +394,9 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         gastos_por_unidad=gastos.por_unidad,
         refineria=bloque,
         concentrado_liquidado_por_unidad=resultado_de_ventas.concentrado_liquidado_por_unidad,
+        ventas_por_unidad=resultado_de_ventas.por_unidad,
+        ventas_por_camino=resultado_de_ventas.por_camino,
+        volumen_pagable_por_unidad=resultado_de_ventas.volumen_pagable_por_unidad,
         campos_con_dato_por_unidad={u.nombre: campos_con_dato(u.produccion) for u in caso.unidades},
         mineral_tratado_por_unidad=produccion_por_unidad,
         anos_activos_por_unidad=_anos_activos(caso),
@@ -432,42 +462,6 @@ def _anos_activos(caso: Caso) -> dict[str, tuple[int, ...]]:
     }
 
 
-def _refinado_de_la_refineria(caso: Caso) -> Serie:
-    """Metal refinado que produce la refinería, por año.
-
-    **No es un dato: es resultado.** La lectura de las fórmulas del libro lo
-    confirmó fila por fila. Lo que alimenta a la refinería es el concentrado de
-    cada mina y su ley, y el refinado es la suma del contenido fino por la
-    recuperación que corresponde a cada origen.
-
-    Se calcula sobre lo alimentado **sin acotar por la capacidad**, que es la
-    línea que el libro llama `Producción Sn Refinado (Sin Restricción Pisco)`.
-    Cómo se reparte el recorte cuando la refinería se satura es la regla `017`,
-    reportada y sin confirmar: en el libro se le resta entero a la última unidad
-    en entrar, y generalizarlo sin respuesta sería inventarlo.
-    """
-    horizonte = caso.horizonte
-    planta = caso.refineria
-    if planta is None:
-        return horizonte.ceros()
-
-    recuperaciones = planta.recuperacion_en_la_refineria
-    refinado = [0.0] * horizonte.anos
-    for unidad in caso.unidades_mineras:
-        por_metal = recuperaciones.get(unidad.nombre, {})
-        recuperacion = por_metal.get("Sn")
-        if recuperacion is None:
-            continue
-        alimentado = _serie(
-            unidad.produccion.concentrado_producido, horizonte, f"{unidad.nombre}/concentrado"
-        )
-        ley = _serie(unidad.produccion.ley_del_concentrado, horizonte, f"{unidad.nombre}/ley")
-        tasa = _serie(recuperacion, horizonte, f"{unidad.nombre}/recuperacion")
-        for i in range(horizonte.anos):
-            refinado[i] += alimentado[i] * ley[i] * tasa[i]
-    return tuple(refinado)
-
-
 def _ventas(caso: Caso, bloque: BloqueDeLaRefineria) -> _Ventas:
     """Los tres caminos de ingreso que distingue el libro.
 
@@ -479,9 +473,10 @@ def _ventas(caso: Caso, bloque: BloqueDeLaRefineria) -> _Ventas:
     El excedente de la refinería no se descarta: es concentrado que no llegó a
     refinarse y se vende como tal, por el camino del metal en concentrado.
 
-    La liquidación se guarda **por unidad**, no solo su suma: es la regla de oro
-    de la refinería aplicada aquí, y sin ella una diferencia en la venta no se
-    puede atribuir a un origen.
+    **Todo se guarda desglosado**, por unidad y por camino, y no solo su suma. El
+    libro lleva las cuatro líneas separadas antes de totalizarlas, y sin ese
+    desglose una diferencia contra el modelo no se puede atribuir ni a un origen
+    ni a una vía de venta. Es la regla de oro de la refinería aplicada aquí.
     """
     horizonte = caso.horizonte
     terminos = caso.terminos
@@ -493,8 +488,14 @@ def _ventas(caso: Caso, bloque: BloqueDeLaRefineria) -> _Ventas:
     factor = _serie(terminos.factor_metal_pagable, horizonte, "factor de metal pagable")
     ajustes = _serie(terminos.ajustes, horizonte, "ajustes de venta")
 
-    total = [0.0] * horizonte.anos
+    anos = horizonte.anos
+    total = [0.0] * anos
+    linea_refinado = [0.0] * anos
+    linea_en_concentrado = [0.0] * anos
+    linea_del_concentrado = [0.0] * anos
     liquidado: dict[str, Serie] = {}
+    por_unidad: dict[str, Serie] = {}
+    volumen_pagable: dict[str, dict[str, Serie]] = {}
     for unidad in caso.unidades:
         # La refinería no declara su refinado: se calculo desde las minas. Una
         # unidad que vende directo si lo declara, porque no pasa por refineria.
@@ -512,29 +513,59 @@ def _ventas(caso: Caso, bloque: BloqueDeLaRefineria) -> _Ventas:
         )
         if unidad.es_refineria:
             volumen_concentrado = tuple(
-                volumen_concentrado[i] + bloque.refinado_del_excedente[i]
-                for i in range(horizonte.anos)
+                volumen_concentrado[i] + bloque.refinado_del_excedente[i] for i in range(anos)
             )
 
         liquidaciones = _liquidar_concentrado_de(caso, unidad)
         if liquidaciones is not None:
             liquidado[unidad.nombre] = tuple(x.valor_neto for x in liquidaciones)
+            volumen_pagable[unidad.nombre] = _volumen_pagable(liquidaciones)
 
-        for i in range(horizonte.anos):
-            total[i] += venta_total(
-                metal_refinado=venta_de_metal_refinado(
-                    volumen_refinado[i], precio_refinado[i], premio[i]
-                ),
-                metal_en_concentrado=venta_de_metal_en_concentrado(
-                    volumen_concentrado[i], precio_concentrado[i], factor[i]
-                ),
-                concentrado=None if liquidaciones is None else liquidaciones[i],
+        propia = [0.0] * anos
+        for i in range(anos):
+            refinado = venta_de_metal_refinado(volumen_refinado[i], precio_refinado[i], premio[i])
+            en_concentrado = venta_de_metal_en_concentrado(
+                volumen_concentrado[i], precio_concentrado[i], factor[i]
             )
+            liquidacion = None if liquidaciones is None else liquidaciones[i]
+            propia[i] = venta_total(
+                metal_refinado=refinado,
+                metal_en_concentrado=en_concentrado,
+                concentrado=liquidacion,
+            )
+            linea_refinado[i] += refinado
+            linea_en_concentrado[i] += en_concentrado
+            linea_del_concentrado[i] += 0.0 if liquidacion is None else liquidacion.valor_neto
+            total[i] += propia[i]
+        por_unidad[unidad.nombre] = tuple(propia)
 
     return _Ventas(
-        total=tuple(total[i] + ajustes[i] for i in range(horizonte.anos)),
+        total=tuple(total[i] + ajustes[i] for i in range(anos)),
         concentrado_liquidado_por_unidad=liquidado,
+        por_unidad=por_unidad,
+        por_camino={
+            "Venta Sn Refinado": tuple(linea_refinado),
+            "Venta Sn Concentrado": tuple(linea_en_concentrado),
+            "Venta Cu + Ag": tuple(linea_del_concentrado),
+            "Ajustes finales": ajustes,
+        },
+        volumen_pagable_por_unidad=volumen_pagable,
     )
+
+
+def _volumen_pagable(liquidaciones: list[LiquidacionConcentrado]) -> dict[str, Serie]:
+    """Contenido pagable de cada metal, año a año.
+
+    Es la línea `Volumen Pagable` del libro, que hasta ahora se calculaba dentro
+    de la liquidación y no salía a ninguna parte. Es la mitad observable del
+    bloque N1 de metal pagable: sin ella, una diferencia en el valor no se puede
+    separar en cuánto es contenido y cuánto es precio.
+    """
+    nombres = [metal.nombre for metal in liquidaciones[0].metales] if liquidaciones else []
+    return {
+        nombre: tuple(x.metales[j].volumen_pagable for x in liquidaciones)
+        for j, nombre in enumerate(nombres)
+    }
 
 
 def _liquidar_concentrado_de(
@@ -556,16 +587,7 @@ def _liquidar_concentrado_de(
     embarcado = _serie(toneladas, horizonte, f"{unidad.nombre}/concentrado de Cu")
     merma = _serie(condiciones.merma, horizonte, "merma")
     maquila = _serie(condiciones.maquila_por_tonelada, horizonte, "maquila")
-    penalidades = _serie(condiciones.penalidades_por_tonelada, horizonte, "penalidades")
-    metales = [
-        (
-            metal,
-            _serie(metal.ley_pagable, horizonte, f"ley pagable de {metal.nombre}"),
-            _serie(metal.precio, horizonte, f"precio de {metal.nombre}"),
-            _serie(metal.cargo_de_refinacion, horizonte, f"refinacion de {metal.nombre}"),
-        )
-        for metal in condiciones.metales
-    ]
+    metales = [_metal_liquidable(caso, unidad, metal) for metal in condiciones.metales]
 
     return [
         liquidar_concentrado(
@@ -578,16 +600,99 @@ def _liquidar_concentrado_de(
                     precio=precio[i],
                     cargo_de_refinacion=cargo[i],
                     en_onzas_troy=metal.en_onzas_troy,
+                    # El libro la lleva por tonelada de concentrado y la copia al
+                    # total sin multiplicarla; aqui se multiplica por lo
+                    # embarcado, que es lo que la tarifa dice cobrar.
+                    penalidades=penalidad[i] * embarcado[i],
                 )
-                for metal, ley, precio, cargo in metales
+                for metal, ley, precio, cargo, penalidad in metales
             ],
             maquila_por_tonelada=maquila[i],
-            # El libro las lleva por tonelada de concentrado; `liquidar` las
-            # espera en dolares del embarque.
-            penalidades=penalidades[i] * embarcado[i],
         )
         for i in range(horizonte.anos)
     ]
+
+
+def _metal_liquidable(
+    caso: Caso, unidad: UnidadProductiva, metal: MetalDelConcentrado
+) -> tuple[MetalDelConcentrado, Serie, Serie, Serie, Serie]:
+    """Resuelve las cuatro series de un metal en el concentrado de una unidad."""
+    horizonte = caso.horizonte
+    ley = _ley_pagable_de(caso, unidad, metal)
+    return (
+        metal,
+        ley,
+        _serie(metal.precio, horizonte, f"precio de {metal.nombre}"),
+        _refinacion_de(caso, unidad, metal, ley),
+        _serie(metal.penalidades_por_tonelada, horizonte, f"penalidades de {metal.nombre}"),
+    )
+
+
+def _ley_pagable_de(caso: Caso, unidad: UnidadProductiva, metal: MetalDelConcentrado) -> Serie:
+    """Ley pagable de un metal en el concentrado de una unidad.
+
+    Manda lo que declare la unidad; detrás, lo que declare el caso; y si nadie la
+    declara, se calcula desde la ley del concentrado con su deducción mínima y su
+    factor pagable, que es la regla 023.
+
+    **La de la plata no se calcula.** La fórmula del libro multiplica por cien
+    una ley en onzas por tonelada: es la regla 045, consultada. Sin declarar y
+    sin fórmula que aplicar queda en cero, y eso se ve en la corrida.
+    """
+    horizonte = caso.horizonte
+    nombre = f"ley pagable de {metal.nombre}"
+    declarada = unidad.ley_pagable_declarada.get(metal.nombre, ())
+    if declarada:
+        return _serie(declarada, horizonte, nombre)
+    if metal.ley_pagable:
+        return _serie(metal.ley_pagable, horizonte, nombre)
+
+    ley = _ley_del_concentrado(unidad, metal.nombre)
+    if metal.en_onzas_troy or not ley or not metal.factor_pagable:
+        return horizonte.ceros()
+
+    del_concentrado = _serie(ley, horizonte, f"ley de {metal.nombre}")
+    deduccion = _serie(metal.deduccion_minima, horizonte, f"deduccion minima de {metal.nombre}")
+    factor = _serie(metal.factor_pagable, horizonte, f"factor pagable de {metal.nombre}")
+    return tuple(
+        ley_pagable(del_concentrado[i], deduccion[i], factor[i]) for i in range(horizonte.anos)
+    )
+
+
+def _refinacion_de(
+    caso: Caso, unidad: UnidadProductiva, metal: MetalDelConcentrado, ley: Serie
+) -> Serie:
+    """Cargo de refinación de un metal, en dólares por tonelada neta.
+
+    Mismo orden que la ley pagable: lo declarado manda y lo que falte se calcula
+    desde la tarifa. La del cobre va por libra y la de la plata por onza troy
+    sobre la ley pagable, que son las reglas 021 y 022.
+    """
+    horizonte = caso.horizonte
+    nombre = f"refinacion de {metal.nombre}"
+    declarada = unidad.refinacion_declarada.get(metal.nombre, ())
+    if declarada:
+        return _serie(declarada, horizonte, nombre)
+    if metal.cargo_de_refinacion:
+        return _serie(metal.cargo_de_refinacion, horizonte, nombre)
+    if not metal.tarifa_de_refinacion:
+        return horizonte.ceros()
+
+    tarifa = _serie(metal.tarifa_de_refinacion, horizonte, f"tarifa de {nombre}")
+    if metal.en_onzas_troy:
+        return tuple(
+            cargo_de_refinacion_de_la_plata(ley[i], tarifa[i]) for i in range(horizonte.anos)
+        )
+    return tuple(cargo_de_refinacion_del_cobre(tarifa[i]) for i in range(horizonte.anos))
+
+
+def _ley_del_concentrado(unidad: UnidadProductiva, metal: str) -> Serie:
+    """Ley del metal en el concentrado comercial, tal como la carga producción."""
+    if metal == "Cu":
+        return unidad.produccion.ley_cu
+    if metal == "Ag":
+        return unidad.produccion.ley_ag
+    return ()
 
 
 def _reguladores(caso: Caso, parametros: ParametrosCorporativos) -> Serie:

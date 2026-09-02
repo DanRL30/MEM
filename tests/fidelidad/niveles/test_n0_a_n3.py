@@ -30,10 +30,14 @@ de MINSUR y se marca `tenant_minsur`.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from casos import sinteticos
 
+from minsur_engine.caso import Caso
 from minsur_engine.corrida import Corrida, calcular, unidades_activas
+from minsur_engine.ventas import GRAMOS_POR_ONZA_TROY, LIBRAS_POR_TONELADA
 
 pytestmark = pytest.mark.fidelidad
 
@@ -103,6 +107,50 @@ def con_agotamiento() -> Corrida:
     return calcular(sinteticos.caso_con_agotamiento(), sinteticos.MAESTROS)
 
 
+@pytest.fixture(scope="module")
+def polimetalico() -> Corrida:
+    return calcular(sinteticos.caso_polimetalico(), sinteticos.MAESTROS)
+
+
+# Cifras del concentrado, calculadas a mano desde las constantes del caso. El
+# cobre paga la menor de sus dos deducciones -0,30 x 0,90 frente a 0,30 - 0,01-
+# y la plata pasa de gramos por tonelada a onzas troy.
+LEY_PAGABLE_CU_ALFA = sinteticos.LEY_CU_ALFA * sinteticos.FACTOR_PAGABLE_CU
+LEY_PAGABLE_CU_BETA = sinteticos.LEY_CU_BETA * sinteticos.FACTOR_PAGABLE_CU
+RC_CU = sinteticos.TARIFA_RC_CU * LIBRAS_POR_TONELADA
+CONTENIDO_AG_ALFA = sinteticos.LEY_PAGABLE_AG_ALFA / GRAMOS_POR_ONZA_TROY
+CONTENIDO_AG_BETA = sinteticos.LEY_PAGABLE_AG_BETA / GRAMOS_POR_ONZA_TROY
+
+
+def _liquidacion(embarcado: float, ley_pagable_cu: float, contenido_ag: float) -> float:
+    """Valor neto de un embarque: contenido sobre vendidas, cargos sobre netas."""
+    netas = embarcado * (1.0 - sinteticos.MERMA)
+    pagable = (
+        ley_pagable_cu * sinteticos.PRECIO_CU * embarcado
+        + contenido_ag * sinteticos.PRECIO_AG * embarcado
+    )
+    cargos = netas * (sinteticos.MAQUILA + RC_CU + contenido_ag * sinteticos.TARIFA_RC_AG)
+    return pagable - cargos
+
+
+def _sin_merma(caso: Caso) -> Caso:
+    """El mismo caso con la merma en cero, para aislar su efecto."""
+    concentrado = caso.terminos.concentrado
+    assert concentrado is not None
+    return replace(
+        caso,
+        terminos=replace(
+            caso.terminos,
+            concentrado=replace(concentrado, merma=caso.horizonte.ceros()),
+        ),
+    )
+
+
+def _sin_concentrado(caso: Caso) -> Caso:
+    """El mismo caso sin condiciones de concentrado: la liquidacion desaparece."""
+    return replace(caso, terminos=replace(caso.terminos, concentrado=None))
+
+
 class TestLaReglaDeTolerancia:
     """La regla contractual se verifica aquí, ya que no gobierna lo demás."""
 
@@ -165,6 +213,17 @@ class TestN0:
         assert proyecto.reservas is None
         assert sum(proyecto.produccion.mineral_extraido) == 1_000.0
 
+    def test_la_ley_pagable_declarada_llega_intacta_a_la_liquidacion(
+        self, polimetalico: Corrida
+    ) -> None:
+        # La de plata se carga porque su formula esta consultada (regla 045): lo
+        # que se declara es lo que liquida, sin recalculo por el camino.
+        volumen = polimetalico.volumen_pagable_por_unidad["Mina Alfa"]["Ag"]
+        embarcado = polimetalico.caso.unidades[0].produccion.concentrado_de_cu
+        contrastar(
+            volumen, tuple(CONTENIDO_AG_ALFA * t for t in embarcado), "volumen pagable de Ag"
+        )
+
 
 # --- N1 · bloques intermedios --------------------------------------------------
 
@@ -175,6 +234,78 @@ class TestN1:
     def test_ventas(self, simple: Corrida) -> None:
         # 100 tmf al precio de 10 000, sin premio.
         contrastar(simple.ventas, (0.0, 1_000_000.0, 1_000_000.0), "ventas")
+
+    def test_metal_pagable(self, polimetalico: Corrida) -> None:
+        """Volumen pagable por unidad y por metal, en la unidad de cada uno."""
+        alfa = polimetalico.volumen_pagable_por_unidad["Mina Alfa"]
+        beta = polimetalico.volumen_pagable_por_unidad["Mina Beta"]
+        # Toneladas de cobre pagable: 1 000 t al 27 % y 500 t al 18 %.
+        contrastar(alfa["Cu"], (0.0, 270.0, 270.0), "volumen pagable de Cu en Alfa")
+        contrastar(beta["Cu"], (0.0, 90.0, 90.0), "volumen pagable de Cu en Beta")
+        # Onzas troy de plata.
+        contrastar(
+            beta["Ag"],
+            (0.0, CONTENIDO_AG_BETA * 500.0, CONTENIDO_AG_BETA * 500.0),
+            "volumen pagable de Ag en Beta",
+        )
+
+    def test_ventas_del_concentrado(self, polimetalico: Corrida) -> None:
+        """Las cuatro lineas de venta del libro, cada una por separado."""
+        alfa = _liquidacion(1_000.0, LEY_PAGABLE_CU_ALFA, CONTENIDO_AG_ALFA)
+        beta = _liquidacion(500.0, LEY_PAGABLE_CU_BETA, CONTENIDO_AG_BETA)
+        contrastar(polimetalico.ventas_por_unidad["Mina Alfa"], (0.0, alfa, alfa), "venta de Alfa")
+        contrastar(polimetalico.ventas_por_unidad["Mina Beta"], (0.0, beta, beta), "venta de Beta")
+
+        caminos = polimetalico.ventas_por_camino
+        contrastar(caminos["Venta Sn Refinado"], (0.0, 0.0, 0.0), "venta de Sn refinado")
+        contrastar(
+            caminos["Venta Cu + Ag"], (0.0, alfa + beta, alfa + beta), "venta del concentrado"
+        )
+        contrastar(caminos["Ajustes finales"], (0.0, 50_000.0, 0.0), "ajustes")
+        # El total es la suma de las cuatro lineas, y nada mas.
+        contrastar(
+            polimetalico.ventas,
+            (0.0, alfa + beta + 50_000.0, alfa + beta),
+            "venta total",
+        )
+
+    def test_una_unidad_no_hereda_la_ley_de_la_otra(self, polimetalico: Corrida) -> None:
+        # Regla de oro: cada mina liquida con su propia ley. Agrupar las dos en
+        # una ley media daria un solo numero que no se puede atribuir a nadie.
+        agrupado = _liquidacion(
+            1_500.0, (LEY_PAGABLE_CU_ALFA + LEY_PAGABLE_CU_BETA) / 2.0, CONTENIDO_AG_ALFA
+        )
+        por_unidad = polimetalico.ventas_por_unidad
+        suma = por_unidad["Mina Alfa"][1] + por_unidad["Mina Beta"][1]
+        assert not coincide(suma, agrupado)
+
+    def test_las_penalidades_no_llegan_a_la_venta(self, polimetalico: Corrida) -> None:
+        # Regla 010, esta vez sobre la corrida entera y no sobre la funcion: el
+        # caso declara penalidades de cobre y de plata y la venta no las acusa.
+        alfa = _liquidacion(1_000.0, LEY_PAGABLE_CU_ALFA, CONTENIDO_AG_ALFA)
+        contrastar(
+            polimetalico.concentrado_liquidado_por_unidad["Mina Alfa"],
+            (0.0, alfa, alfa),
+            "liquidacion de Alfa",
+        )
+
+    def test_el_pagable_va_sobre_vendidas_y_los_cargos_sobre_netas(self) -> None:
+        """Regla 011: subir la merma no toca el contenido, solo los cargos."""
+        con_merma = calcular(sinteticos.caso_polimetalico(), sinteticos.MAESTROS)
+        sin_merma = calcular(_sin_merma(sinteticos.caso_polimetalico()), sinteticos.MAESTROS)
+        # El volumen pagable es identico: la merma no descuenta contenido.
+        contrastar(
+            sin_merma.volumen_pagable_por_unidad["Mina Alfa"]["Cu"],
+            con_merma.volumen_pagable_por_unidad["Mina Alfa"]["Cu"],
+            "volumen pagable con y sin merma",
+        )
+        # Y la diferencia de venta es exactamente la de los cargos: la merma
+        # rebaja las toneladas que pagan maquila y refinacion, de modo que el
+        # caso con merma vende mas, no menos.
+        cargos = 1_500.0 * sinteticos.MERMA * (sinteticos.MAQUILA + RC_CU)
+        cargos += 1_000.0 * sinteticos.MERMA * CONTENIDO_AG_ALFA * sinteticos.TARIFA_RC_AG
+        cargos += 500.0 * sinteticos.MERMA * CONTENIDO_AG_BETA * sinteticos.TARIFA_RC_AG
+        assert coincide(con_merma.ventas[1] - sin_merma.ventas[1], cargos)
 
     def test_cash_cost(self, simple: Corrida) -> None:
         contrastar(simple.cash_cost, (0.0, 200_000.0, 200_000.0), "cash cost")
@@ -302,6 +433,17 @@ class TestN1:
 class TestN2:
     """Los tres escalones del flujo, contrastados y consistentes entre sí."""
 
+    def test_la_liquidacion_del_concentrado_llega_al_flujo(self, polimetalico: Corrida) -> None:
+        # Sin este escalon, un error en la liquidacion se compensa aguas abajo y
+        # no se ve: el EBITDA arranca de la venta, y la venta del caso es toda
+        # concentrado.
+        cash_cost = 1_400_000.0
+        ventas = polimetalico.ventas[1]
+        participacion = polimetalico.participacion_trabajadores[1]
+        fondo = polimetalico.tributos_por_ano[1].fondo_jubilacion_minera
+        esperado = ventas - cash_cost - participacion - fondo
+        contrastar(polimetalico.flujo.ebitda_ajustado[1:2], (esperado,), "EBITDA del polimetalico")
+
     def test_ebitda_ajustado(self, simple: Corrida) -> None:
         contrastar(simple.flujo.ebitda_ajustado, (0.0, 775_350.0, 732_850.0), "EBITDA ajustado")
 
@@ -351,6 +493,13 @@ class TestN2:
 
 class TestN3:
     """Las cuatro cifras que el cliente mira, con sus propias tolerancias."""
+
+    def test_el_concentrado_mueve_el_npv(self, polimetalico: Corrida) -> None:
+        # Quitar las condiciones del concentrado deja el caso sin venta: si el
+        # NPV no se moviera, la liquidacion no estaria llegando al flujo.
+        sin_venta = calcular(_sin_concentrado(sinteticos.caso_polimetalico()), sinteticos.MAESTROS)
+        assert polimetalico.indicadores.npv > sin_venta.indicadores.npv
+        assert not coincide(polimetalico.indicadores.npv, sin_venta.indicadores.npv)
 
     def test_npv(self, simple: Corrida) -> None:
         esperado = -1_000_000.0 + 687_071.75 / 1.1 + 509_609.25 / 1.21

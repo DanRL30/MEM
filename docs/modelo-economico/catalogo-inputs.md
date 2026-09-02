@@ -208,10 +208,43 @@ que sirve. No lleva pestana en el libro de produccion, si en los de opex y capex
 Precios de Sn, Cu y Ag, en varios juegos alternativos que el libro selecciona con un segundo
 control (`Control!$G$8`): proyectos, recursos de una fecha dada, precios base de proyectos, precios
 de presupuesto y largo plazo. Es la dimension de escenario de precios que el estandar corporativo
-exige tratar como base, optimista y pesimista.
+exige tratar como base, optimista y pesimista. En la plataforma son el **comite de precios**, dato
+maestro que sube Finanzas y que la corrida registra en su terna.
 
-Ademas: terminos comerciales de Sn y de Cu, gastos de venta por metal, fletes, y las deducciones
-del ingreso cuya clasificacion sigue pendiente (nota 1 de [mapa-n1.md](mapa-n1.md)).
+Los terminos comerciales son del caso y viven en la pestana comun de la plantilla de supuestos:
+
+| Concepto | Unidad | Dato o calculo | Campo del motor |
+|---|---|---|---|
+| Precio Sn, Cu | `$/t` | dato maestro | `MetalDelConcentrado.precio`, `TerminosComerciales.precio_*` |
+| Precio Ag | `$/oz` | dato maestro | `MetalDelConcentrado.precio` |
+| Premio Sn | `$/t` | dato | `TerminosComerciales.premio_metal_refinado` |
+| Pagable sobre concentrado de Sn | `%` | dato | `TerminosComerciales.factor_metal_pagable` |
+| Merma | `%` | dato | `TerminosDelConcentrado.merma` |
+| Deduccion Minima Cu | `%` | dato | `MetalDelConcentrado.deduccion_minima` |
+| Deduccion Minima Ag | `g/t` | dato | `MetalDelConcentrado.deduccion_minima` |
+| Factor Metal Pagable Cu, Ag | `%` | dato | `MetalDelConcentrado.factor_pagable` |
+| Maquila | `$/t` | dato | `TerminosDelConcentrado.maquila_por_tonelada` |
+| Tarifa de Refinacion Cu | `$/lb` | dato | `MetalDelConcentrado.tarifa_de_refinacion` |
+| Tarifa de Refinacion Ag | `$/oz` | dato | `MetalDelConcentrado.tarifa_de_refinacion` |
+| Refinacion Cu | `$/t` | **calculo**, regla 021 | `MetalDelConcentrado.cargo_de_refinacion` |
+| Penalidades Cu, Ag | `$/t` | dato | `MetalDelConcentrado.penalidades_por_tonelada` |
+| Ajustes de Venta | `$` | dato | `TerminosComerciales.ajustes` |
+
+Y tres van en la pestana de cada unidad, porque se derivan de la ley del concentrado de esa unidad:
+
+| Concepto | Unidad | Dato o calculo | Campo del motor |
+|---|---|---|---|
+| Ley Pagable Cu | `%` | **calculo**, regla 023 | `UnidadProductiva.ley_pagable_declarada` |
+| Ley Pagable Ag | `g/t` | dato; su formula esta consultada (regla 045) | `UnidadProductiva.ley_pagable_declarada` |
+| Refinacion Ag | `$/t` | **calculo**, regla 022 | `UnidadProductiva.refinacion_declarada` |
+
+Lo marcado como calculo se pide igual y se corrobora: **declararlo lo convierte en dato** y dejarlo
+vacio deja que el motor lo calcule, que es la misma distincion que hace el libro con las reservas.
+
+Siguen fuera del motor los gastos de venta por metal, el costo de fundicion y los fletes: su
+clasificacion entre costo operativo y deduccion del ingreso es la nota 1 de
+[mapa-n1.md](mapa-n1.md), sin respuesta de Finanzas. La lectura fila a fila de la hoja esta en
+[brechas-plantilla-ventas.md](brechas-plantilla-ventas.md).
 
 ### 4.5 Datos comunes al caso
 

@@ -23,6 +23,21 @@ libro divide entre 31,1035 para convertirla. El cobre no lleva conversión.
 **El valor pagable usa las toneladas vendidas y los cargos usan las netas.** La
 merma se descuenta para maquila y refinación, pero no para valorizar el
 contenido. Es asimétrico y es lo que hace el libro.
+
+## Tres filas que el libro presenta como supuesto y son cálculo
+
+La hoja `Supuestos` declara la ley pagable de cada metal y los dos cargos de
+refinación como si fueran datos, pero las tres salen de una fórmula: la ley
+pagable, de la ley del concentrado con su deducción mínima y su factor
+(regla 023); la refinación del cobre, de una tarifa por libra convertida a
+tonelada (regla 021); y la de la plata, de la ley pagable por una tarifa por
+onza troy (regla 022). Aquí están las tres, para que el caso pueda declararlas
+y el sistema las corrobore.
+
+**La ley pagable de la plata no se calcula.** La fórmula del libro multiplica
+por cien una ley que viene en onzas por tonelada, mezclando dos unidades; el
+factor correcto sería 31,1035 y ponerlo sería corregir el modelo. Es la regla
+045 y está consultada: hasta la respuesta, la de plata se carga como dato.
 """
 
 from __future__ import annotations
@@ -31,6 +46,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 GRAMOS_POR_ONZA_TROY = 31.1035
+LIBRAS_POR_TONELADA = 2204.62
+"""Conversión de la tarifa de refinación del cobre, que se cotiza por libra."""
 
 
 class ErrorVentas(ValueError):
@@ -54,12 +71,20 @@ class MetalPagable:
     en_onzas_troy: bool = False
     """Cierto para los metales preciosos, cuya ley viene en gramos por tonelada."""
 
+    penalidades: float = 0.0
+    """Penalidad del embarque atribuible a este metal, en dólares."""
+
 
 @dataclass(frozen=True)
 class LiquidacionMetal:
     nombre: str
     valor_pagable: float
     cargo_de_refinacion: float
+    volumen_pagable: float = 0.0
+    """Contenido que el comprador paga, en toneladas para el cobre y en onzas
+    troy para la plata. Es la línea `Volumen Pagable` del libro."""
+
+    penalidades: float = 0.0
 
     @property
     def valor_neto(self) -> float:
@@ -74,11 +99,15 @@ class LiquidacionConcentrado:
     toneladas_netas: float
     metales: tuple[LiquidacionMetal, ...]
     maquila: float
-    penalidades: float
 
     @property
     def valor_pagable(self) -> float:
         return sum(m.valor_pagable for m in self.metales)
+
+    @property
+    def penalidades(self) -> float:
+        """Penalidades del embarque, que el libro lleva por metal."""
+        return sum(m.penalidades for m in self.metales)
 
     @property
     def cargos(self) -> float:
@@ -101,6 +130,45 @@ class LiquidacionConcentrado:
     def total_con_penalidades(self) -> float:
         """Valor neto descontando además las penalidades. No entra en la venta."""
         return self.valor_neto - self.penalidades
+
+
+def ley_pagable(ley: float, deduccion_minima: float, factor_pagable: float) -> float:
+    """Ley que el comprador paga, en la unidad en que viene la ley.
+
+    Es la regla 023: `max(0, min(ley - deduccion minima, ley x factor pagable))`.
+    El comprador descuenta una deducción fija y, por separado, reconoce solo una
+    fracción del contenido; se cobra la menor de las dos y nunca menos de cero.
+
+    El libro escribe `ley x 100 - deduccion minima` porque su ley está en
+    porcentaje. Aquí no aparece el cien: la escala se convierte en la ingesta, de
+    modo que la ley y la deducción llegan en la misma unidad y la resta es
+    directa. **Vale para el cobre, cuya ley y cuya deducción van en fracción.**
+    Para la plata el libro repite la fórmula sobre onzas por tonelada, que es la
+    regla 045, consultada y sin implementar.
+    """
+    return max(0.0, min(ley - deduccion_minima, ley * factor_pagable))
+
+
+def cargo_de_refinacion_del_cobre(tarifa_por_libra: float) -> float:
+    """RC del cobre en dólares por tonelada, desde su tarifa por libra.
+
+    Es la regla 021: el libro escribe `0,02 x 2204,62` dentro de la fórmula. Los
+    dos centavos son la tarifa y entran por la plantilla; la conversión de libra
+    a tonelada es física y vive aquí.
+    """
+    return tarifa_por_libra * LIBRAS_POR_TONELADA
+
+
+def cargo_de_refinacion_de_la_plata(
+    ley_pagable_de_la_plata: float, tarifa_por_onza: float
+) -> float:
+    """RC de la plata en dólares por tonelada de concentrado.
+
+    Es la regla 022: `ley pagable x 0,6 / 31,1035`. **No es un dato**: se deriva
+    de la ley pagable, que a su vez sale de la producción de la unidad, y por eso
+    el cargo es distinto en cada origen aunque el libro lo declare una vez.
+    """
+    return ley_pagable_de_la_plata / GRAMOS_POR_ONZA_TROY * tarifa_por_onza
 
 
 def venta_de_metal_refinado(volumen: float, precio_spot: float, premio: float) -> float:
@@ -126,7 +194,6 @@ def liquidar_concentrado(
     merma: float,
     metales: Sequence[MetalPagable],
     maquila_por_tonelada: float,
-    penalidades: float = 0.0,
 ) -> LiquidacionConcentrado:
     """Liquida un embarque: valoriza el contenido pagable y descuenta cargos."""
     if not 0.0 <= merma < 1.0:
@@ -148,6 +215,8 @@ def liquidar_concentrado(
                 valor_pagable=contenido * metal.precio * toneladas_vendidas,
                 # ...y los cargos se cobran sobre las netas de merma.
                 cargo_de_refinacion=metal.cargo_de_refinacion * toneladas_netas,
+                volumen_pagable=contenido * toneladas_vendidas,
+                penalidades=metal.penalidades,
             )
         )
 
@@ -156,7 +225,6 @@ def liquidar_concentrado(
         toneladas_netas=toneladas_netas,
         metales=tuple(liquidaciones),
         maquila=maquila_por_tonelada * toneladas_netas,
-        penalidades=penalidades,
     )
 
 

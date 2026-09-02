@@ -93,6 +93,11 @@ FACTORES_DE_ESCALA = {
     "$": 1.0,
     "$/t": 1.0,
     "$/oz": 1.0,
+    # La tarifa de refinacion del cobre se cotiza por libra y el libro la
+    # convierte a tonelada dentro de la formula. La conversion es del motor
+    # -regla 021-, asi que aqui la escala es uno y se declara para que un
+    # cambio de unidad no pase en silencio por el valor por defecto.
+    "$/lb": 1.0,
     "$/t conc": 1.0,
     "$/tmf": 1.0,
     "g/t": 1.0,

@@ -188,6 +188,23 @@ class UnidadProductiva:
     alias: tuple[str, ...] = ()
     """Abreviaturas con que el libro nombra la unidad: `SR`, `SRP`, `NZ`."""
 
+    ley_pagable_declarada: Mapping[str, Serie] = field(default_factory=dict)
+    """Ley pagable de cada metal del concentrado, si la unidad la declara.
+
+    **Declararla la convierte en dato; dejarla vacía, en cálculo**, que es la
+    misma distinción que hace el libro con las reservas. Va por unidad y no por
+    caso porque se deriva de la ley del concentrado de esta unidad: dos minas
+    con distinta ley de cobre no caben en una fila única, y una diferencia en la
+    venta del concentrado no se podría atribuir a un origen.
+    """
+
+    refinacion_declarada: Mapping[str, Serie] = field(default_factory=dict)
+    """Cargo de refinación de cada metal, en US$ por tonelada neta.
+
+    Mismo criterio que la ley pagable: el del cobre sale de una tarifa por libra
+    y el de la plata, de la ley pagable de esta unidad.
+    """
+
     recuperacion_en_la_refineria: Mapping[str, Mapping[str, Serie]] = field(default_factory=dict)
     """Solo en la unidad de la refinería: su recuperación por origen y por metal.
 
@@ -249,11 +266,30 @@ class MetalDelConcentrado:
 
     nombre: str
     ley_pagable: Serie
+    """Ley pagable del caso. La unidad que la declare manda sobre esta."""
+
     precio: Serie
     cargo_de_refinacion: Serie
     """RC, en dólares por tonelada neta de concentrado."""
 
     en_onzas_troy: bool = False
+
+    deduccion_minima: Serie = ()
+    """Deducción que el comprador descuenta de la ley, en la unidad de la ley."""
+
+    factor_pagable: Serie = ()
+    """Fracción del contenido que el comprador reconoce."""
+
+    tarifa_de_refinacion: Serie = ()
+    """Tarifa del RC: por libra en el cobre y por onza troy en la plata.
+
+    Es lo que el libro incrusta en la fórmula del cargo —dos centavos y sesenta
+    centavos, reglas 021 y 022—. Declararla deja que el motor calcule el cargo;
+    `cargo_de_refinacion` lo recibe ya hecho.
+    """
+
+    penalidades_por_tonelada: Serie = ()
+    """Penalidad de este metal, en dólares por tonelada embarcada."""
 
 
 @dataclass(frozen=True)
@@ -267,8 +303,9 @@ class TerminosDelConcentrado:
 
     merma: Serie = ()
     maquila_por_tonelada: Serie = ()
-    penalidades_por_tonelada: Serie = ()
     metales: tuple[MetalDelConcentrado, ...] = ()
+    """Cada metal con su ley, su precio y sus cargos. La penalidad va en el
+    metal, porque el libro la declara por metal aunque solo cobre una."""
 
 
 @dataclass(frozen=True)
@@ -396,6 +433,15 @@ class Caso:
                     f"{unidad.nombre} entrega su concentrado a {unidad.entrega_a!r}, que el caso "
                     f"{self.nombre!r} no declara. Un destino inexistente pierde la produccion "
                     "sin que el flujo lo acuse."
+                )
+            # Lo que se entrega se vende una vez, y lo vende quien refina. Si la
+            # unidad ademas declara su refinado, ese metal se cobra dos veces y
+            # la venta cuadra con nada.
+            if unidad.entrega_a is not None and unidad.produccion.metal_refinado_vendido:
+                raise ErrorCaso(
+                    f"{unidad.nombre} entrega su concentrado a {unidad.entrega_a!r} y ademas "
+                    "declara metal refinado vendido. Ese metal se contaria dos veces: lo vende "
+                    "la unidad que lo refina."
                 )
 
     @property

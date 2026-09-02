@@ -14,14 +14,18 @@ fallo peor: el informe sale limpio y nadie revisa.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from minsur_engine.caso import (
     Caso,
     DatosComunes,
     DatosMaestros,
+    MetalDelConcentrado,
     ProduccionDeUnidad,
     TerminosComerciales,
+    TerminosDelConcentrado,
     UnidadProductiva,
     campos_con_dato,
 )
@@ -31,6 +35,7 @@ from minsur_engine.depreciacion import TasasDeDepreciacion
 from minsur_engine.horizonte import Horizonte
 from minsur_engine.parametros import ParametrosCorporativos
 from minsur_engine.tributos import EscalaProgresiva, Tramo
+from minsur_engine.ventas import GRAMOS_POR_ONZA_TROY
 
 MAESTROS = DatosMaestros(
     parametros=ParametrosCorporativos(
@@ -118,6 +123,130 @@ def _caso(*unidades: UnidadProductiva) -> Caso:
 
 def conceptos(halladas: tuple[Discrepancia, ...]) -> set[str]:
     return {d.concepto for d in halladas}
+
+
+# --- Bloque comercial ---------------------------------------------------------
+#
+# El concentrado de cobre de la unidad al 20 %, con una deduccion minima de un
+# punto y un factor pagable del 90 %: la ley pagable la fija el factor, 0,18. La
+# tarifa del cobre son dos centavos por libra y la de la plata, sesenta centavos
+# por onza troy sobre una ley pagable de 100 g/t.
+
+LEY_CU = 0.20
+DEDUCCION_CU = 0.01
+FACTOR_CU = 0.90
+LEY_PAGABLE_CU = LEY_CU * FACTOR_CU
+TARIFA_CU = 0.02
+LEY_PAGABLE_AG = 100.0
+TARIFA_AG = 0.60
+
+
+def _unidad_polimetalica(**declaradas: tuple[float, ...]) -> UnidadProductiva:
+    """La misma unidad, con concentrado de cobre y su bloque comercial cuadrado."""
+    base = _unidad()
+    return replace(
+        base,
+        produccion=replace(
+            base.produccion,
+            concentrado_de_cu=_par(500.0),
+            ley_cu=declaradas.get("ley_cu", _par(LEY_CU)),
+        ),
+        ley_pagable_declarada={
+            "Cu": declaradas.get("ley_pagable_cu", _par(LEY_PAGABLE_CU)),
+            "Ag": declaradas.get("ley_pagable_ag", _par(LEY_PAGABLE_AG)),
+        },
+        refinacion_declarada={
+            "Ag": declaradas.get(
+                "refinacion_ag", _par(LEY_PAGABLE_AG / GRAMOS_POR_ONZA_TROY * TARIFA_AG)
+            ),
+        },
+    )
+
+
+def _caso_polimetalico(unidad: UnidadProductiva) -> Caso:
+    ceros = HORIZONTE.ceros()
+    return Caso(
+        nombre="Caso polimetalico",
+        horizonte=HORIZONTE,
+        unidades=(unidad,),
+        terminos=TerminosComerciales(
+            precio_metal_refinado=ceros,
+            premio_metal_refinado=ceros,
+            precio_metal_en_concentrado=ceros,
+            factor_metal_pagable=ceros,
+            concentrado=TerminosDelConcentrado(
+                merma=_par(0.05),
+                maquila_por_tonelada=_par(100.0),
+                metales=(
+                    MetalDelConcentrado(
+                        nombre="Cu",
+                        ley_pagable=(),
+                        precio=_par(9_000.0),
+                        cargo_de_refinacion=(),
+                        deduccion_minima=_par(DEDUCCION_CU),
+                        factor_pagable=_par(FACTOR_CU),
+                        tarifa_de_refinacion=_par(TARIFA_CU),
+                    ),
+                    MetalDelConcentrado(
+                        nombre="Ag",
+                        ley_pagable=(),
+                        precio=_par(30.0),
+                        cargo_de_refinacion=(),
+                        en_onzas_troy=True,
+                        tarifa_de_refinacion=_par(TARIFA_AG),
+                    ),
+                ),
+            ),
+        ),
+        datos_comunes=DatosComunes(gastos_administrativos=ceros),
+    )
+
+
+class TestElBloqueComercial:
+    """Las tres filas que el libro presenta como supuesto y son calculo.
+
+    La hoja `Supuestos` declara la ley pagable y los dos cargos de refinacion
+    como si fueran datos. Salen de una formula, y aqui se rehacen igual que las
+    ocho de produccion: se avisa y no se corrige.
+    """
+
+    def test_un_bloque_comercial_que_cuadra_no_reporta_nada(self) -> None:
+        assert corroborar(_caso_polimetalico(_unidad_polimetalica())) == ()
+
+    def test_una_ley_pagable_de_cobre_alterada_se_reporta(self) -> None:
+        # Regla 023: sale de la ley del concentrado, su deduccion y su factor.
+        unidad = _unidad_polimetalica(ley_pagable_cu=_par(LEY_PAGABLE_CU * 2))
+        assert conceptos(corroborar(_caso_polimetalico(unidad))) == {"Ley Pagable Cu"}
+
+    def test_el_cargo_de_la_plata_sigue_a_su_ley_pagable(self) -> None:
+        # Regla 022: no es un dato, se deriva de la ley pagable de esa unidad.
+        unidad = _unidad_polimetalica(refinacion_ag=_par(5.0))
+        assert conceptos(corroborar(_caso_polimetalico(unidad))) == {"Refinacion Ag"}
+
+    def test_la_ley_pagable_de_la_plata_no_se_corrobora(self) -> None:
+        # Regla 045: la formula del libro le aplica un factor cien sobre una ley
+        # en onzas por tonelada. Sin respuesta de Finanzas no hay contra que
+        # compararla, y una alarma inventada seria peor que ninguna.
+        unidad = _unidad_polimetalica(ley_pagable_ag=_par(LEY_PAGABLE_AG * 3))
+        assert "Ley Pagable Ag" not in conceptos(corroborar(_caso_polimetalico(unidad)))
+
+    def test_una_unidad_sin_concentrado_no_reporta_nada_comercial(self) -> None:
+        # La estructura es la misma para todos: un caso de solo estano no tiene
+        # ley pagable que corroborar y callar es lo correcto.
+        assert conceptos(corroborar(_caso_polimetalico(_unidad()))) == set()
+
+    def test_el_dato_comercial_cargado_es_el_que_liquida(self) -> None:
+        # La otra mitad de la propiedad: el aviso no cambia la cifra. La ley
+        # pagable alterada mueve la venta **como mueve el dato**, no como dice
+        # el recalculo.
+        cargada = calcular(
+            _caso_polimetalico(_unidad_polimetalica(ley_pagable_cu=_par(LEY_PAGABLE_CU * 2))),
+            MAESTROS,
+        )
+        coherente = calcular(_caso_polimetalico(_unidad_polimetalica()), MAESTROS)
+        cobre_de_mas = LEY_PAGABLE_CU * 9_000.0 * 500.0
+        assert cargada.ventas[0] - coherente.ventas[0] == pytest.approx(cobre_de_mas)
+        assert cargada.discrepancias != ()
 
 
 class TestCadenaCoherente:
