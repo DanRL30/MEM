@@ -51,6 +51,7 @@ from minsur_engine.caso import Caso, DatosMaestros, UnidadProductiva, campos_con
 from minsur_engine.corroboracion import Discrepancia, corroborar
 from minsur_engine.depreciacion import (
     Agotamiento,
+    TasasDeDepreciacion,
     depreciacion_por_mina,
     por_unidad,
     total_depreciado,
@@ -246,10 +247,12 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         nombre: cargados.get(ESTUDIOS_CAPITALIZABLES, ())
         for nombre, cargados in gastos.por_unidad.items()
     }
+    tributarias = _con_lo_declarado(maestros.tasas_tributarias, caso.datos_comunes.tasas_declaradas)
+    financieras = _con_lo_declarado(maestros.tasas_financieras, caso.datos_comunes.tasas_declaradas)
     detalle_tributario = depreciacion_por_mina(
         horizonte,
         capital,
-        maestros.tasas_tributarias,
+        tributarias,
         produccion=con_produccion,
         proyecciones={u.nombre: u.proyeccion_tributaria for u in caso.unidades},
         estudios=capitalizados,
@@ -259,7 +262,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     detalle_financiero = depreciacion_por_mina(
         horizonte,
         capital,
-        maestros.tasas_financieras,
+        financieras,
         produccion=con_produccion,
         agotamientos={u.nombre: _agotamiento(u, horizonte) for u in caso.unidades},
         proyecciones={u.nombre: u.proyeccion_financiera for u in caso.unidades},
@@ -650,6 +653,23 @@ def _agotamiento(unidad: UnidadProductiva, horizonte: Horizonte) -> Agotamiento:
         extraido=extraido,
         reservas=declaradas if declaradas is not None else sum(extraido),
     )
+
+
+def _con_lo_declarado(
+    maestras: TasasDeDepreciacion, declaradas: Mapping[str, float]
+) -> TasasDeDepreciacion:
+    """Tasas de la corrida: las del dato maestro, salvo las que el caso declare.
+
+    Se sobrescribe componente a componente y no en bloque, de modo que declarar
+    una no arrastre las otras cuatro. Lo que el caso no declara se rige por la
+    version de datos maestros que la corrida registra en su terna.
+
+    El libro declara un solo juego de tasas y las dos vias lo comparten para la
+    parte lineal, asi que lo declarado afecta a las dos.
+    """
+    if not declaradas:
+        return maestras
+    return replace(maestras, **declaradas)
 
 
 def _capital_ajustado(caso: Caso) -> list[CapitalDeUnidad]:

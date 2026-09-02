@@ -186,6 +186,13 @@ La naturaleza contable es la que gobierna la depreciacion, y por eso `Depreciaci
 bloque por unidad. La desviacion acordada `D-04` obliga a que ese calculo sea **separado por mina**
 en todos los casos.
 
+**Las tasas de depreciacion son dato maestro y la plantilla las admite igual.** Las mantiene MINSUR
+(`R-32`) y una corrida registra con que version se calculo; lo que el caso declare sobrescribe
+**solo ese componente** para ese caso, como ya ocurre con los aportes reguladores. Son cinco
+—maquinaria, instalaciones, edificaciones, estudios y no depreciable— y se escriben **una sola vez**:
+no cambian de ano a ano. Los equipos de computo no llevan la suya porque su clasificacion contable es
+la de la maquinaria.
+
 **Dos inputs mas por unidad, y los dos viven en la plantilla de supuestos.** Las **reservas de
 apertura**, en `kt`, que la via financiera agota: declararlas las convierte en dato y dejarlas
 vacias en calculo, que es la distincion que hace el libro entre una unidad en operacion y un

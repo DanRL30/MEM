@@ -47,6 +47,15 @@ class FilaDeSupuesto:
     calculada: bool = False
     """Si el sistema la rehace para corroborar lo que el usuario cargó."""
 
+    constante: bool = False
+    """Si es un solo valor y no una serie.
+
+    Una tasa de depreciación o un saldo de reservas no cambian de año a año: se
+    escriben una vez y rigen todo el horizonte. La plantilla les deja una sola
+    celda para que nadie tenga que repetir el mismo numero cuarenta veces, ni se
+    pregunte que significa cambiarlo a la mitad.
+    """
+
 
 def _es_seccion(fila: FilaDeSupuesto) -> bool:
     return fila.medida is SECCION
@@ -94,6 +103,15 @@ FILAS_DE_SUPUESTOS = (
     FilaDeSupuesto("Otros Flujo Operativo", "$", "otros_flujo_operativo"),
     FilaDeSupuesto("Planilla sobre Cash Cost", "%", "planilla_sobre_cash_cost"),
     FilaDeSupuesto("Rango de Ajuste de Capex", "%", "ajuste_de_capex"),
+    FilaDeSupuesto("Tasas de Depreciacion", SECCION),
+    # Son datos maestros que mantiene MINSUR (`R-32`). Declararlas aqui las
+    # sobrescribe **solo para este caso**, igual que ya ocurre con los aportes
+    # reguladores: vacias, rige la version de datos maestros de la corrida.
+    FilaDeSupuesto("Maquinaria, Equipos y Vehiculos", "%", "tasa_maquinaria", constante=True),
+    FilaDeSupuesto("Instalaciones y Equipos Diversos", "%", "tasa_instalaciones", constante=True),
+    FilaDeSupuesto("Edificaciones y Construcciones", "%", "tasa_edificaciones", constante=True),
+    FilaDeSupuesto("Estudios", "%", "tasa_estudios", constante=True),
+    FilaDeSupuesto("No Depreciable", "%", "tasa_no_depreciable", constante=True),
     FilaDeSupuesto("Reguladores", SECCION),
     # El libro los lleva ano a ano y decrecientes, no como una tasa fija.
     FilaDeSupuesto("Contribucion a OEFA", "%", "oefa"),
@@ -111,7 +129,7 @@ FILAS_POR_UNIDAD = (
     FilaDeSupuesto("Proyeccion SAP Financiera", "k$", "proyeccion_financiera"),
     # La via financiera agota el capital contra las reservas. Declararlas las
     # convierte en dato; dejarlas vacias las convierte en calculo.
-    FilaDeSupuesto("Reservas", "kt", "reservas"),
+    FilaDeSupuesto("Reservas", "kt", "reservas", constante=True),
     FilaDeSupuesto("Refineria", SECCION),
     FilaDeSupuesto("Recuperacion de Sn en la refineria", "%", "recuperacion_en_la_refineria"),
     FilaDeSupuesto("Gastos", SECCION),
@@ -234,6 +252,7 @@ def aplicar(caso: Caso, supuestos: SupuestosDelCaso, comite: ComiteDePrecios | N
             otros_flujo=comunes.get("otros_flujo_operativo", caso.datos_comunes.otros_flujo),
             osinergmin=comunes.get("osinergmin", ()),
             oefa=comunes.get("oefa", ()),
+            tasas_declaradas=_tasas_declaradas(comunes),
         ),
     )
 
@@ -315,6 +334,39 @@ def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProdu
     )
 
 
+TASAS_DE_DEPRECIACION = {
+    "tasa_maquinaria": "maquinaria",
+    "tasa_instalaciones": "instalaciones",
+    "tasa_edificaciones": "edificaciones",
+    "tasa_estudios": "estudios",
+    "tasa_no_depreciable": "no_depreciable",
+}
+"""Campo de la plantilla y componente del motor al que sobrescribe."""
+
+
+def _tasas_declaradas(comunes: dict[str, Serie]) -> dict[str, float]:
+    """Tasas de depreciación que el caso declara, y solo esas.
+
+    Lo que no se declara no se toca: rige la version de datos maestros con la
+    que se corre. Declarar una sola sobrescribe una sola, de modo que media
+    plantilla llena no arrastra las otras cuatro a cero.
+    """
+    declaradas: dict[str, float] = {}
+    for campo, componente in TASAS_DE_DEPRECIACION.items():
+        valor = _constante(comunes.get(campo, ()))
+        if valor is not None:
+            declaradas[componente] = valor
+    return declaradas
+
+
+def _constante(serie: Serie) -> float | None:
+    """Primer valor de una fila que se escribe una vez y rige todo el horizonte."""
+    for valor in serie:
+        if valor:
+            return valor
+    return None
+
+
 def _reservas(propios: dict[str, Serie], declaradas: float | None) -> float | None:
     """Reservas de apertura de una unidad, si la plantilla las declara.
 
@@ -323,8 +375,4 @@ def _reservas(propios: dict[str, Serie], declaradas: float | None) -> float | No
     escriba. **Una fila vacia no son cero reservas: es que se calculan** a partir
     de lo que la unidad extrae en el horizonte.
     """
-    serie = propios.get("reservas", ())
-    for valor in serie:
-        if valor:
-            return valor
-    return declaradas
+    return _constante(propios.get("reservas", ())) or declaradas

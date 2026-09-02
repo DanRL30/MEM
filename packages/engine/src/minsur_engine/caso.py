@@ -297,6 +297,15 @@ class DatosComunes:
     planilla_sobre_cash_cost: Serie = ()
     """Tasa con que el libro deriva la planilla del cash cost de cada unidad."""
 
+    tasas_declaradas: Mapping[str, float] = field(default_factory=dict)
+    """Tasas de depreciación que este caso declara, por componente contable.
+
+    Son dato maestro y las mantiene MINSUR (`R-32`). Un caso puede sobrescribir
+    las que necesite —y solo esas—, igual que con los aportes reguladores: lo que
+    no declara sigue rigiéndose por la versión de datos maestros de la corrida,
+    que es la que queda registrada en su terna.
+    """
+
     ajuste_de_capex: Serie = ()
     """Banda de precisión del estimado de capital, que afecta a todo el capex.
 

@@ -241,6 +241,7 @@ def fila_de_entrada(
     unidad: str,
     anos: int,
     calculada: bool = False,
+    constante: bool = False,
 ) -> int:
     """Escribe una fila de datos.
 
@@ -248,13 +249,17 @@ def fila_de_entrada(
     si el dato cargado no cuadra. Se llenan igual que las demas, porque el
     recalculo audita el dato y no lo sustituye. Es la misma convencion de color
     que usa el libro de produccion de MINSUR.
+
+    **Una fila constante deja una sola celda.** Una tasa de depreciacion o un
+    saldo de reservas rigen todo el horizonte, y ofrecer cuarenta celdas invita
+    a repetir el mismo numero cuarenta veces o, peor, a cambiarlo a la mitad.
     """
     etiqueta = hoja.cell(row=fila, column=1, value=concepto)
     etiqueta.font = ETIQUETA
     medida = hoja.cell(row=fila, column=2, value=unidad)
     medida.font = MEDIDA
     relleno = CALCULADA if calculada else DATO
-    for col in range(3, 3 + anos):
+    for col in range(3, 4 if constante else 3 + anos):
         hoja.cell(row=fila, column=col).fill = relleno
     return fila + 1
 
@@ -382,8 +387,16 @@ def _hoja_de_filas(
             fila = fila_de_seccion(hoja, fila, definida.etiqueta, anos)
             continue
         numericas.append(fila)
+        # `constante` solo lo declara la estructura de supuestos: las otras dos
+        # no tienen filas de un solo valor.
         fila = fila_de_entrada(
-            hoja, fila, definida.etiqueta, definida.medida, anos, definida.calculada
+            hoja,
+            fila,
+            definida.etiqueta,
+            definida.medida,
+            anos,
+            definida.calculada,
+            getattr(definida, "constante", False),
         )
     validacion_numerica(hoja, numericas, anos)
 

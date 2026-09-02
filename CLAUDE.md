@@ -182,7 +182,7 @@ despues, no deuda heredada.
 | `ruff check .` | Limpio |
 | `ruff format --check .` | Limpio, 99 archivos |
 | `mypy packages apps/api/src` | Limpio en modo estricto, 63 archivos |
-| `pytest` | 367 de 367, de las que 31 son el contraste de fidelidad |
+| `pytest` | 370 de 370, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -392,6 +392,17 @@ mostro que no.
 fraccion del saldo que representa lo extraido sobre las reservas que quedaban.
 No hay cronograma por ano de inversion, hay **un solo saldo** que recibe las
 inversiones y se agota al ritmo al que se vacia el yacimiento.
+
+**Las tasas se pueden declarar por caso, y son un solo valor.** Son dato maestro
+que mantiene MINSUR (`R-32`), y la plantilla de supuestos las admite igual: lo
+que el caso declara sobrescribe **solo ese componente**, y lo que calla se rige
+por la version de datos maestros que la corrida registra en su terna. Es el mismo
+patron que ya usan OEFA y Osinergmin.
+
+Van en filas **constantes**: una tasa no cambia de ano a ano, de modo que la
+plantilla les deja una sola celda. Ofrecer cuarenta invita a repetir el mismo
+numero cuarenta veces o, peor, a cambiarlo a la mitad. Lo mismo vale para las
+reservas de apertura.
 
 **`No depreciable` engana con el nombre**: no es que no se deprecie, es que no
 se reparte. Es el escudo del capital de cierre y entra entero en su ejercicio.

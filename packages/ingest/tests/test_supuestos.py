@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from openpyxl import load_workbook
@@ -286,3 +287,80 @@ class TestAplicarAlCaso:
         caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
         assert caso.datos_comunes.oefa != ()
         assert caso.datos_comunes.osinergmin != ()
+
+
+class TestLasTasasDeDepreciacion:
+    """Son dato maestro, y un caso puede sobrescribir las que necesite."""
+
+    ETIQUETAS: ClassVar[dict[str, str]] = {
+        "Maquinaria, Equipos y Vehiculos": "maquinaria",
+        "Instalaciones y Equipos Diversos": "instalaciones",
+        "Edificaciones y Construcciones": "edificaciones",
+        "Estudios": "estudios",
+        "No Depreciable": "no_depreciable",
+    }
+
+    def _tasas(self, ruta: Path, **declaradas: float) -> Path:
+        """Vacia las cinco filas de tasas y escribe solo las que se indiquen."""
+        libro = load_workbook(ruta)
+        hoja = libro["Comunes"]
+        for fila in hoja.iter_rows(min_row=5, max_col=2):
+            componente = self.ETIQUETAS.get(str(fila[0].value or "").strip())
+            if componente is None:
+                continue
+            numero = int(fila[0].row or 0)
+            for columna in range(3, 6):
+                hoja.cell(row=numero, column=columna).value = None
+            if componente in declaradas:
+                hoja.cell(row=numero, column=3).value = declaradas[componente]
+        libro.save(ruta)
+        return ruta
+
+    def test_se_escriben_una_vez_y_rigen_todo_el_horizonte(self, supuestos: Path) -> None:
+        # La plantilla les deja una sola celda: una tasa no cambia de ano a ano.
+        del_caso = leer_supuestos(self._tasas(supuestos, maquinaria=25.0)).supuestos
+        assert del_caso is not None
+        comunes = aplicar(_caso_minimo(), del_caso).datos_comunes
+        assert comunes.tasas_declaradas["maquinaria"] == pytest.approx(0.25)
+
+    def test_lo_declarado_sobrescribe_solo_lo_declarado(self, supuestos: Path) -> None:
+        # Declarar una no arrastra las otras cuatro a cero: lo que el caso no
+        # dice se rige por la version de datos maestros de la corrida.
+        del_caso = leer_supuestos(self._tasas(supuestos, maquinaria=25.0)).supuestos
+        assert del_caso is not None
+        assert set(aplicar(_caso_minimo(), del_caso).datos_comunes.tasas_declaradas) == {
+            "maquinaria"
+        }
+
+    def test_sin_declarar_ninguna_no_se_sobrescribe_nada(self, supuestos: Path) -> None:
+        del_caso = leer_supuestos(self._tasas(supuestos)).supuestos
+        assert del_caso is not None
+        assert aplicar(_caso_minimo(), del_caso).datos_comunes.tasas_declaradas == {}
+
+
+def _caso_minimo() -> Caso:
+    horizonte = Horizonte(primer_ano=2027, anos=3)
+    ceros = horizonte.ceros()
+    return Caso(
+        nombre="Caso de prueba",
+        horizonte=horizonte,
+        unidades=(
+            UnidadProductiva(
+                nombre="Proyecto X",
+                tipo="mina",
+                produccion=ProduccionDeUnidad(mineral_tratado=ceros),
+            ),
+            UnidadProductiva(
+                nombre="Proyecto Y",
+                tipo="mina",
+                produccion=ProduccionDeUnidad(mineral_tratado=ceros),
+            ),
+        ),
+        terminos=TerminosComerciales(
+            precio_metal_refinado=ceros,
+            premio_metal_refinado=ceros,
+            precio_metal_en_concentrado=ceros,
+            factor_metal_pagable=ceros,
+        ),
+        datos_comunes=DatosComunes(gastos_administrativos=ceros),
+    )
