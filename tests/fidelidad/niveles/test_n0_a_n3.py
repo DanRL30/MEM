@@ -196,14 +196,23 @@ class TestN1:
     def test_el_tope_de_la_fundicion_acota_el_tratamiento(self, complejo: Corrida) -> None:
         # Alimentado 1 200, 1 400, 1 600 y 1 700 contra una capacidad de 1 500.
         contrastar(
-            complejo.concentrado_alimentado, (1_200.0, 1_400.0, 1_600.0, 1_700.0), "alimentado"
+            complejo.complejo.concentrado_entregado,
+            (1_200.0, 1_400.0, 1_600.0, 1_700.0),
+            "alimentado",
         )
-        contrastar(complejo.concentrado_tratado, (1_200.0, 1_400.0, 1_500.0, 1_500.0), "tratado")
-        contrastar(complejo.concentrado_excedente, (0.0, 0.0, 100.0, 200.0), "excedente")
+        contrastar(
+            complejo.complejo.concentrado_alimentado,
+            (1_200.0, 1_400.0, 1_500.0, 1_500.0),
+            "tratado",
+        )
+        contrastar(complejo.complejo.concentrado_excedente, (0.0, 0.0, 100.0, 200.0), "excedente")
 
     def test_lo_tratado_mas_lo_excedente_es_lo_alimentado(self, complejo: Corrida) -> None:
-        for i, alimentado in enumerate(complejo.concentrado_alimentado):
-            suma = complejo.concentrado_tratado[i] + complejo.concentrado_excedente[i]
+        for i, alimentado in enumerate(complejo.complejo.concentrado_entregado):
+            suma = (
+                complejo.complejo.concentrado_alimentado[i]
+                + complejo.complejo.concentrado_excedente[i]
+            )
             assert coincide(suma, alimentado), f"descuadre en el ano {i}"
 
     def test_la_depreciacion_se_desglosa_por_mina(self, combinado: Corrida) -> None:

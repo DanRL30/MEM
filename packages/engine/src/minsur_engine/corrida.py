@@ -24,10 +24,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from minsur_engine import capital_trabajo, produccion, tributos
+from minsur_engine import capital_trabajo, complejo, tributos
 from minsur_engine.capex import capex_de_etapa, capex_de_sostenimiento, capex_total
 from minsur_engine.cash_cost import CostoDeUnidad, cash_cost_total
 from minsur_engine.caso import Caso, DatosMaestros
+from minsur_engine.complejo import BloqueDelComplejo
 from minsur_engine.corroboracion import Discrepancia, corroborar
 from minsur_engine.depreciacion import depreciacion_por_mina, total_depreciado
 from minsur_engine.flujos import (
@@ -73,15 +74,10 @@ class Corrida:
     version_datos_maestros: str
     ventas: Serie
     cash_cost: Serie
-    concentrado_alimentado: Serie
-    concentrado_tratado: Serie
-    concentrado_excedente: Serie
-    mineral_tratado_por_unidad: dict[str, Serie]
-    ley_de_alimentacion: Serie
-    """Ley promedio del concentrado que llega al complejo."""
+    complejo: BloqueDelComplejo
+    """El bloque del complejo, entero y calculado componente a componente."""
 
-    metal_refinado_del_complejo: Serie
-    """Refinado que produce el complejo, calculado desde lo que le entregan las minas."""
+    mineral_tratado_por_unidad: dict[str, Serie]
 
     anos_activos_por_unidad: dict[str, tuple[int, ...]]
     """Años calendario en que cada unidad produce.
@@ -121,9 +117,8 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     horizonte = caso.horizonte
     parametros = maestros.parametros
 
-    concentrado = _concentrado_del_complejo(caso)
-    refinado_del_complejo = _refinado_del_complejo(caso)
-    ventas = _ventas(caso, refinado_del_complejo)
+    bloque = _bloque_del_complejo(caso)
+    ventas = _ventas(caso, bloque.refinado_sin_restriccion)
     cash_cost = _cash_cost(caso)
     capital = [u.capital for u in caso.unidades if u.capital is not None]
 
@@ -139,9 +134,9 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     )
 
     comunes = caso.datos_comunes
-    fletes = _por_tonelada(comunes.fletes_por_tonelada, concentrado["tratado"], horizonte)
+    fletes = _por_tonelada(comunes.fletes_por_tonelada, bloque.concentrado_alimentado, horizonte)
     gasto_de_ventas = _por_tonelada(
-        comunes.gasto_de_ventas_por_tonelada, concentrado["tratado"], horizonte
+        comunes.gasto_de_ventas_por_tonelada, bloque.concentrado_alimentado, horizonte
     )
     administrativos = _serie(comunes.gastos_administrativos, horizonte, "gastos administrativos")
     gestion_social = _serie(comunes.gestion_social, horizonte, "gestion social")
@@ -226,12 +221,8 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         version_datos_maestros=maestros.version,
         ventas=ventas,
         cash_cost=cash_cost,
-        concentrado_alimentado=concentrado["alimentado"],
-        concentrado_tratado=concentrado["tratado"],
-        concentrado_excedente=concentrado["excedente"],
+        complejo=bloque,
         mineral_tratado_por_unidad=produccion_por_unidad,
-        ley_de_alimentacion=_ley_de_alimentacion(caso),
-        metal_refinado_del_complejo=refinado_del_complejo,
         anos_activos_por_unidad=_anos_activos(caso),
         discrepancias=corroborar(caso),
         capex=total_capex,
@@ -247,58 +238,28 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
 # --- Bloques ------------------------------------------------------------------
 
 
-def _concentrado_del_complejo(caso: Caso) -> dict[str, Serie]:
-    """Concentrado alimentado a la fundición, lo tratado y el excedente.
+def _bloque_del_complejo(caso: Caso) -> BloqueDelComplejo:
+    """Rehace el bloque del complejo desde lo que producen las minas.
 
-    Sin unidad de fundición no hay cuello de botella: todo lo producido se
-    considera tratado y el excedente es cero.
+    Cada unidad entra con su propia recuperacion y su aporte al refinado se
+    calcula por separado: la regla de oro es que nada se agrupe. El libro lleva
+    una `Recuperación Sn SR + B2` y otra `NZ + SRP`, y ahi esta el problema, que
+    un proyecto nuevo no cabe en ningun grupo y una diferencia en el total no se
+    puede atribuir a una unidad.
     """
-    horizonte = caso.horizonte
-    aportes = [
-        _serie(u.produccion.concentrado_producido, horizonte, f"{u.nombre}/concentrado")
+    fundicion = caso.fundicion
+    recuperaciones = fundicion.recuperacion_del_complejo if fundicion is not None else {}
+    componentes = [
+        complejo.Componente(
+            unidad=u.nombre,
+            concentrado=u.produccion.concentrado_producido,
+            ley=u.produccion.ley_del_concentrado,
+            recuperacion=recuperaciones.get(u.nombre, {}).get("Sn", ()),
+        )
         for u in caso.unidades_mineras
     ]
-    alimentado = produccion.alimentacion_a_fundicion(horizonte, aportes)
-
-    fundicion = caso.fundicion
-    if fundicion is None or not fundicion.produccion.capacidad_de_tratamiento:
-        return {
-            "alimentado": alimentado,
-            "tratado": alimentado,
-            "excedente": horizonte.ceros(),
-        }
-
-    capacidad = _serie(
-        fundicion.produccion.capacidad_de_tratamiento, horizonte, f"{fundicion.nombre}/capacidad"
-    )
-    return {
-        "alimentado": alimentado,
-        "tratado": produccion.tratamiento_limitado(alimentado, capacidad),
-        "excedente": produccion.excedente_por_capacidad(alimentado, capacidad),
-    }
-
-
-def _ley_de_alimentacion(caso: Caso) -> Serie:
-    """Ley promedio del concentrado que entra al complejo.
-
-    Ponderada por el concentrado que aporta cada unidad, no promediada entre
-    unidades: el libro usa `SUMPRODUCT` y con producción desigual la diferencia
-    entre ambas convenciones supera la tolerancia de N1.
-    """
-    horizonte = caso.horizonte
-    mineras = caso.unidades_mineras
-    tonelajes = [
-        _serie(u.produccion.concentrado_producido, horizonte, f"{u.nombre}/concentrado")
-        for u in mineras
-    ]
-    leyes = [
-        _serie(u.produccion.ley_del_concentrado, horizonte, f"{u.nombre}/ley del concentrado")
-        for u in mineras
-    ]
-    return tuple(
-        produccion.ley_agregada([t[i] for t in tonelajes], [ley[i] for ley in leyes])
-        for i in range(horizonte.anos)
-    )
+    capacidad = fundicion.produccion.capacidad_de_tratamiento if fundicion is not None else ()
+    return complejo.calcular(caso.horizonte, componentes, capacidad)
 
 
 def _anos_activos(caso: Caso) -> dict[str, tuple[int, ...]]:

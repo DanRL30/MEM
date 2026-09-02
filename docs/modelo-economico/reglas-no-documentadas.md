@@ -31,7 +31,7 @@ que es lo que el motor necesita.
 | 014 | `Otros`, filas 58 y 66 | La variación de IGV se calcula entera y se lleva al flujo multiplicada por cero: `-(credito - credito anterior) * 0` | El IGV no se considera en el capital de trabajo, como anota la hoja oculta `Inputs`. El bloque queda calculado y desconectado | | | `capital_trabajo.py` |
 | 015 | `FC escenarios`, filas 44 a 46 | El NPV suma desde la primera columna del horizonte y la TIR arranca una columna después | Asimetría entre dos indicadores de la misma serie. En `FC NZ` ambos cubren el mismo rango | | | `indicadores.py` |
 | 011 | `Ventas`, filas 55 a 60 | El contenido pagable se valoriza sobre las toneladas vendidas y los cargos se cobran sobre las netas de merma | Asimetría deliberada de la liquidación comercial | | | `ventas.py` |
-| 016 | `InputsProd`, filas 104 a 106 | La fila se rotula `Recuperación Sn NZ + SRP`, pero en la fórmula del refinado San Rafael Potencial usa la recuperación de `SR + B2`. Solo Nazareth usa la segunda | La etiqueta está mal: en `Supuestos` la misma fila se llama `Recuperación Nazareth`. Los grupos reales son Nazareth por un lado y el resto por otro | | | |
+| 016 | `InputsProd`, filas 104 a 106 | La fila se rotula `Recuperación Sn NZ + SRP`, pero en la fórmula del refinado San Rafael Potencial usa la recuperación de `SR + B2`. Solo Nazareth usa la segunda | La etiqueta está mal: en `Supuestos` la misma fila se llama `Recuperación Nazareth`. **Resuelta el 01/09/2026 sin reproducir el agrupamiento**: la plataforma calcula por componente, ver abajo | Project Manager | 01/09/2026 | `complejo.py` |
 | 017 | `InputsProd`, fila 106 | Santo Domingo entra al refinado como `(alimentado − excedente)`: **el recorte por capacidad se le resta entero a esa unidad**, no se prorratea | Puede ser un orden de despacho deliberado —la última unidad en entrar absorbe el recorte— o un arrastre | | | |
 | 018 | `InputsProd`, filas 100 y 109 frente a `Supuestos!H120` | La capacidad de 90 000 está escrita dentro de la fórmula aunque `Supuestos` declara `Capacidad Máxima de Pisco` con ese mismo valor. La fórmula no lee esa celda | Dato duplicado en dos sitios que pueden divergir. Refina la regla `002` | | | `produccion.py` |
 | 019 | `InputsProd`, fila 111 | La venta spot del excedente vale `excedente × ley`, sin factor de recuperación, pese a llamarse `Producción Sn Refinado`. La fila 106 sí multiplica por la recuperación | O es metal contenido y la etiqueta engaña, o falta la recuperación | | | |
@@ -154,3 +154,30 @@ hojas del libro se contradicen entre sí: sigue a `FC NZ`, que es la hoja del ca
 medida), la 004 (tramos tributarios) y la 007 (valores guardados sin recalcular).
 
 Ver la bitácora de discrepancias abiertas en `bitacora-discrepancias.md`.
+
+## La regla de oro del complejo: nada se agrupa
+
+El libro agrupa las recuperaciones de la fundición: lleva una `Recuperación Sn
+SR + B2` y otra `Recuperación Sn NZ + SRP`, y con ellas calcula un único
+`Producción Sn Refinado` para todo el complejo. La plataforma **no reproduce ese
+agrupamiento**. Es la excepción decidida por el Project Manager el 01/09/2026, y
+tiene dos motivos concretos:
+
+**Un proyecto nuevo no cabe en ningún grupo.** Añadir un proyecto X obligaría a
+decidir a cuál de los dos se parece, que es una decisión sin criterio escrito. La
+regla `016` muestra además que los grupos del libro ni siquiera coinciden con sus
+propias etiquetas: San Rafael Potencial figura en `NZ + SRP` y usa la
+recuperación de `SR + B2`.
+
+**Un total agregado no se puede atribuir.** Si el refinado del complejo difiere
+del modelo, con el cálculo agrupado solo se sabe que algo no cuadra. Calculando
+componente a componente, la diferencia señala la unidad.
+
+El efecto es medible y no es un matiz: con 600 t al 40 % recuperando 90 % y 400 t
+al 30 % recuperando 70 %, el cálculo independiente da 300 tmf y el agrupado sobre
+la recuperación media da 288. Está fijado en
+`packages/engine/tests/test_complejo.py::TestReglaDeOro`.
+
+Reproducir el agrupamiento sigue siendo posible sin tocar el motor: basta con dar
+el mismo valor de recuperación a las unidades de un grupo.
+

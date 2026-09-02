@@ -173,9 +173,9 @@ despues, no deuda heredada.
 |---|---|
 | `verificar_convenciones.py` | Sin infracciones |
 | `ruff check .` | Limpio |
-| `ruff format --check .` | Limpio, 89 archivos |
-| `mypy packages apps/api/src` | Limpio en modo estricto, 55 archivos |
-| `pytest` | 267 de 267, de las que 31 son el contraste de fidelidad |
+| `ruff format --check .` | Limpio, 91 archivos |
+| `mypy packages apps/api/src` | Limpio en modo estricto, 57 archivos |
+| `pytest` | 276 de 276, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -275,6 +275,24 @@ que en el libro viven en la hoja `Supuestos`.
 con concepto desconocido se descartaba con un `continue`: el usuario la llenaba,
 el caso se leia sin errores y su dato no se usaba. Es el peor fallo posible en una
 frontera, porque no deja sintoma.
+
+### El bloque del complejo: todo resultado, y sin agrupar
+
+[complejo.py](packages/engine/src/minsur_engine/complejo.py) rehace el bloque
+entero desde lo que producen las minas: lo alimentado por cada origen y su ley,
+el consolidado acotado por la capacidad, la ley promedio ponderada, el refinado,
+el excedente y su venta spot, y el `Check` del libro. **Ninguna de esas filas es
+un dato.** Sus dos unicas entradas son supuestos —la capacidad y la recuperacion
+de cada componente—, que en el libro viven en la hoja `Supuestos`.
+
+**Regla de oro: nada se agrupa.** Cada unidad aporta con su propia recuperacion y
+su refinado se calcula por separado; el total es la suma de esos aportes. El libro
+agrupa —`Recuperación Sn SR + B2` y `NZ + SRP`— y la plataforma no lo reproduce,
+por decision del 01/09/2026: un proyecto nuevo no cabe en ningun grupo sin decidir
+a cual se parece, y una diferencia en un total agregado no se puede atribuir a una
+unidad. El efecto es medible, no un matiz, y esta fijado en
+`test_complejo.py::TestReglaDeOro`. Dar el mismo valor a las unidades de un grupo
+reproduce el comportamiento del libro sin tocar el motor.
 
 ### El corroborador: alarma y control de calidad, no correccion
 
