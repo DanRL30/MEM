@@ -15,8 +15,38 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
+from minsur_engine.caso import (
+    Caso,
+    DatosComunes,
+    DatosMaestros,
+    ProduccionDeUnidad,
+    TerminosComerciales,
+    UnidadProductiva,
+)
+from minsur_engine.corrida import calcular
+from minsur_engine.depreciacion import TasasDeDepreciacion
+from minsur_engine.horizonte import Horizonte
+from minsur_engine.parametros import ParametrosCorporativos
+from minsur_engine.tributos import EscalaProgresiva, Tramo
 from minsur_ingest.plantilla import leer_comite_de_precios, leer_supuestos
-from minsur_ingest.supuestos import CON_DATO_DE_SUPUESTOS, CON_DATO_POR_UNIDAD
+from minsur_ingest.supuestos import CON_DATO_DE_SUPUESTOS, CON_DATO_POR_UNIDAD, aplicar
+
+MAESTROS = DatosMaestros(
+    parametros=ParametrosCorporativos(
+        version_datos_maestros="CP-PRUEBA",
+        tasa_descuento=0.10,
+        participacion_trabajadores=0.08,
+        impuesto_renta=0.295,
+        regalia_minima=0.01,
+        osinergmin=0.0014,
+        oefa=0.001,
+        fondo_jubilacion_minera=0.005,
+    ),
+    tasas_tributarias=TasasDeDepreciacion(maquinaria=0.5, instalaciones=0.1, edificaciones=0.05),
+    tasas_financieras=TasasDeDepreciacion(maquinaria=0.5, instalaciones=0.1, edificaciones=0.05),
+    escala_regalia=EscalaProgresiva(tramos=(Tramo(0.0, 10.0, 0.01),)),
+    escala_iem=EscalaProgresiva(tramos=(Tramo(0.0, 10.0, 0.0),)),
+)
 
 RAIZ = Path(__file__).resolve().parents[3]
 
@@ -168,3 +198,91 @@ class TestSupuestosDelCaso:
 
     def test_un_archivo_que_no_existe_no_revienta(self, tmp_path: Path) -> None:
         assert leer_supuestos(tmp_path / "fantasma.xlsx").incidencias[0].mensaje == "no existe"
+
+
+class TestAplicarAlCaso:
+    """La costura entre las tres plantillas.
+
+    Produccion trae las series de cada unidad; el comite, lo que vale cada
+    metal; y los supuestos, como se liquida. Sin este paso la produccion se lee
+    y no se puede vender.
+    """
+
+    def _caso(self) -> Caso:
+        horizonte = Horizonte(primer_ano=2027, anos=3)
+        ceros = horizonte.ceros()
+        mina = UnidadProductiva(
+            nombre="Mina Alfa",
+            tipo="mina",
+            produccion=ProduccionDeUnidad(
+                mineral_tratado=horizonte.serie((0.0, 1_000.0, 1_000.0), nombre="tratado"),
+                concentrado_producido=horizonte.serie((0.0, 500.0, 500.0), nombre="concentrado"),
+                ley_del_concentrado=horizonte.serie((0.0, 0.40, 0.40), nombre="ley"),
+                concentrado_de_cu=horizonte.serie((0.0, 200.0, 200.0), nombre="cu"),
+            ),
+        )
+        complejo = UnidadProductiva(
+            nombre="Fundicion",
+            tipo="fundicion",
+            produccion=ProduccionDeUnidad(mineral_tratado=ceros),
+        )
+        return Caso(
+            nombre="Caso de prueba",
+            horizonte=horizonte,
+            unidades=(mina, complejo),
+            terminos=TerminosComerciales(
+                precio_metal_refinado=ceros,
+                premio_metal_refinado=ceros,
+                precio_metal_en_concentrado=ceros,
+                factor_metal_pagable=ceros,
+            ),
+            datos_comunes=DatosComunes(gastos_administrativos=ceros),
+        )
+
+    def test_el_comite_pone_los_precios_y_los_supuestos_lo_demas(
+        self, comite: Path, supuestos: Path
+    ) -> None:
+        leido = leer_comite_de_precios(comite).comite
+        del_caso = leer_supuestos(supuestos).supuestos
+        assert leido is not None and del_caso is not None
+
+        caso = aplicar(self._caso(), del_caso, leido)
+        assert caso.terminos.precio_metal_refinado == (30_000.0, 30_000.0, 30_000.0)
+        assert caso.terminos.concentrado is not None
+        assert [m.nombre for m in caso.terminos.concentrado.metales] == ["Cu", "Ag"]
+        assert caso.terminos.concentrado.metales[1].en_onzas_troy is True
+
+    def test_la_recuperacion_cuelga_del_complejo_y_por_origen(
+        self, comite: Path, supuestos: Path
+    ) -> None:
+        # Regla de oro: es el complejo quien refina, y guarda una recuperacion
+        # por unidad de origen en vez de una comun a todas.
+        del_caso = leer_supuestos(supuestos).supuestos
+        assert del_caso is not None
+        caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
+        fundicion = caso.fundicion
+        assert fundicion is not None
+        assert fundicion.recuperacion_del_complejo["Mina Alfa"]["Sn"] == pytest.approx(
+            (0.95, 0.95, 0.95)
+        )
+
+    def test_el_concentrado_de_cobre_llega_a_la_venta(self, comite: Path, supuestos: Path) -> None:
+        # Es el tercer camino de ingreso del libro y hasta el 01/09/2026 estaba
+        # implementado y sin cablear: se calculaba y nadie lo cobraba.
+        del_caso = leer_supuestos(supuestos).supuestos
+        assert del_caso is not None
+        caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
+        corrida = calcular(caso, MAESTROS)
+        assert corrida.concentrado_liquidado_por_unidad["Mina Alfa"][1] != 0.0
+        assert corrida.ventas[1] != 0.0
+
+    def test_los_reguladores_del_caso_ganan_a_la_tasa_de_referencia(
+        self, comite: Path, supuestos: Path
+    ) -> None:
+        # MINSUR confirmo el 01/09/2026 que varian los primeros anos porque
+        # tienen mejor informacion. Si el caso los declara, mandan.
+        del_caso = leer_supuestos(supuestos).supuestos
+        assert del_caso is not None
+        caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
+        assert caso.datos_comunes.oefa != ()
+        assert caso.datos_comunes.osinergmin != ()

@@ -175,7 +175,7 @@ despues, no deuda heredada.
 | `ruff check .` | Limpio |
 | `ruff format --check .` | Limpio, 93 archivos |
 | `mypy packages apps/api/src` | Limpio en modo estricto, 59 archivos |
-| `pytest` | 299 de 299, de las que 31 son el contraste de fidelidad |
+| `pytest` | 303 de 303, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -325,6 +325,27 @@ grupos del libro**, que es la regla de oro.
 Tres unidades de medida nuevas que conviene no perder de vista: la plata se
 cotiza en `$/oz` y su ley pagable en `g/t`, y la depreciacion del libro va en
 `k$`, que la ingesta convierte a dolares. Es la regla `003` otra vez.
+
+### Los tres caminos de ingreso, y por fin los tres cableados
+
+El libro vende por tres vias y `corrida._ventas` las recorre todas: **estano
+refinado** a precio mas premio, **estano en concentrado** a precio por el factor
+pagable, y el **concentrado polimetalico**, que se liquida embarque a embarque
+valorizando su contenido pagable y descontando maquila y refinacion.
+
+La tercera estuvo implementada y sin cablear hasta el 01/09/2026:
+`liquidar_concentrado` existia, estaba probada, y nadie la llamaba. El
+concentrado de cobre se calculaba y no se cobraba.
+
+La liquidacion se guarda **por unidad** en `concentrado_liquidado_por_unidad`, no
+solo su suma: es la regla de oro aplicada a la venta, y sin ella una diferencia
+no se puede atribuir a un origen.
+
+**Los aportes reguladores son series del caso, no tasas fijas.** MINSUR confirmo
+el 01/09/2026 que varian los primeros ejercicios porque hay mejor informacion
+sobre ellos. `ParametrosCorporativos` conserva la tasa de referencia y
+`DatosComunes.osinergmin` y `.oefa` la sobrescriben cuando el caso las declara;
+vacio significa usar la de referencia.
 
 ### El corroborador: alarma y control de calidad, no correccion
 

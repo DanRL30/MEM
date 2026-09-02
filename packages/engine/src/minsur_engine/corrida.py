@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from minsur_engine import capital_trabajo, complejo, tributos
 from minsur_engine.capex import capex_de_etapa, capex_de_sostenimiento, capex_total
 from minsur_engine.cash_cost import CostoDeUnidad, cash_cost_total
-from minsur_engine.caso import Caso, DatosMaestros
+from minsur_engine.caso import Caso, DatosMaestros, UnidadProductiva
 from minsur_engine.complejo import BloqueDelComplejo
 from minsur_engine.corroboracion import Discrepancia, corroborar
 from minsur_engine.depreciacion import depreciacion_por_mina, total_depreciado
@@ -46,7 +46,15 @@ from minsur_engine.indicadores import (
     payback_descontado,
     tir,
 )
-from minsur_engine.ventas import venta_de_metal_en_concentrado, venta_de_metal_refinado
+from minsur_engine.parametros import ParametrosCorporativos
+from minsur_engine.ventas import (
+    LiquidacionConcentrado,
+    MetalPagable,
+    liquidar_concentrado,
+    venta_de_metal_en_concentrado,
+    venta_de_metal_refinado,
+    venta_total,
+)
 
 
 class ErrorCorrida(ValueError):
@@ -67,6 +75,14 @@ class Indicadores:
 
 
 @dataclass(frozen=True)
+class _Ventas:
+    """La venta del año y su desglose por unidad."""
+
+    total: Serie
+    concentrado_liquidado_por_unidad: dict[str, Serie]
+
+
+@dataclass(frozen=True)
 class Corrida:
     """Resultado completo de evaluar un caso con una versión de datos maestros."""
 
@@ -76,6 +92,9 @@ class Corrida:
     cash_cost: Serie
     complejo: BloqueDelComplejo
     """El bloque del complejo, entero y calculado componente a componente."""
+
+    concentrado_liquidado_por_unidad: dict[str, Serie]
+    """Valor neto del concentrado polimetalico que liquida cada unidad."""
 
     mineral_tratado_por_unidad: dict[str, Serie]
 
@@ -118,7 +137,8 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     parametros = maestros.parametros
 
     bloque = _bloque_del_complejo(caso)
-    ventas = _ventas(caso, bloque)
+    resultado_de_ventas = _ventas(caso, bloque)
+    ventas = resultado_de_ventas.total
     cash_cost = _cash_cost(caso)
     capital = [u.capital for u in caso.unidades if u.capital is not None]
 
@@ -146,6 +166,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     predios = _serie(comunes.predios, horizonte, "predios")
     intereses = _serie(comunes.intereses, horizonte, "intereses")
     otros_flujo = _serie(comunes.otros_flujo, horizonte, "otros")
+    reguladores = _reguladores(caso, parametros)
 
     resultados = _resolver_tributos(
         caso,
@@ -183,9 +204,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
             # Osinergmin, OEFA y el fondo de jubilacion minera van con los otros
             # gastos, no con los tributos: es donde el libro los coloca.
             otros_gastos=(
-                otros_gastos[i]
-                + ventas[i] * (parametros.osinergmin + parametros.oefa)
-                + resultados[i].fondo_jubilacion_minera
+                otros_gastos[i] + ventas[i] * reguladores[i] + resultados[i].fondo_jubilacion_minera
             ),
             participacion_trabajadores=resultados[i].participacion_trabajadores,
             impuestos=(
@@ -222,6 +241,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         ventas=ventas,
         cash_cost=cash_cost,
         complejo=bloque,
+        concentrado_liquidado_por_unidad=resultado_de_ventas.concentrado_liquidado_por_unidad,
         mineral_tratado_por_unidad=produccion_por_unidad,
         anos_activos_por_unidad=_anos_activos(caso),
         discrepancias=corroborar(caso),
@@ -317,11 +337,20 @@ def _refinado_del_complejo(caso: Caso) -> Serie:
     return tuple(refinado)
 
 
-def _ventas(caso: Caso, bloque: BloqueDelComplejo) -> Serie:
-    """Venta anual: metal refinado más metal en concentrado, más ajustes.
+def _ventas(caso: Caso, bloque: BloqueDelComplejo) -> _Ventas:
+    """Los tres caminos de ingreso que distingue el libro.
+
+    El estaño refinado se vende a precio más premio; el estaño en concentrado, a
+    precio por el factor pagable; y el concentrado polimetálico se liquida
+    embarque a embarque, valorizando su contenido pagable y descontando maquila
+    y refinación.
 
     El excedente del complejo no se descarta: es concentrado que no llegó a
     refinarse y se vende como tal, por el camino del metal en concentrado.
+
+    La liquidación se guarda **por unidad**, no solo su suma: es la regla de oro
+    del complejo aplicada aquí, y sin ella una diferencia en la venta no se
+    puede atribuir a un origen.
     """
     horizonte = caso.horizonte
     terminos = caso.terminos
@@ -333,8 +362,8 @@ def _ventas(caso: Caso, bloque: BloqueDelComplejo) -> Serie:
     factor = _serie(terminos.factor_metal_pagable, horizonte, "factor de metal pagable")
     ajustes = _serie(terminos.ajustes, horizonte, "ajustes de venta")
 
-    refinado = [0.0] * horizonte.anos
-    en_concentrado = [0.0] * horizonte.anos
+    total = [0.0] * horizonte.anos
+    liquidado: dict[str, Serie] = {}
     for unidad in caso.unidades:
         # El complejo no declara su refinado: se calculo desde las minas. Una
         # unidad que vende directo si lo declara, porque no pasa por fundicion.
@@ -355,15 +384,98 @@ def _ventas(caso: Caso, bloque: BloqueDelComplejo) -> Serie:
                 volumen_concentrado[i] + bloque.refinado_del_excedente[i]
                 for i in range(horizonte.anos)
             )
+
+        liquidaciones = _liquidar_concentrado_de(caso, unidad)
+        if liquidaciones is not None:
+            liquidado[unidad.nombre] = tuple(x.valor_neto for x in liquidaciones)
+
         for i in range(horizonte.anos):
-            refinado[i] += venta_de_metal_refinado(
-                volumen_refinado[i], precio_refinado[i], premio[i]
-            )
-            en_concentrado[i] += venta_de_metal_en_concentrado(
-                volumen_concentrado[i], precio_concentrado[i], factor[i]
+            total[i] += venta_total(
+                metal_refinado=venta_de_metal_refinado(
+                    volumen_refinado[i], precio_refinado[i], premio[i]
+                ),
+                metal_en_concentrado=venta_de_metal_en_concentrado(
+                    volumen_concentrado[i], precio_concentrado[i], factor[i]
+                ),
+                concentrado=None if liquidaciones is None else liquidaciones[i],
             )
 
-    return tuple(refinado[i] + en_concentrado[i] + ajustes[i] for i in range(horizonte.anos))
+    return _Ventas(
+        total=tuple(total[i] + ajustes[i] for i in range(horizonte.anos)),
+        concentrado_liquidado_por_unidad=liquidado,
+    )
+
+
+def _liquidar_concentrado_de(
+    caso: Caso, unidad: UnidadProductiva
+) -> list[LiquidacionConcentrado] | None:
+    """Liquida el concentrado polimetálico de una unidad, año a año.
+
+    Devuelve `None` cuando no hay nada que liquidar: el caso no declara términos
+    de concentrado, o la unidad no produce el concentrado comercial. Distinguir
+    eso de una liquidación en cero importa, porque una venta nula y una venta
+    que no existe se corrigen de formas distintas.
+    """
+    condiciones = caso.terminos.concentrado
+    toneladas = unidad.produccion.concentrado_de_cu
+    if condiciones is None or not toneladas:
+        return None
+
+    horizonte = caso.horizonte
+    embarcado = _serie(toneladas, horizonte, f"{unidad.nombre}/concentrado de Cu")
+    merma = _serie(condiciones.merma, horizonte, "merma")
+    maquila = _serie(condiciones.maquila_por_tonelada, horizonte, "maquila")
+    penalidades = _serie(condiciones.penalidades_por_tonelada, horizonte, "penalidades")
+    metales = [
+        (
+            metal,
+            _serie(metal.ley_pagable, horizonte, f"ley pagable de {metal.nombre}"),
+            _serie(metal.precio, horizonte, f"precio de {metal.nombre}"),
+            _serie(metal.cargo_de_refinacion, horizonte, f"refinacion de {metal.nombre}"),
+        )
+        for metal in condiciones.metales
+    ]
+
+    return [
+        liquidar_concentrado(
+            toneladas_vendidas=embarcado[i],
+            merma=merma[i],
+            metales=[
+                MetalPagable(
+                    nombre=metal.nombre,
+                    ley_pagable=ley[i],
+                    precio=precio[i],
+                    cargo_de_refinacion=cargo[i],
+                    en_onzas_troy=metal.en_onzas_troy,
+                )
+                for metal, ley, precio, cargo in metales
+            ],
+            maquila_por_tonelada=maquila[i],
+            # El libro las lleva por tonelada de concentrado; `liquidar` las
+            # espera en dolares del embarque.
+            penalidades=penalidades[i] * embarcado[i],
+        )
+        for i in range(horizonte.anos)
+    ]
+
+
+def _reguladores(caso: Caso, parametros: ParametrosCorporativos) -> Serie:
+    """Aporte a Osinergmin y OEFA de cada año, en tanto por uno sobre la venta.
+
+    El libro no los lleva como tasa fija: van decrecientes los primeros
+    ejercicios y después se estabilizan. MINSUR confirmó el 01/09/2026 que es
+    deliberado, porque tienen mejor información sobre los años próximos. Si el
+    caso no los declara se usa la tasa de los parámetros corporativos, que es la
+    de referencia.
+    """
+    horizonte = caso.horizonte
+    comunes = caso.datos_comunes
+    de_referencia = parametros.osinergmin + parametros.oefa
+    if not comunes.osinergmin and not comunes.oefa:
+        return tuple(de_referencia for _ in range(horizonte.anos))
+    osinergmin = _serie(comunes.osinergmin, horizonte, "osinergmin")
+    oefa = _serie(comunes.oefa, horizonte, "oefa")
+    return tuple(osinergmin[i] + oefa[i] for i in range(horizonte.anos))
 
 
 def _cash_cost(caso: Caso) -> Serie:
@@ -421,7 +533,7 @@ def _resolver_tributos(
             + gestion_social[i]
             + otros_gastos[i]
             + estudios[i]
-            + ventas[i] * (parametros.osinergmin + parametros.oefa)
+            + ventas[i] * _reguladores(caso, parametros)[i]
         )
         entradas = tributos.EntradasTributarias(
             ventas_totales=ventas[i],

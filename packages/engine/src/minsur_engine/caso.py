@@ -160,6 +160,39 @@ class UnidadProductiva:
 
 
 @dataclass(frozen=True)
+class MetalDelConcentrado:
+    """Un metal pagable dentro del concentrado que se vende sin refinar.
+
+    La ley pagable del cobre va en fracción y la de la plata en gramos por
+    tonelada, que es como las lleva el libro; `en_onzas_troy` avisa de cuál es
+    cuál, porque la plata se cotiza y se paga por onza.
+    """
+
+    nombre: str
+    ley_pagable: Serie
+    precio: Serie
+    cargo_de_refinacion: Serie
+    """RC, en dólares por tonelada neta de concentrado."""
+
+    en_onzas_troy: bool = False
+
+
+@dataclass(frozen=True)
+class TerminosDelConcentrado:
+    """Condiciones de venta del concentrado polimetálico, por año.
+
+    Es el tercer camino de ingreso del libro, junto al estaño refinado y al
+    estaño en concentrado: un embarque se valoriza por su contenido pagable y se
+    le descuentan maquila y refinación.
+    """
+
+    merma: Serie = ()
+    maquila_por_tonelada: Serie = ()
+    penalidades_por_tonelada: Serie = ()
+    metales: tuple[MetalDelConcentrado, ...] = ()
+
+
+@dataclass(frozen=True)
 class TerminosComerciales:
     """Precios y condiciones de venta del caso, por año.
 
@@ -174,6 +207,9 @@ class TerminosComerciales:
     factor_metal_pagable: Serie
     ajustes: Serie = ()
     """Ajustes finales de la línea de venta, positivos o negativos."""
+
+    concentrado: TerminosDelConcentrado | None = None
+    """Condiciones del concentrado polimetálico. `None` si el caso no lo vende."""
 
 
 @dataclass(frozen=True)
@@ -192,6 +228,17 @@ class DatosComunes:
     gasto_de_ventas_por_tonelada: Serie = ()
     dias_por_cobrar: Serie = ()
     dias_por_pagar: Serie = ()
+    osinergmin: Serie = ()
+    oefa: Serie = ()
+    """Aportes reguladores, año a año.
+
+    En el libro no son tasas fijas: van decrecientes los primeros ejercicios y
+    después se estabilizan. MINSUR confirmó el 01/09/2026 que es deliberado
+    —tienen mejor información sobre los años próximos— y por eso viven en los
+    supuestos del caso y no en los parámetros corporativos, que son la tasa de
+    referencia. Vacío significa que se usa esa tasa.
+    """
+
     cuentas_de_capital_trabajo_activas: bool = True
     """Reproduce el interruptor `Control!$G$21` del libro."""
 

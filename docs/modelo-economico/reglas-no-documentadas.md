@@ -39,7 +39,7 @@ que es lo que el motor necesita.
 | 021 | `Supuestos!H62` | El cargo de refinacion del cobre esta escrito como `0,02 x 2204,62` | Dos centavos de dolar por libra, convertidos a tonelada dentro de la formula. Constante incrustada | | | |
 | 022 | `Supuestos!H63` | El cargo de refinacion de la plata es `ley pagable x 0,6 / 31,1035` | Sesenta centavos por onza troy, tambien incrustado. Ademas **no es un dato: se deriva de la ley pagable**, que a su vez sale de la produccion | | | |
 | 023 | `Supuestos!H57` y `H58` | La ley pagable es `max(0, min(ley x 100 - deduccion minima, ley x factor pagable))` | Se calcula desde la ley del concentrado, la deduccion minima y el factor pagable. La de plata repite la formula del cobre, con un `x 100` que solo tiene sentido sobre un porcentaje mientras la plata va en onzas por tonelada | | | |
-| 024 | `Supuestos!H123` y `H124` | OEFA va 0,07 %, 0,07 %, 0,06 % y despues constante; OSINERGMIN 0,12 %, 0,11 %, 0,10 % | **Son series por ano y decrecientes, no tasas fijas**, y sus valores no coinciden con los de referencia del servicio (OEFA 0,10 %, Osinergmin 0,14 %) | | | `parametros.py` |
+| 024 | `Supuestos!H123` y `H124` | OEFA va 0,07 %, 0,07 %, 0,06 % y despues constante; OSINERGMIN 0,12 %, 0,11 %, 0,10 % | **Son series por ano y decrecientes, no tasas fijas.** MINSUR confirmo el 01/09/2026 que es deliberado: los supuestos pueden variar los primeros ejercicios porque hay mejor informacion sobre ellos. Los valores del servicio (OEFA 0,10 %, Osinergmin 0,14 %) son la tasa de referencia, y el caso la sobrescribe | MINSUR | 01/09/2026 | `corrida.py` |
 | 025 | `Supuestos!H120` | La capacidad maxima del complejo es un solo valor, no una serie por ano | Refina la regla `002`: el libro la declara una vez y la repite incrustada en las formulas de `InputsProd` | | | `complejo.py` |
 
 ## Detalle de las que no caben en una fila
@@ -152,9 +152,10 @@ utilidad`. Esa cancelación es lo que sostiene la decisión del ADR.
 4. **Precisión numérica** — se evalúa contra la tolerancia acordada y se documenta como aceptable
    sin corrección si queda dentro del umbral.
 
-Las veinticinco del registro son de tipo 2, salvo la 005, la 007, la 010, la 015 y las diez que
-salieron el 01/09/2026 de leer el bloque de Pisco y la hoja de supuestos —016 a 025—, que son de
-tipo 3: se reproducen y se reportan. La 015 es la única donde el motor **no** reproduce el libro, porque las dos
+Las veinticinco del registro son de tipo 2, salvo la 005, la 007, la 010, la 015 y nueve de las
+que salieron el 01/09/2026 de leer el bloque de Pisco y la hoja de supuestos —016 a 023 y 025—,
+que son de tipo 3: se reproducen y se reportan. La 024 nacio como tipo 3 y MINSUR la confirmo el
+mismo dia como deliberada, de modo que paso a tipo 2. La 015 es la única donde el motor **no** reproduce el libro, porque las dos
 hojas del libro se contradicen entre sí: sigue a `FC NZ`, que es la hoja del caso. Seis quedaron confirmadas por Finanzas el 01/09/2026; siguen abiertas la 003 (unidades de
 medida), la 004 (tramos tributarios) y la 007 (valores guardados sin recalcular).
 

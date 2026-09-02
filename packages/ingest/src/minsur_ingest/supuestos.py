@@ -19,9 +19,15 @@ unidades de medida. Tres diferencias, todas deliberadas:
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass, field
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, replace
 
+from minsur_engine.caso import (
+    Caso,
+    MetalDelConcentrado,
+    TerminosDelConcentrado,
+    UnidadProductiva,
+)
 from minsur_engine.horizonte import Horizonte, Serie
 from minsur_ingest.incidencias import Incidencia
 from minsur_ingest.sinonimos import normalizar
@@ -173,3 +179,107 @@ def armar_filas(
             )
         )
     return campos
+
+
+def aplicar(caso: Caso, supuestos: SupuestosDelCaso, comite: ComiteDePrecios | None = None) -> Caso:
+    """Vuelca los supuestos y el comité de precios sobre un caso ya leído.
+
+    Es la costura entre las tres plantillas. La de producción trae las series de
+    cada unidad; esta trae lo que vale cada cosa y cómo se liquida. Sin este
+    paso, la producción se lee y no se puede vender.
+
+    **Las pestañas por unidad se asocian por orden**, igual que en producción: la
+    primera es la primera unidad del caso.
+    """
+    comunes = supuestos.comunes
+    terminos = replace(
+        caso.terminos,
+        precio_metal_refinado=comite.sn if comite else caso.terminos.precio_metal_refinado,
+        premio_metal_refinado=comunes.get("premio_sn", caso.terminos.premio_metal_refinado),
+        precio_metal_en_concentrado=(
+            comite.sn if comite else caso.terminos.precio_metal_en_concentrado
+        ),
+        factor_metal_pagable=comunes.get("pagable_sn", caso.terminos.factor_metal_pagable),
+        concentrado=_terminos_del_concentrado(comunes, comite),
+    )
+    unidades = _con_supuestos(caso, supuestos)
+    return replace(
+        caso,
+        terminos=terminos,
+        unidades=unidades,
+        datos_comunes=replace(
+            caso.datos_comunes,
+            fletes_por_tonelada=comunes.get("transporte", caso.datos_comunes.fletes_por_tonelada),
+            gasto_de_ventas_por_tonelada=comunes.get(
+                "gasto_de_ventas_conc_sn", caso.datos_comunes.gasto_de_ventas_por_tonelada
+            ),
+            exploraciones=comunes.get("exploraciones", caso.datos_comunes.exploraciones),
+            intereses=comunes.get("gastos_financieros", caso.datos_comunes.intereses),
+            otros_flujo=comunes.get("otros_flujo_operativo", caso.datos_comunes.otros_flujo),
+            osinergmin=comunes.get("osinergmin", ()),
+            oefa=comunes.get("oefa", ()),
+        ),
+    )
+
+
+def _terminos_del_concentrado(
+    comunes: dict[str, Serie], comite: ComiteDePrecios | None
+) -> TerminosDelConcentrado | None:
+    """Condiciones del concentrado de cobre, con la plata que viaja dentro."""
+    if comite is None:
+        return None
+    return TerminosDelConcentrado(
+        merma=comunes.get("merma", ()),
+        maquila_por_tonelada=comunes.get("maquila", ()),
+        penalidades_por_tonelada=comunes.get("penalidades_cu", ()),
+        metales=(
+            MetalDelConcentrado(
+                nombre="Cu",
+                ley_pagable=comunes.get("ley_pagable_cu", ()),
+                precio=comite.cu,
+                cargo_de_refinacion=comunes.get("refinacion_cu", ()),
+            ),
+            # La plata se cotiza por onza troy y su ley pagable viene en gramos
+            # por tonelada: la conversion la hace `liquidar_concentrado`.
+            MetalDelConcentrado(
+                nombre="Ag",
+                ley_pagable=comunes.get("ley_pagable_ag", ()),
+                precio=comite.ag,
+                cargo_de_refinacion=comunes.get("refinacion_ag", ()),
+                en_onzas_troy=True,
+            ),
+        ),
+    )
+
+
+def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProductiva, ...]:
+    """Reparte por orden los supuestos de cada unidad.
+
+    Dos cosas no van donde parece. La **capacidad** es del complejo y no de una
+    mina, y la **recuperación** de cada origen tambien: cuelga del complejo,
+    indexada por la unidad que entrega, porque es el complejo quien refina. Que
+    haya una por origen y no una comun es la regla de oro.
+    """
+    de_cada_pestana = list(supuestos.por_unidad.values())
+    recuperaciones: dict[str, Mapping[str, Serie]] = {}
+    mineras = 0
+    for unidad in caso.unidades:
+        if unidad.es_fundicion:
+            continue
+        propios = de_cada_pestana[mineras] if mineras < len(de_cada_pestana) else {}
+        mineras += 1
+        serie = propios.get("recuperacion_en_el_complejo", ())
+        if serie:
+            recuperaciones[unidad.nombre] = {"Sn": serie}
+
+    capacidad = supuestos.comunes.get("capacidad_del_complejo", ())
+    return tuple(
+        replace(
+            unidad,
+            recuperacion_del_complejo=recuperaciones,
+            produccion=replace(unidad.produccion, capacidad_de_tratamiento=capacidad),
+        )
+        if unidad.es_fundicion
+        else unidad
+        for unidad in caso.unidades
+    )
