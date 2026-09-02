@@ -108,6 +108,12 @@ FILAS_POR_UNIDAD = (
     FilaDeSupuesto("Depreciacion Financiera", "k$", "depreciacion_financiera"),
     FilaDeSupuesto("Complejo", SECCION),
     FilaDeSupuesto("Recuperacion de Sn en el complejo", "%", "recuperacion_en_el_complejo"),
+    FilaDeSupuesto("Gastos", SECCION),
+    # El libro escribe la fila deducible como copia de la gestion social y en
+    # dos escenarios la afecta por una fraccion. Sin declarar, es entera.
+    FilaDeSupuesto(
+        "Fraccion Deducible de la Gestion Social", "%", "fraccion_gestion_social_deducible"
+    ),
 )
 
 CON_DATO_DE_PRECIOS = tuple(f for f in FILAS_DE_PRECIOS if not _es_seccion(f))
@@ -214,6 +220,9 @@ def aplicar(caso: Caso, supuestos: SupuestosDelCaso, comite: ComiteDePrecios | N
                 "gasto_de_ventas_conc_sn", caso.datos_comunes.gasto_de_ventas_por_tonelada
             ),
             exploraciones=comunes.get("exploraciones", caso.datos_comunes.exploraciones),
+            planilla_sobre_cash_cost=comunes.get(
+                "planilla_sobre_cash_cost", caso.datos_comunes.planilla_sobre_cash_cost
+            ),
             intereses=comunes.get("gastos_financieros", caso.datos_comunes.intereses),
             otros_flujo=comunes.get("otros_flujo_operativo", caso.datos_comunes.otros_flujo),
             osinergmin=comunes.get("osinergmin", ()),
@@ -262,12 +271,14 @@ def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProdu
     """
     de_cada_pestana = list(supuestos.por_unidad.values())
     recuperaciones: dict[str, Mapping[str, Serie]] = {}
+    propios_de: dict[str, dict[str, Serie]] = {}
     mineras = 0
     for unidad in caso.unidades:
         if unidad.es_fundicion:
             continue
         propios = de_cada_pestana[mineras] if mineras < len(de_cada_pestana) else {}
         mineras += 1
+        propios_de[unidad.nombre] = propios
         serie = propios.get("recuperacion_en_el_complejo", ())
         if serie:
             recuperaciones[unidad.nombre] = {"Sn": serie}
@@ -280,6 +291,11 @@ def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProdu
             produccion=replace(unidad.produccion, capacidad_de_tratamiento=capacidad),
         )
         if unidad.es_fundicion
-        else unidad
+        else replace(
+            unidad,
+            fraccion_gestion_social_deducible=propios_de[unidad.nombre].get(
+                "fraccion_gestion_social_deducible", unidad.fraccion_gestion_social_deducible
+            ),
+        )
         for unidad in caso.unidades
     )

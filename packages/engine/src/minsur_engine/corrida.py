@@ -26,7 +26,22 @@ from dataclasses import dataclass
 
 from minsur_engine import capital_trabajo, complejo, tributos
 from minsur_engine.capex import capex_de_etapa, capex_de_sostenimiento, capex_total
-from minsur_engine.cash_cost import CostoDeUnidad, cash_cost_total
+from minsur_engine.cash_cost import (
+    ESTUDIOS_CAPITALIZABLES,
+    ESTUDIOS_DE_GASTO,
+    EXPLORACIONES,
+    GASTOS_ADMINISTRATIVOS,
+    GESTION_SOCIAL,
+    GESTION_SOCIAL_DEDUCIBLE,
+    PLANILLA,
+    PREDIOS,
+    SERVIDUMBRES,
+    CostoDeUnidad,
+    cash_cost_por_unidad,
+    cash_cost_total,
+    parte_deducible,
+    planilla,
+)
 from minsur_engine.caso import Caso, DatosMaestros, UnidadProductiva, campos_con_dato
 from minsur_engine.complejo import BloqueDelComplejo
 from minsur_engine.corroboracion import Discrepancia, corroborar
@@ -83,6 +98,35 @@ class _Ventas:
 
 
 @dataclass(frozen=True)
+class _CashCost:
+    """El cash cost del caso y lo que aporta cada unidad."""
+
+    total: Serie
+    por_unidad: dict[str, Serie]
+
+
+@dataclass(frozen=True)
+class _Gastos:
+    """El bloque de gastos, consolidado y con lo que aporta cada unidad.
+
+    Los estudios se llevan por partida doble a propósito: `estudios` es la
+    salida de caja completa y `estudios_deducibles` la parte que rebaja la base
+    imponible. La diferencia son los capitalizables, que el libro deprecia en
+    vez de deducir.
+    """
+
+    administrativos: Serie
+    gestion_social: Serie
+    gestion_social_deducible: Serie
+    planilla: Serie
+    predios: Serie
+    estudios: Serie
+    estudios_deducibles: Serie
+    exploraciones: Serie
+    por_unidad: dict[str, dict[str, Serie]]
+
+
+@dataclass(frozen=True)
 class Corrida:
     """Resultado completo de evaluar un caso con una versión de datos maestros."""
 
@@ -92,6 +136,21 @@ class Corrida:
     cash_cost: Serie
     complejo: BloqueDelComplejo
     """El bloque del complejo, entero y calculado componente a componente."""
+
+    cash_cost_por_unidad: dict[str, Serie]
+    """Costo operativo de cada unidad, sin agrupar.
+
+    El libro consolida y la plataforma no: una diferencia contra el modelo tiene
+    que poder atribuirse a un origen. Es la misma regla de oro del complejo.
+    """
+
+    gastos_por_unidad: dict[str, dict[str, Serie]]
+    """Gastos de cada unidad, con las dos filas que el motor deriva.
+
+    `Planilla` y `Gestión Social Deducible` aparecen aquí junto a lo cargado
+    porque el libro las muestra en el mismo bloque, y verlas separadas de su
+    origen no diria de donde salen.
+    """
 
     concentrado_liquidado_por_unidad: dict[str, Serie]
     """Valor neto del concentrado polimetalico que liquida cada unidad."""
@@ -147,7 +206,9 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     bloque = _bloque_del_complejo(caso)
     resultado_de_ventas = _ventas(caso, bloque)
     ventas = resultado_de_ventas.total
-    cash_cost = _cash_cost(caso)
+    resultado_de_costos = _cash_cost(caso)
+    cash_cost = resultado_de_costos.total
+    gastos = _gastos(caso, resultado_de_costos.por_unidad)
     capital = [u.capital for u in caso.unidades if u.capital is not None]
 
     produccion_por_unidad = {
@@ -166,12 +227,17 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     gasto_de_ventas = _por_tonelada(
         comunes.gasto_de_ventas_por_tonelada, bloque.concentrado_alimentado, horizonte
     )
-    administrativos = _serie(comunes.gastos_administrativos, horizonte, "gastos administrativos")
-    gestion_social = _serie(comunes.gestion_social, horizonte, "gestion social")
-    otros_gastos = _serie(comunes.otros_gastos, horizonte, "otros gastos")
-    estudios = _serie(comunes.estudios, horizonte, "estudios")
-    exploraciones = _serie(comunes.exploraciones, horizonte, "exploraciones")
-    predios = _serie(comunes.predios, horizonte, "predios")
+    administrativos = gastos.administrativos
+    gestion_social = gastos.gestion_social
+    # La planilla es un gasto operativo derivado del cash cost de cada unidad, y
+    # va donde el libro la deja: con los otros gastos del flujo operativo.
+    otros_gastos = tuple(
+        _serie(comunes.otros_gastos, horizonte, "otros gastos")[i] + gastos.planilla[i]
+        for i in range(horizonte.anos)
+    )
+    estudios = gastos.estudios
+    exploraciones = gastos.exploraciones
+    predios = gastos.predios
     intereses = _serie(comunes.intereses, horizonte, "intereses")
     otros_flujo = _serie(comunes.otros_flujo, horizonte, "otros")
     reguladores = _reguladores(caso, parametros)
@@ -184,9 +250,9 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         fletes=fletes,
         gasto_de_ventas=gasto_de_ventas,
         administrativos=administrativos,
-        gestion_social=gestion_social,
+        gestion_social_deducible=gastos.gestion_social_deducible,
         otros_gastos=otros_gastos,
-        estudios=estudios,
+        estudios_deducibles=gastos.estudios_deducibles,
         exploraciones=exploraciones,
         depreciacion_tributaria=total_depreciado(horizonte, depreciacion_tributaria),
         depreciacion_financiera=total_depreciado(horizonte, depreciacion_financiera),
@@ -248,6 +314,8 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         version_datos_maestros=maestros.version,
         ventas=ventas,
         cash_cost=cash_cost,
+        cash_cost_por_unidad=resultado_de_costos.por_unidad,
+        gastos_por_unidad=gastos.por_unidad,
         complejo=bloque,
         concentrado_liquidado_por_unidad=resultado_de_ventas.concentrado_liquidado_por_unidad,
         campos_con_dato_por_unidad={u.nombre: campos_con_dato(u.produccion) for u in caso.unidades},
@@ -487,10 +555,16 @@ def _reguladores(caso: Caso, parametros: ParametrosCorporativos) -> Serie:
     return tuple(osinergmin[i] + oefa[i] for i in range(horizonte.anos))
 
 
-def _cash_cost(caso: Caso) -> Serie:
-    """Cash cost del caso, sumando las unidades año a año."""
+def _cash_cost(caso: Caso) -> _CashCost:
+    """Cash cost del caso, sumando las unidades año a año.
+
+    Guarda además el desglose por unidad. Es la regla de oro aplicada al costo:
+    un total agregado no se puede atribuir a un origen, y sin origen una
+    diferencia contra el modelo no se localiza.
+    """
     horizonte = caso.horizonte
     total = [0.0] * horizonte.anos
+    por_unidad = {u.nombre: [0.0] * horizonte.anos for u in caso.unidades if u.costos}
     for i in range(horizonte.anos):
         unidades = [
             CostoDeUnidad(
@@ -504,7 +578,72 @@ def _cash_cost(caso: Caso) -> Serie:
             if u.costos
         ]
         total[i] = cash_cost_total(unidades)
-    return tuple(total)
+        for nombre, costo in cash_cost_por_unidad(unidades).items():
+            por_unidad[nombre][i] = costo
+    return _CashCost(tuple(total), {n: tuple(v) for n, v in por_unidad.items()})
+
+
+def _gastos(caso: Caso, costo_por_unidad: dict[str, Serie]) -> _Gastos:
+    """Consolida el bloque de gastos y deriva las dos filas que el libro calcula.
+
+    Lo que cada unidad carga se suma a lo que el caso declara como no atribuible
+    a ninguna: la hoja `Caso` recoge lo común y la plantilla de OPEX lo que tiene
+    dueño. Sumar los dos lados es lo que hace el libro con su fila `Total
+    Gastos`.
+    """
+    horizonte = caso.horizonte
+    comunes = caso.datos_comunes
+    tasa = _serie(comunes.planilla_sobre_cash_cost, horizonte, "planilla sobre cash cost")
+
+    por_unidad: dict[str, dict[str, Serie]] = {}
+    for unidad in caso.unidades:
+        if not unidad.gastos:
+            continue
+        cargados = {
+            concepto: _serie(serie, horizonte, f"{unidad.nombre}/{concepto}")
+            for concepto, serie in unidad.gastos.items()
+        }
+        costo = _serie(costo_por_unidad.get(unidad.nombre, ()), horizonte, unidad.nombre)
+        social = cargados.get(GESTION_SOCIAL, horizonte.ceros())
+        fraccion = _fraccion(unidad.fraccion_gestion_social_deducible, horizonte)
+        cargados[PLANILLA] = tuple(planilla(costo[i], tasa[i]) for i in range(horizonte.anos))
+        cargados[GESTION_SOCIAL_DEDUCIBLE] = tuple(
+            parte_deducible(social[i], fraccion[i]) for i in range(horizonte.anos)
+        )
+        por_unidad[unidad.nombre] = cargados
+
+    def sumadas(*conceptos: str, comun: Serie = ()) -> Serie:
+        base = _serie(comun, horizonte, "gasto comun")
+        aportes = [
+            cargados[concepto]
+            for cargados in por_unidad.values()
+            for concepto in conceptos
+            if concepto in cargados
+        ]
+        return tuple(base[i] + sum(a[i] for a in aportes) for i in range(horizonte.anos))
+
+    estudios_deducibles = sumadas(ESTUDIOS_DE_GASTO, comun=comunes.estudios)
+    capitalizables = sumadas(ESTUDIOS_CAPITALIZABLES)
+    return _Gastos(
+        administrativos=sumadas(GASTOS_ADMINISTRATIVOS, comun=comunes.gastos_administrativos),
+        gestion_social=sumadas(GESTION_SOCIAL, comun=comunes.gestion_social),
+        # Lo que el caso declara como comun no lleva fraccion declarada, asi que
+        # es deducible entero: es lo que el libro hace por defecto.
+        gestion_social_deducible=sumadas(GESTION_SOCIAL_DEDUCIBLE, comun=comunes.gestion_social),
+        planilla=sumadas(PLANILLA),
+        predios=sumadas(PREDIOS, SERVIDUMBRES, comun=comunes.predios),
+        estudios=tuple(estudios_deducibles[i] + capitalizables[i] for i in range(horizonte.anos)),
+        estudios_deducibles=estudios_deducibles,
+        exploraciones=sumadas(EXPLORACIONES, comun=comunes.exploraciones),
+        por_unidad=por_unidad,
+    )
+
+
+def _fraccion(serie: Serie, horizonte: Horizonte) -> Serie:
+    """Una fracción sin declarar es la unidad, no cero."""
+    if not serie:
+        return tuple(1.0 for _ in range(horizonte.anos))
+    return _serie(serie, horizonte, "fraccion deducible")
 
 
 def _resolver_tributos(
@@ -516,9 +655,9 @@ def _resolver_tributos(
     fletes: Serie,
     gasto_de_ventas: Serie,
     administrativos: Serie,
-    gestion_social: Serie,
+    gestion_social_deducible: Serie,
     otros_gastos: Serie,
-    estudios: Serie,
+    estudios_deducibles: Serie,
     exploraciones: Serie,
     depreciacion_tributaria: Serie,
     depreciacion_financiera: Serie,
@@ -528,6 +667,11 @@ def _resolver_tributos(
     Las dos bases difieren en una sola línea, igual que en el libro: la de
     regalías descuenta la depreciación financiera y la de renta la tributaria.
     Confundirlas desplaza los tributos sin que el flujo económico lo delate.
+
+    **Los gastos entran por su parte deducible, no por su importe.** La gestión
+    social y los estudios salen enteros del flujo y solo en parte de la base: la
+    fracción deducible de la primera la declara cada unidad, y de los segundos
+    solo deduce el que es gasto, porque el capitalizable se deprecia.
     """
     parametros = maestros.parametros
     resultados: list[tributos.ResultadoTributario] = []
@@ -539,9 +683,9 @@ def _resolver_tributos(
             + fletes[i]
             + gasto_de_ventas[i]
             + administrativos[i]
-            + gestion_social[i]
+            + gestion_social_deducible[i]
             + otros_gastos[i]
-            + estudios[i]
+            + estudios_deducibles[i]
             + ventas[i] * _reguladores(caso, parametros)[i]
         )
         entradas = tributos.EntradasTributarias(

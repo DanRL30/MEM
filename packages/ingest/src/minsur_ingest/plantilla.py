@@ -41,6 +41,7 @@ from minsur_engine.caso import (
 )
 from minsur_engine.horizonte import ErrorHorizonte, Horizonte, Serie
 from minsur_ingest.incidencias import ErrorDePlantilla, Incidencia
+from minsur_ingest.opex import OpexDeUnidad, armar_opex
 from minsur_ingest.produccion import armar_produccion
 from minsur_ingest.sinonimos import canonizar, normalizar
 from minsur_ingest.supuestos import (
@@ -52,11 +53,11 @@ from minsur_ingest.supuestos import (
     armar_filas,
 )
 
-HOJAS_REQUERIDAS = ("Caso", "Opex", "Capex", "Precios")
-"""La produccion no esta aqui: viene en una pestana por proyecto.
+HOJAS_REQUERIDAS = ("Caso", "Capex", "Precios")
+"""Ni la produccion ni el opex estan aqui: vienen en su propio libro.
 
-Sus nombres los declara la propia hoja `Caso`, de modo que no se pueden fijar en
-una constante. `Leeme` se ignora.
+Los nombres de sus pestanas los declara el caso o el orden, de modo que no se
+pueden fijar en una constante. `Leeme` se ignora.
 """
 
 PRIMERA_FILA_DE_DATOS = 5
@@ -109,8 +110,11 @@ FACTORES_DE_ESCALA = {
     "$/tmf": 1.0,
     "g/t": 1.0,
     # Miles de dolares. Es la regla 003 otra vez: el libro alterna escalas y la
-    # conversion ocurre aqui, no dentro del motor.
+    # conversion ocurre aqui, no dentro del motor. Las dos escrituras son suyas:
+    # la hoja de depreciacion pone `k$` y la de opex `$k`, y reconocer solo una
+    # deja pasar un factor de mil sin avisar.
     "k$": 1_000.0,
+    "$k": 1_000.0,
 }
 
 
@@ -178,6 +182,28 @@ class LecturaDeProduccion:
     """Resultado de leer el libro de producción."""
 
     bloques: tuple[BloqueDeProduccion, ...]
+    horizonte: Horizonte | None
+    incidencias: tuple[Incidencia, ...]
+
+    @property
+    def valida(self) -> bool:
+        return bool(self.bloques) and not self.incidencias
+
+
+@dataclass(frozen=True)
+class BloqueDeOpex:
+    """Una pestaña del libro de opex, sin unidad asignada todavía."""
+
+    orden: int
+    hoja: str
+    opex: OpexDeUnidad
+
+
+@dataclass(frozen=True)
+class LecturaDeOpex:
+    """Resultado de leer el libro de opex."""
+
+    bloques: tuple[BloqueDeOpex, ...]
     horizonte: Horizonte | None
     incidencias: tuple[Incidencia, ...]
 
@@ -282,12 +308,11 @@ def leer_plantilla(ruta: Path, *, escenario: str | None = None) -> Lectura:
             continue
         produccion[declarada.nombre] = _leer_pestana_de_unidad(libro[declarada.hoja], horizonte)
 
-    opex = _leer_hoja_de_series(libro["Opex"], horizonte, nombres, incidencias)
     capex = _leer_hoja_de_series(libro["Capex"], horizonte, nombres, incidencias)
     precios = _leer_hoja_de_series(libro["Precios"], horizonte, [], incidencias)
     libro.close()
 
-    unidades = _armar_unidades(cabecera, horizonte, produccion, opex, capex, incidencias)
+    unidades = _armar_unidades(cabecera, horizonte, produccion, capex, incidencias)
     terminos = _armar_terminos(precios, horizonte, escenario or cabecera.escenario, incidencias)
     comunes = _armar_datos_comunes(cabecera, horizonte)
 
@@ -358,6 +383,74 @@ def leer_produccion(ruta: Path) -> LecturaDeProduccion:
         )
     libro.close()
     return LecturaDeProduccion(tuple(bloques), horizonte, tuple(incidencias))
+
+
+def leer_opex(ruta: Path) -> LecturaDeOpex:
+    """Lee el libro de opex: una pestaña por unidad, en orden.
+
+    Igual que el de producción, no identifica el caso: la pestaña n es la
+    unidad n del caso que ya está abierto. **Trae una pestaña más que el libro
+    de producción**, porque el complejo tiene costo aunque su producción sea
+    resultado.
+    """
+    incidencias: list[Incidencia] = []
+    if not ruta.exists():
+        return LecturaDeOpex((), None, (Incidencia("(archivo)", str(ruta), "no existe"),))
+
+    libro = load_workbook(ruta, data_only=True, read_only=True)
+    hojas = [h for h in libro.sheetnames if normalizar(h) not in HOJAS_SIN_DATOS]
+    if not hojas:
+        libro.close()
+        return LecturaDeOpex(
+            (),
+            None,
+            (Incidencia("(libro)", "-", "el libro no trae ninguna pestana de proyecto"),),
+        )
+
+    horizonte = _horizonte_de_la_cabecera(libro[hojas[0]], incidencias)
+    if horizonte is None:
+        libro.close()
+        return LecturaDeOpex((), None, tuple(incidencias))
+
+    bloques: list[BloqueDeOpex] = []
+    for orden, nombre in enumerate(hojas, start=1):
+        hoja = libro[nombre]
+        _reportar_importes_sin_concepto(hoja, horizonte, incidencias)
+        bloques.append(
+            BloqueDeOpex(
+                orden=orden,
+                hoja=nombre,
+                opex=armar_opex(_pares(hoja, horizonte, incidencias), incidencias, hoja=nombre),
+            )
+        )
+    libro.close()
+    return LecturaDeOpex(tuple(bloques), horizonte, tuple(incidencias))
+
+
+def _reportar_importes_sin_concepto(
+    hoja: Worksheet, horizonte: Horizonte, incidencias: list[Incidencia]
+) -> None:
+    """Avisa de una fila de la cola con importes y sin nombre.
+
+    Las filas de la cola salen en blanco y la lectura salta las que siguen así,
+    que es lo correcto: una fila sin concepto no aporta nada. Pero una fila con
+    importes y sin nombre es otra cosa —un costo que nadie puede atribuir— y
+    saltarla en silencio lo haría desaparecer del total sin dejar rastro.
+    """
+    ultima = PRIMERA_COLUMNA_DE_ANOS + horizonte.anos - 1
+    for fila in hoja.iter_rows(min_row=PRIMERA_FILA_DE_DATOS, max_col=ultima):
+        etiqueta, medida = fila[0].value, fila[1].value
+        if medida is None or (etiqueta is not None and str(etiqueta).strip()):
+            continue
+        if any(isinstance(celda.value, int | float) and celda.value for celda in fila[2:]):
+            incidencias.append(
+                Incidencia(
+                    hoja.title,
+                    f"A{fila[0].row}",
+                    "hay importes en una fila sin concepto. Un costo sin nombre no se puede "
+                    "atribuir, y quedaria fuera del total sin que nada lo acuse.",
+                )
+            )
 
 
 def leer_comite_de_precios(ruta: Path) -> LecturaDeComite:
@@ -619,6 +712,11 @@ def _leer_pestana_de_unidad(hoja: Worksheet, horizonte: Horizonte) -> list[_Fila
     borran los nombres de unidad: en `concentrado alimentado desde San Rafael`
     el nombre es el dato, y quitarlo deja una etiqueta que no significa nada.
     Las filas de sección —`Mina`, `Planta`, `Complejo`— son rótulos y se saltan.
+
+    **La etiqueta se conserva como está escrita**, sin normalizar. Quien lee una
+    estructura fija compara normalizando, así que no lo necesita; y quien admite
+    conceptos propios del proyecto —la cola de opex— se queda con el nombre que
+    el usuario escribió, que es el que después ve en pantalla.
     """
     filas: list[_Fila] = []
     ultima_columna = PRIMERA_COLUMNA_DE_ANOS + horizonte.anos - 1
@@ -633,7 +731,7 @@ def _leer_pestana_de_unidad(hoja: Worksheet, horizonte: Horizonte) -> list[_Fila
                 numero=int(fila[0].row or 0),
                 seccion=hoja.title,
                 subseccion="",
-                concepto=normalizar(str(etiqueta)),
+                concepto=str(etiqueta).strip(),
                 metal=None,
                 medida=_clave_de_medida(str(medida)),
                 valores=tuple(celda.value for celda in fila[2:]),
@@ -694,10 +792,10 @@ def _armar_unidades(
     cabecera: _Cabecera,
     horizonte: Horizonte,
     produccion: dict[str, list[_Fila]],
-    opex: list[_Fila],
     capex: list[_Fila],
     incidencias: list[Incidencia],
 ) -> list[UnidadProductiva]:
+    """Arma las unidades del caso. El opex llega despues, en su propio libro."""
     unidades: list[UnidadProductiva] = []
     for declarada in cabecera.unidades:
         nombre = declarada.nombre
@@ -705,11 +803,6 @@ def _armar_unidades(
             (fila.concepto, _serie(fila, horizonte, incidencias))
             for fila in produccion.get(nombre, [])
         ]
-        costos = {
-            str(fila.concepto): _serie(fila, horizonte, incidencias)
-            for fila in opex
-            if _es_de(fila.seccion, nombre)
-        }
         capital = _armar_capital(nombre, horizonte, capex, incidencias)
 
         unidades.append(
@@ -717,7 +810,6 @@ def _armar_unidades(
                 nombre=nombre,
                 tipo=declarada.tipo,
                 produccion=armar_produccion(filas, horizonte, incidencias, hoja=declarada.hoja),
-                costos={c: s for c, s in costos.items() if any(s)},
                 capital=capital,
                 origen=declarada.origen,
                 etapas=_etapas(declarada),

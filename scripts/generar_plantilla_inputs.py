@@ -41,6 +41,7 @@ try:
     from openpyxl.worksheet.datavalidation import DataValidation
     from openpyxl.worksheet.worksheet import Worksheet
 
+    from minsur_ingest.opex import FILAS_DE_OPEX
     from minsur_ingest.produccion import FILAS_DE_PRODUCCION
     from minsur_ingest.supuestos import (
         FILAS_DE_PRECIOS,
@@ -59,26 +60,6 @@ ETAPAS = ("preconcentracion", "concentradora")
 ETAPAS_POR_DEFECTO = ("concentradora",)
 METALES = ("Sn", "Cu", "Ag")
 
-OPEX_POR_UNIDAD = [
-    ("Exploraciones", None),
-    ("Geologia", None),
-    ("Mina", None),
-    ("Planta de preconcentracion", "preconcentracion"),
-    ("Planta concentradora", "concentradora"),
-    ("Fundicion", "fundicion"),
-    ("Refineria", "fundicion"),
-    ("Planta de subproductos", "fundicion"),
-    ("Mantenimiento", None),
-    ("Energia", None),
-    ("Linea de transmision", None),
-    ("Agua potable", None),
-    ("Planilla", None),
-    ("Apoyo", None),
-    ("Gestion social", None),
-    ("Predios, servidumbres y usufructos", None),
-    ("Estudios y optimizaciones", None),
-    ("Relavera", "relavera"),
-]
 CAPEX_ETAPAS = ["Capex inicial", "Sostenimiento", "Cierre de mina", "Otros"]
 CAPEX_NATURALEZAS = [
     "No depreciable",
@@ -450,24 +431,13 @@ def hoja_supuestos_de_unidad(libro: Workbook, nombre: str, primer_ano: int, anos
     _hoja_de_filas(libro, nombre, f"Supuestos de {nombre}", FILAS_POR_UNIDAD, primer_ano, anos)
 
 
-def hoja_opex(libro: Workbook, unidades: list[Unidad], primer_ano: int, anos: int) -> None:
-    hoja = libro.create_sheet("Opex")
-    encabezar(hoja, "Costo operativo por unidad productiva, en US$", primer_ano, anos)
-    fila, numericas = 5, []
-    for unidad in unidades:
-        fila = fila_de_seccion(hoja, fila, f"{unidad.nombre} ({unidad.tipo})", anos)
-        for concepto, etapa in OPEX_POR_UNIDAD:
-            if not unidad.aplica(etapa):
-                continue
-            numericas.append(fila)
-            fila = fila_de_entrada(hoja, fila, concepto, "US$", anos)
-        # El acuerdo 6 de la minuta del 27/08/2026 exige que la lista sea
-        # extensible: estas filas quedan para conceptos propios del proyecto.
-        for _ in range(3):
-            numericas.append(fila)
-            fila = fila_de_entrada(hoja, fila, "", "US$", anos)
-        fila += 1
-    validacion_numerica(hoja, numericas, anos)
+def hoja_opex_de_unidad(libro: Workbook, nombre: str, primer_ano: int, anos: int) -> None:
+    """Una pestana de opex, con la misma estructura para todas las unidades.
+
+    El complejo tambien la lleva, a diferencia de produccion: sus toneladas son
+    resultado, pero su costo es un dato como el de cualquier mina.
+    """
+    _hoja_de_filas(libro, nombre, f"Opex de {nombre}", FILAS_DE_OPEX, primer_ano, anos)
 
 
 def hoja_capex(libro: Workbook, unidades: list[Unidad], primer_ano: int, anos: int) -> None:
@@ -602,7 +572,7 @@ def main() -> int:
     p.add_argument("--anos", type=int, default=36)
     p.add_argument(
         "--bloque",
-        choices=("produccion", "supuestos", "precios", "completo"),
+        choices=("produccion", "opex", "supuestos", "precios", "completo"),
         default="produccion",
         help="Bloque a emitir. 'completo' mantiene el libro unico anterior.",
     )
@@ -630,6 +600,15 @@ def main() -> int:
         hoja_comite_de_precios(libro, args.primer_ano, args.anos)
         return _guardar(libro, args)
 
+    if args.bloque == "opex":
+        # Aqui el complejo si lleva pestana: su costo es dato. Por eso el libro
+        # de opex trae una pestana mas que el de produccion.
+        libro.remove(libro.active)
+        for unidad in unidades:
+            hoja_opex_de_unidad(libro, unidad.nombre, args.primer_ano, args.anos)
+        hoja_instrucciones(libro, unidades)
+        return _guardar(libro, args)
+
     if args.bloque == "supuestos":
         libro.remove(libro.active)
         hoja_supuestos(libro, args.primer_ano, args.anos)
@@ -654,9 +633,8 @@ def main() -> int:
             continue
         hoja_produccion_de_unidad(libro, unidad.nombre, args.primer_ano, args.anos)
     if args.bloque == "completo":
-        # Opex, capex y precios siguen en hojas unicas con las unidades
-        # apiladas. Les toca su propia plantilla mas adelante.
-        hoja_opex(libro, unidades, args.primer_ano, args.anos)
+        # Capex y precios siguen en hojas unicas con las unidades apiladas. Les
+        # toca su propia plantilla mas adelante; el opex ya tiene la suya.
         hoja_capex(libro, unidades, args.primer_ano, args.anos)
         hoja_precios(libro, unidades, args.primer_ano, args.anos)
     hoja_instrucciones(libro, unidades)

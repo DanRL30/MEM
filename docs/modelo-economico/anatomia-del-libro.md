@@ -78,6 +78,11 @@ Control!$G$7  (indice del caso, 1 a 48)
 
 - Las bandas empiezan en la columna 46 y se repiten cada 38 columnas hasta la 1 832. Son
   **48 bandas exactas**, y por eso las hojas de entrada miden 1 870 columnas.
+- **`InputsOpex` es la excepcion y mide 462 columnas.** Su banda es de 37 columnas mas una de
+  separacion, y solo tiene **nueve bloques construidos**, uno por caso con nombre, en vez de las 48
+  ranuras. El `CHOOSE` de su zona activa si lista las 48, de modo que elegir un caso sin bloque deja
+  la vista en blanco. Lo verifico la auditoria de la hoja del 02/09/2026; hasta entonces este
+  documento la daba por bandeada como las otras tres.
 - El catalogo de casos vive en `Control!N7:Q54`: numero, nombre, abreviatura y categoria.
   **Hoy hay 9 casos con nombre**; los indices restantes estan numerados y vacios, reservados para
   casos futuros.

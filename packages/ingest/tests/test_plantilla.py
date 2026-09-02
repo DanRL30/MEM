@@ -131,7 +131,6 @@ def plantilla_llena(tmp_path: Path) -> Path:
     libro = generador.Workbook()  # type: ignore[attr-defined]
     generador.hoja_caso(libro, unidades, 2027, 3)  # type: ignore[attr-defined]
     generador.hoja_produccion_de_unidad(libro, "Mina Alfa", 2027, 3)  # type: ignore[attr-defined]
-    generador.hoja_opex(libro, unidades, 2027, 3)  # type: ignore[attr-defined]
     generador.hoja_capex(libro, unidades, 2027, 3)  # type: ignore[attr-defined]
     generador.hoja_precios(libro, unidades, 2027, 3)  # type: ignore[attr-defined]
     generador.hoja_instrucciones(libro, unidades)  # type: ignore[attr-defined]
@@ -143,7 +142,6 @@ def plantilla_llena(tmp_path: Path) -> Path:
     caso["B9"] = "CP-2026-09"
     _llenar_cadena(libro["Mina Alfa"])
 
-    _escribir(libro["Opex"], "Mina", [0.0, 200_000.0, 200_000.0])
     _escribir(libro["Capex"], "    Maquinaria, equipos y vehiculos", [1_000_000.0, 0.0, 0.0])
 
     precios = libro["Precios"]
@@ -217,24 +215,6 @@ class TestIdaYVuelta:
 
 
 class TestConversionDeEscalas:
-    def test_los_miles_de_dolares_se_convierten(self, plantilla_llena: Path) -> None:
-        # Regla 003: el libro alterna dolares y miles de dolares. La conversion
-        # ocurre aqui y no se propaga al motor.
-        libro = load_workbook(plantilla_llena)
-        hoja = libro["Opex"]
-        for fila in hoja.iter_rows(min_row=5, max_col=2):
-            if fila[0].value and str(fila[0].value).strip() == "Mina":
-                fila[1].value = "miles de US$"
-                for i, valor in enumerate([0.0, 200.0, 200.0]):
-                    hoja.cell(row=fila[0].row, column=3 + i, value=valor)
-                break
-        libro.save(plantilla_llena)
-        assert leer_o_fallar(plantilla_llena).unidades[0].costos["mina"] == (
-            0.0,
-            200_000.0,
-            200_000.0,
-        )
-
     def test_la_ley_de_plata_no_se_lee_como_porcentaje(self, plantilla_llena: Path) -> None:
         # Viene en onzas troy por tonelada. Tratarla como porcentaje la
         # dividiria entre cien sin avisar.

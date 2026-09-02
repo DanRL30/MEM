@@ -172,7 +172,7 @@ secas, no `uv run`, asi que exige el entorno del proyecto activo o falla con `Mo
 
 ## 3. Estado verificado de las comprobaciones
 
-Reejecutado el 01/09/2026 sobre el arbol completo. **Todas las puertas de
+Reejecutado el 02/09/2026 sobre el arbol completo. **Todas las puertas de
 [ci.yml](infra/pipelines/ci.yml) estan en verde.** Cualquier fallo es una regresion introducida
 despues, no deuda heredada.
 
@@ -180,9 +180,9 @@ despues, no deuda heredada.
 |---|---|
 | `verificar_convenciones.py` | Sin infracciones |
 | `ruff check .` | Limpio |
-| `ruff format --check .` | Limpio, 93 archivos |
-| `mypy packages apps/api/src` | Limpio en modo estricto, 59 archivos |
-| `pytest` | 311 de 311, de las que 31 son el contraste de fidelidad |
+| `ruff format --check .` | Limpio, 96 archivos |
+| `mypy packages apps/api/src` | Limpio en modo estricto, 61 archivos |
+| `pytest` | 331 de 331, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -285,6 +285,53 @@ que en el libro viven en la hoja `Supuestos`.
 con concepto desconocido se descartaba con un `continue`: el usuario la llenaba,
 el caso se leia sin errores y su dato no se usaba. Es el peor fallo posible en una
 frontera, porque no deja sintoma.
+
+### El opex tiene su libro, y ahi el complejo si lleva pestana
+
+[opex.py](packages/ingest/src/minsur_ingest/opex.py) declara la estructura y
+[leer_opex()](packages/ingest/src/minsur_ingest/plantilla.py) la lee, con el
+mismo patron que produccion: una pestana por unidad, estructura fija, lectura por
+secuencia y asociacion por orden. Tres cosas lo diferencian y conviene tenerlas
+presentes antes de tocarlo.
+
+**El complejo lleva pestana**, al reves que en produccion. Su produccion es
+resultado, pero su costo es dato: el libro le carga nueve conceptos. Por eso el
+libro de opex trae **una pestana mas** que el de produccion, y `aplicar()` recorre
+`caso.unidades` sin saltar la fundicion.
+
+**No hay corroborador y no lo habra.** La auditoria de `InputsOpex`
+—[brechas-plantilla-opex.md](docs/modelo-economico/brechas-plantilla-opex.md)—
+confirmo que el bloque es todo dato. Lo que el libro calcula ahi son totales,
+ratios y la produccion que trae de `InputsProd`, y nada de eso se carga: no hay
+dos valores que comparar. Es la diferencia con produccion, donde el usuario carga
+tambien lo derivado.
+
+**La cola de conceptos propios es de longitud fija y va en un lugar fijo.** Es el
+acuerdo 6 del 27/08/2026, y esa disposicion es lo que permite seguir leyendo por
+secuencia. Pasada la cuenta de la cola, lo que venga tiene que ser el bloque de
+gastos: seguir tragando filas convertiria un gasto mal escrito en un costo con su
+nombre. Lo que se escriba en la cola **solo afecta al total**, que es la condicion
+con que el acuerdo la mantiene contrastable.
+
+### Los gastos no son cash cost, y cada fila va a un sitio distinto
+
+El bloque de gastos de `InputsOpex` entra por la misma pestana y vive en
+`UnidadProductiva.gastos`, separado de `costos`. La separacion no es de orden:
+los administrativos y la gestion social van al flujo operativo, los predios y los
+estudios al de inversiones, y solo una parte de todos ellos rebaja la base
+imponible.
+
+**Dos filas no se piden porque el libro las deriva.** `Planilla` sale del cash
+cost de la unidad por la tasa de los supuestos (regla `026`) y `Gestión Social
+Deducible` es la gestion social por su fraccion deducible, que sin declarar es
+entera (regla `027`). Pedirlas como dato invitaria a que contradijeran a su
+origen.
+
+**Los estudios se llevan por partida doble.** `estudios` es la salida de caja
+completa y `estudios_deducibles` la parte que rebaja la base: la diferencia son
+los capitalizables, que el libro deprecia en vez de deducir. Su naturaleza
+contable no esta declarada en ninguna parte, asi que hoy salen de caja y no se
+deprecian; eso se cierra con la plantilla de CAPEX.
 
 ### El bloque del complejo: todo resultado, y sin agrupar
 

@@ -19,12 +19,37 @@ rápida de equivocarse en una línea del contraste.
 libro lo envuelve en `IFERROR` y devuelve cero, y Finanzas confirmó el
 01/09/2026 que ese es el resultado esperado y que una indeterminación no debe
 detener el cálculo (regla 008).
+
+El bloque de gastos de `InputsOpex` vive aquí y no en un módulo propio porque
+comparte su línea del contraste: la hoja resumen del estándar corporativo agrupa
+`Mine, Plant, Tailings, Power Substation, G&A` en una sola línea, y G&A son
+estos gastos. Dos de sus filas no se cargan porque el libro las deriva:
+`Planilla` sale del cash cost de la unidad y `Gestión Social Deducible` es la
+parte de la gestión social que la base imponible admite.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+
+GASTOS_ADMINISTRATIVOS = "Gastos administrativos"
+GESTION_SOCIAL = "Gestión Social"
+PREDIOS = "Predios"
+SERVIDUMBRES = "Servidumbres y usufructos"
+ESTUDIOS_DE_GASTO = "Estudios Pre Factibilidad (Gasto)"
+ESTUDIOS_CAPITALIZABLES = "Estudios Factibilidad (Capitalizable)"
+EXPLORACIONES = "Exploraciones"
+"""Conceptos del bloque de gastos que el usuario carga, uno por unidad.
+
+Los nombres viven en el motor y no en la ingesta porque los necesitan los dos:
+la plantilla los escribe como etiquetas y el cálculo decide con ellos a qué
+línea del flujo va cada uno. Repetirlos en ambos lados los deja divergir.
+"""
+
+PLANILLA = "Planilla"
+GESTION_SOCIAL_DEDUCIBLE = "Gestión Social Deducible"
+"""Los dos conceptos que el motor deriva y la plantilla no pide."""
 
 
 class ErrorCashCost(ValueError):
@@ -83,6 +108,27 @@ def gasto_de_ventas(volumen: float, tarifa: float) -> float:
 def flete(toneladas: float, tarifa: float) -> float:
     """Flete del concentrado embarcado."""
     return toneladas * tarifa
+
+
+def planilla(cash_cost: float, tasa: float) -> float:
+    """Planilla del año: el cash cost de la unidad por la tasa del supuesto.
+
+    El libro no la carga: la calcula sobre el costo de la unidad con la tasa de
+    `Supuestos`. Pedirla como dato dejaría al usuario tecleando un valor que el
+    modelo deriva, y que quedaría desactualizado en cuanto cambiara un costo.
+    """
+    return cash_cost * tasa
+
+
+def parte_deducible(gasto: float, fraccion: float) -> float:
+    """Parte de un gasto que admite la base imponible.
+
+    La gestión social entra entera en el flujo y solo en parte en la base
+    imponible. El libro escribe la fila deducible como una copia de la otra,
+    afectada en algunos escenarios por una fracción. Sin fracción declarada, el
+    gasto es deducible entero, que es lo que hace el libro por defecto.
+    """
+    return gasto * fraccion
 
 
 def total_de_conceptos(conceptos: Mapping[str, float]) -> float:

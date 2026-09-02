@@ -125,20 +125,38 @@ SUM(tonelaje)`, no como media de las leyes anuales, y la ley del concentrado se 
 produccion de concentrado y no por el mineral tratado. Es un detalle facil de perder y su efecto
 supera la tolerancia de N1.
 
-### 4.2 Costo operativo — por unidad productiva y ano
+### 4.2 Costo operativo y gastos — por unidad productiva y ano
 
-Exploraciones · Geologia · Mina · Planta de preconcentracion · Planta concentradora · Fundicion ·
-Refineria · Planta de subproductos · Mantenimiento · Energia · Linea de transmision · Agua potable ·
-Planilla · Apoyo · Gestion social · Predios, servidumbres y usufructos · Estudios y optimizaciones ·
-Relavera. Todos en US$ por ano y con la misma dimension unidad x ano.
+**Son dos bloques y no uno.** La primera version de esta seccion los mezclaba, y la auditoria fila
+a fila de `InputsOpex` del 02/09/2026 mostro que el libro los separa: el cash cost por un lado y los
+gastos por otro, con destinos distintos en el flujo. Ver
+[brechas-plantilla-opex.md](brechas-plantilla-opex.md).
 
-Los diez primeros salieron de la lectura de los tres arquetipos; los ocho restantes los anadio la
-verificacion de cobertura de la seccion 6, que encontro conceptos usados por el libro y ausentes de
-la primera version de este catalogo.
+**Cash cost.** Exploraciones · Geologia · Mina · Servicios Mina · Planta de preconcentracion ·
+Planta concentradora · Mantenimiento · Energia · Apoyo · Estudios y optimizaciones · Relavera ·
+Linea de transmision · Peajes y mantenimiento · Agua potable · STA · Preconcentrado de terceros ·
+Fundicion · Refineria · Planta de subproductos · Mantenimiento de fundicion y refineria · Planillas.
 
-El acuerdo 6 de la minuta del 27/08/2026 exige que esta lista sea **extensible**: el usuario puede
-anadir conceptos que solo afecten al total. Por eso el catalogo fija los diez conceptos base como
-estructura y admite conceptos adicionales sin obligar a cambiar el motor.
+Los cinco ultimos son del complejo, que **tiene bloque de opex aunque no tenga pestana de
+produccion**: sus toneladas son resultado y su costo es dato. Los cuatro anadidos el 02/09/2026
+—Servicios Mina, Peajes y mantenimiento, STA y Preconcentrado de terceros— son de Santo Domingo y
+ninguna otra unidad los tiene. `STA` es una abreviatura que ningun documento traduce: se conserva
+literal y esta consultada.
+
+**Gastos.** Gastos administrativos · Gestion Social · Predios · Servidumbres y usufructos ·
+Estudios Pre Factibilidad (Gasto) · Estudios Factibilidad (Capitalizable) · Exploraciones.
+
+Los tres restantes del bloque del libro —`Ano con operacion`, `Planilla` y `Gestion Social
+Deducible`— **no son inputs**: el libro los deriva del cash cost de la unidad y de la propia gestion
+social. La plataforma los calcula (reglas `026` y `027`) y no los pide.
+
+Todos los conceptos de los dos bloques van en la misma dimension unidad x ano. El libro los escribe
+en miles de dolares, rotulados `$k`, y la ingesta los convierte: es la regla `003`.
+
+El acuerdo 6 de la minuta del 27/08/2026 exige que la lista de cash cost sea **extensible**: el
+usuario puede anadir conceptos que solo afecten al total. La plantilla lo resuelve con una cola de
+longitud fija al cierre del bloque, en `minsur_ingest.opex`. Ahi entran las reclasificaciones de
+covid de los casos historicos, que son de un caso concreto y no del catalogo.
 
 ### 4.3 Capital — por unidad productiva, ano y doble clasificacion
 

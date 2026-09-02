@@ -132,6 +132,17 @@ class UnidadProductiva:
     costos: Mapping[str, Serie] = field(default_factory=dict)
     """Conceptos de costo operativo. La lista es abierta: acuerdo 6 del 27/08/2026."""
 
+    gastos: Mapping[str, Serie] = field(default_factory=dict)
+    """Gastos de la unidad: administrativos, sociales, prediales y de estudios.
+
+    Van aparte de los costos porque no son cash cost y no siguen su camino: unos
+    entran al flujo operativo, otros al de inversiones y otros solo rebajan la
+    base imponible. La lista es cerrada, a diferencia de la de costos.
+    """
+
+    fraccion_gestion_social_deducible: Serie = ()
+    """Parte de la gestión social que admite la base imponible. Vacío es entera."""
+
     capital: CapitalDeUnidad | None = None
 
     origen: str = "yacimiento"
@@ -246,6 +257,9 @@ class DatosComunes:
     estudios: Serie = ()
     exploraciones: Serie = ()
     predios: Serie = ()
+    planilla_sobre_cash_cost: Serie = ()
+    """Tasa con que el libro deriva la planilla del cash cost de cada unidad."""
+
     intereses: Serie = ()
     otros_flujo: Serie = ()
     fletes_por_tonelada: Serie = ()

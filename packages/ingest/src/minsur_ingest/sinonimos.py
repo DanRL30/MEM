@@ -37,9 +37,15 @@ SINONIMOS = {
     "planta preconcentracion": "planta de preconcentracion",
     "pta subproductos": "planta de subproductos",
     "lt": "linea de transmision",
-    "servidumbre usufructos": "predios, servidumbres y usufructos",
-    "gestion social deducible": "gestion social",
+    "servidumbre usufructos": "servidumbres y usufructos",
     "estudios y optimizaciones": "estudios y optimizaciones",
+    # Conceptos de `InputsOpex`. Los dos primeros llevan pegado el nombre propio
+    # de la unidad que los tiene, y por eso no se pueden generalizar quitando un
+    # sufijo: el catalogo usa el concepto y aqui se traduce el rotulo del libro.
+    "tratamiento de relaves b2": "relavera",
+    "preconcentrado blue sky": "preconcentrado de terceros",
+    "peajes mantenimiento": "peajes y mantenimiento",
+    "mantenimiento f r": "mantenimiento de fundicion y refineria",
 }
 
 METALES_CONOCIDOS = ("Sn", "Cu", "Ag")
@@ -55,6 +61,17 @@ def normalizar(etiqueta: str) -> str:
     """Baja a minúsculas, quita acentos y colapsa la puntuación."""
     sin_acentos = unicodedata.normalize("NFKD", etiqueta).encode("ascii", "ignore").decode("ascii")
     return re.sub(r"[^a-z0-9]+", " ", sin_acentos.lower()).strip()
+
+
+def equivalente(etiqueta: str) -> str:
+    """Normaliza una etiqueta y le aplica la tabla, sin nada más.
+
+    Es lo que necesitan las plantillas de estructura fija: comparan etiqueta
+    contra etiqueta y no tienen que separar el metal ni el nombre de la unidad,
+    porque ahí la identidad la da la posición y no el rótulo.
+    """
+    normalizada = normalizar(etiqueta)
+    return SINONIMOS.get(normalizada, normalizada)
 
 
 def separar_metal(etiqueta: str) -> tuple[str, str | None]:

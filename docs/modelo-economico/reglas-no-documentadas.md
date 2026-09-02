@@ -41,6 +41,11 @@ que es lo que el motor necesita.
 | 023 | `Supuestos!H57` y `H58` | La ley pagable es `max(0, min(ley x 100 - deduccion minima, ley x factor pagable))` | Se calcula desde la ley del concentrado, la deduccion minima y el factor pagable. La de plata repite la formula del cobre, con un `x 100` que solo tiene sentido sobre un porcentaje mientras la plata va en onzas por tonelada | | | |
 | 024 | `Supuestos!H123` y `H124` | OEFA va 0,07 %, 0,07 %, 0,06 % y despues constante; OSINERGMIN 0,12 %, 0,11 %, 0,10 % | **Son series por ano y decrecientes, no tasas fijas.** MINSUR confirmo el 01/09/2026 que es deliberado: los supuestos pueden variar los primeros ejercicios porque hay mejor informacion sobre ellos. Los valores del servicio (OEFA 0,10 %, Osinergmin 0,14 %) son la tasa de referencia, y el caso la sobrescribe | MINSUR | 01/09/2026 | `corrida.py` |
 | 025 | `Supuestos!H120` | La capacidad maxima del complejo es un solo valor, no una serie por ano | Refina la regla `002`: el libro la declara una vez y la repite incrustada en las formulas de `InputsProd` | | | `complejo.py` |
+| 026 | `InputsOpex`, filas 131, 142, 155 y 166 | `Planilla = total del cash cost de la unidad x Supuestos!H111` | La planilla no es un dato: se deriva del costo. La plataforma la calcula y no la pide | Derivada del libro | 02/09/2026 | `cash_cost.py` |
+| 027 | `InputsOpex`, filas 134, 146, 158 y 170 | `Gestion Social Deducible` es una copia de `Gestion Social`, afectada por `x 0,85` en dos escenarios y por nada en el resto | La parte deducible es una fraccion declarada por unidad y por escenario. Sin declarar, el gasto es deducible entero | | | `cash_cost.py` |
+| 028 | `InputsOpex`, fila 132, leida por `Depreciacion` | San Rafael y San Rafael Potencial traen una fila `Estudios` que alimenta la depreciacion; Nazareth y Santo Domingo la parten en `Estudios Pre Factibilidad (Gasto)` y `Estudios Factibilidad (Capitalizable)` | Un `Estudios` sin calificar es capitalizable. **La eleccion cambia la base imponible**, no solo el vocabulario | | | `opex.py` |
+| 029 | `InputsOpex`, columna de total de siete de los nueve escenarios | La columna `Total` suma desde el segundo ano del bloque y excluye el primero. Dos escenarios si lo incluyen | Arrastre al construir los bloques. La columna es de presentacion y no alimenta el flujo | | | |
+| 030 | `InputsOpex`, filas 108 y 119 | La fila rotulada `Reclasif COVID` calcula sobre `Relavera`, y el `Cash Cost Santo Domingo /tmf` de dos escenarios divide por la fila del titulo del bloque en vez de por su total | Referencias arrastradas en filas de presentacion. Ninguna de las dos alimenta el flujo | | | |
 
 ## Detalle de las que no caben en una fila
 
@@ -152,12 +157,15 @@ utilidad`. Esa cancelación es lo que sostiene la decisión del ADR.
 4. **Precisión numérica** — se evalúa contra la tolerancia acordada y se documenta como aceptable
    sin corrección si queda dentro del umbral.
 
-Las veinticinco del registro son de tipo 2, salvo la 005, la 007, la 010, la 015 y nueve de las
+Las treinta del registro son de tipo 2, salvo la 005, la 007, la 010, la 015 y nueve de las
 que salieron el 01/09/2026 de leer el bloque de Pisco y la hoja de supuestos —016 a 023 y 025—,
-que son de tipo 3: se reproducen y se reportan. La 024 nacio como tipo 3 y MINSUR la confirmo el
+que son de tipo 3: se reproducen y se reportan. Las dos que salieron el 02/09/2026 de leer
+`InputsOpex` —029 y 030— tambien son de tipo 3, y ninguna de las dos alimenta el flujo: viven en
+columnas y filas de presentacion. La 024 nacio como tipo 3 y MINSUR la confirmo el
 mismo dia como deliberada, de modo que paso a tipo 2. La 015 es la única donde el motor **no** reproduce el libro, porque las dos
 hojas del libro se contradicen entre sí: sigue a `FC NZ`, que es la hoja del caso. Seis quedaron confirmadas por Finanzas el 01/09/2026; siguen abiertas la 003 (unidades de
-medida), la 004 (tramos tributarios) y la 007 (valores guardados sin recalcular).
+medida), la 004 (tramos tributarios), la 007 (valores guardados sin recalcular), la 027 (fraccion
+deducible de la gestion social) y la 028 (los estudios sin calificar).
 
 Ver la bitácora de discrepancias abiertas en `bitacora-discrepancias.md`.
 
