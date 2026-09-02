@@ -72,6 +72,9 @@ que es lo que el motor necesita.
 | 054 | `Otros!16` y `!23` | `Gasto de Ventas Sn Refinado LOM` y `Fletes Concentrado LOM` vienen de una hoja `Detalle` de otro libro; 72 formulas de la hoja son enlaces externos | El libro importa las lineas de las unidades en marcha y calcula las de los proyectos con una tarifa por tonelada. No se puede enlazar un libro ajeno y calcularlas cambiaria la cifra de las unidades en marcha: **se piden como dato** | Project Manager | 02/09/2026 | `supuestos.py` |
 | 055 | `Otros!30` frente a la 93 | `Servidumbre` esta en el bloque de gastos operativos y `Compra de Predios` en el de flujo de caja: son dos lineas separadas que la plataforma fusiona en una sola de inversion | Moverla cambia la base imponible, asi que **no se cambia** hasta la respuesta. `Donaciones`, del mismo bloque, no existia en el catalogo de OPEX y se agrega | | | `opex.py` |
 | 056 | `Otros`, filas 73 y 80 | Un saldo que abre en un ejercicio **sin produccion** no entra al flujo, porque la fila se multiplica por la bandera, y su reduccion posterior si entra | Consecuencia de la regla 053 sobre el capital del primer ejercicio: la deuda que abre el capex antes de producir nunca se registra como origen de caja. Se reproduce y se reporta | | | `capital_trabajo.py` |
+| 057 | `Impuestos!8` y `!30` | Las dos filas que abren las bases, rotuladas `Ventas Totales` y `Ventas Netas`, apuntan a la misma celda: `Ventas!27` | Etiqueta que engana, del mismo tipo que la 016. No existe una venta neta que el libro calcule aparte, y deducirla de la etiqueta lleva a inventar una linea | Derivada del libro | 02/09/2026 | `impuestos.py` |
+| 058 | `Impuestos!D87` y `!D108` | El limite del ultimo tramo de las dos escalas es un texto, `>80%` y `>85%`, no un numero. La comparacion `margen > texto` es siempre falsa en Excel, de modo que la formula cae en su segunda rama | Es como el libro escribe un tramo abierto por arriba, y funciona. De paso muestra que el `IFERROR` de la tabla de regalias es defensivo: la tabla de IEM no lo lleva y se comporta igual | Derivada del libro | 02/09/2026 | `impuestos.py` |
+| 059 | `Impuestos!16` y `!38` | La fila `Otros Gastos / Ingresos` de las dos bases es `-Otros!49-Otros!50`: `Otros Egresos` mas la `Servidumbre` **entera**, no la fraccion del bloque de gastos | **Confirma lo que la 055 temia**: la servidumbre rebaja la base imponible en el libro. Y son cinco conceptos que no coinciden, porque la plataforma alimenta esa fila con `Otros!32`, la planilla y las donaciones, que el libro no trae a esta hoja. La deducibilidad la fija la norma tributaria, no el motor: **no se implementa sin respuesta de Finanzas** | | | |
 
 ## Detalle de las que no caben en una fila
 
@@ -198,8 +201,11 @@ hojas del libro se contradicen entre sí: sigue a `FC NZ`, que es la hoja del ca
 medida), la 004 (tramos tributarios), la 007 (valores guardados sin recalcular), la 027 (fraccion
 deducible de la gestion social), la 033 (el rango del ajuste de capex), la 044 (la penalidad sin
 multiplicar), la 045 (la ley pagable de la plata), la 050 (saldos sumados con variaciones), la 051
-(el rotulo del IGV de ventas), la 055 (la servidumbre en dos bloques) y la 056 (el saldo que abre
-antes de producir). La 028 queda contestada por
+(el rotulo del IGV de ventas), la 055 (la servidumbre en dos bloques), la 056 (el saldo que abre
+antes de producir) y la 059, que es la 055 con la evidencia delante: la hoja `Impuestos` descuenta
+la servidumbre de las dos bases, y la fila que la trae no lleva los mismos conceptos que la
+plataforma le da. Es la unica del registro que cambia cifras al resolverse. Las otras dos que
+salieron el 02/09/2026 de leer esa hoja -la 057 y la 058- son de tipo 2 y estan implementadas. La 028 queda contestada por
 la 037, y la 028, la 034, la 036 y la 037 se resolvieron el 02/09/2026 por decision del Project
 Manager: **se hace lo que hace el libro, sin fusionar los componentes**. Ninguna de las cuatro sigue
 consultada.
