@@ -173,9 +173,9 @@ despues, no deuda heredada.
 |---|---|
 | `verificar_convenciones.py` | Sin infracciones |
 | `ruff check .` | Limpio |
-| `ruff format --check .` | Limpio, 82 archivos |
-| `mypy packages apps/api/src` | Limpio en modo estricto, 50 archivos |
-| `pytest` | 221 de 221, de las que 31 son el contraste de fidelidad |
+| `ruff format --check .` | Limpio, 89 archivos |
+| `mypy packages apps/api/src` | Limpio en modo estricto, 55 archivos |
+| `pytest` | 255 de 255, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -244,6 +244,38 @@ lineas en silencio.
 La lectura **acumula incidencias con su hoja y su celda** en vez de detenerse en la primera. Una
 plantilla llena a mano llega con varios errores a la vez, y devolverlos de uno en uno obliga a
 corregir y reenviar tantas veces como errores tenga.
+
+**La produccion viene en una pestana por proyecto**, con los sub-bloques `Mina` y `Planta` que usa
+el libro. Sus nombres los declara la hoja `Caso`, junto con el origen del mineral y las etapas de
+la planta: sin esos dos campos, de una plantilla llena no se puede regenerar la misma plantilla.
+[produccion.py](packages/ingest/src/minsur_ingest/produccion.py) hace el parseo, y ahi **no se
+borran los nombres de unidad de las etiquetas**, al reves que en las demas hojas: en `concentrado
+alimentado desde San Rafael` el nombre es el dato.
+
+**Lo que la ingesta no sabe consumir se reporta.** Hasta el 01/09/2026 una fila con concepto
+desconocido se descartaba con un `continue`: el usuario la llenaba, el caso se leia sin errores y
+su dato no se usaba. Es el peor fallo posible en una frontera, porque no deja sintoma.
+
+### El corroborador: los inputs se auditan, no se sustituyen
+
+Toda la produccion entra como dato, **incluidos los valores que el sistema sabe derivar**. El
+usuario carga sus series tal como las tiene, y
+[corroboracion.py](packages/engine/src/minsur_engine/corroboracion.py) rehace el calculo de las
+filas derivables y reporta cada celda donde el dato cargado no cuadra, con su unidad, su ano y su
+magnitud.
+
+Tres propiedades que no conviene romper:
+
+- **El dato cargado es el que usa el flujo.** El recalculo lo audita. Es la misma regla de fidelidad
+  que impide corregir el modelo corporativo, y es coherente con la desviacion `D-01`.
+- **Corroborar nunca detiene el calculo.** Un caso con una ley mal tecleada llega hasta el NPV para
+  que se vea el efecto.
+- **El informe viaja en la corrida** y se congela con ella. Sin eso no se puede sustentar despues
+  por que se acepto una diferencia.
+
+La tolerancia de corroboracion **no es la del contraste N1**: aquella compara el motor contra el
+libro y la fija Finanzas (`R-31`); esta compara el dato del usuario contra el recalculo del propio
+sistema. El 0,5 % de `TOLERANCIA_POR_DEFECTO` es propuesta de INVA y esta consultada.
 
 ### Lo que ya esta construido: el dominio
 

@@ -34,8 +34,11 @@ Caso
   Horizonte              primer ano, numero de anos, ano de valuacion
   EscenarioDePrecios     juego de precios por metal y ano (base, alto, bajo)
   UnidadProductiva [1..n]
-      tipo               mina, planta de preconcentracion, concentradora, relavera
-      metales [1..n]     Sn, Cu, Ag
+      tipo               mina, fundicion
+      origen             yacimiento, relave
+      etapas             preconcentracion, concentradora
+      entrega_a          unidad receptora, o vacio si vende directo
+      metales [1..n]     Sn, Cu, Ag, con su rol
       Produccion         series por ano
       CostoOperativo     series por ano, con conceptos base y adicionales
       Capital            series por ano, con doble clasificacion
@@ -43,6 +46,17 @@ Caso
   DatosComunes           working capital, perdidas tributarias, costos hundidos,
                          inversion social, gastos administrativos, otros gastos
 ```
+
+Los tipos son dos, no cinco. **La preconcentracion y la concentradora son etapas de la planta de una
+mina, no unidades**, y **la relavera es el origen de su mineral**: en el libro B2 tiene su sub-bloque
+`Mina` con mineral extraido y ley igual que San Rafael, porque se extrae de un deposito de relaves ya
+cerrado y desde ahi sigue la cadena normal. La fundicion si es una unidad, y hasta el 01/09/2026
+faltaba en esta lista.
+
+Los roles de metal salen del libro y no se declaran libres: **Sn** se refina y se vende con premio, y
+tambien se vende en concentrado; **Cu** es el concentrado comercial con su maquila y su merma; **Ag**
+es subproducto pagable **dentro del concentrado de Cu**, y no tiene concentrado propio. La plantilla
+lo declara como `Ag@Cu`.
 
 Fuera del caso, y por eso no aparece dentro de la caja:
 

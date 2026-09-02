@@ -25,7 +25,10 @@ from collections.abc import Iterable
 SINONIMOS = {
     "mineral tratado total cash cost": "mineral tratado total para cash cost",
     "mineral tratado planta": "mineral tratado total en concentradora",
-    "tratamiento de relaves": "mineral tratado de relaves",
+    # `Tratamiento de Relaves B2` es una linea de InputsOpex, no de
+    # produccion: mapearla a un concepto de produccion creaba un costo
+    # fantasma con nombre de tonelaje.
+    "tratamiento de relaves": "relavera",
     "concentrado alimentado": "concentrado alimentado desde otra unidad",
     "sn en concentrado": "metal contenido en el concentrado",
     "toneladas alimentadas escoria": "toneladas alimentadas mas escoria",
@@ -39,7 +42,13 @@ SINONIMOS = {
     "estudios y optimizaciones": "estudios y optimizaciones",
 }
 
-METALES_CONOCIDOS = ("Sn", "Cu", "Ag", "Pb", "Zn", "Au")
+METALES_CONOCIDOS = ("Sn", "Cu", "Ag")
+"""El alcance del modelo son tres metales, no seis.
+
+Admitir Pb, Zn y Au hacia que una etiqueta con uno de ellos se leyera como un
+concepto valido de un metal que la plataforma no sabe liquidar. Con la lista
+acotada, esa fila llega a la ingesta como concepto no reconocido y se reporta.
+"""
 
 
 def normalizar(etiqueta: str) -> str:

@@ -28,6 +28,7 @@ from minsur_engine import capital_trabajo, produccion, tributos
 from minsur_engine.capex import capex_de_etapa, capex_de_sostenimiento, capex_total
 from minsur_engine.cash_cost import CostoDeUnidad, cash_cost_total
 from minsur_engine.caso import Caso, DatosMaestros
+from minsur_engine.corroboracion import Discrepancia, corroborar
 from minsur_engine.depreciacion import depreciacion_por_mina, total_depreciado
 from minsur_engine.flujos import (
     ComponentesDeInversion,
@@ -75,6 +76,22 @@ class Corrida:
     concentrado_alimentado: Serie
     concentrado_tratado: Serie
     concentrado_excedente: Serie
+    mineral_tratado_por_unidad: dict[str, Serie]
+    ley_de_alimentacion: dict[str, Serie]
+    """Ley promedio del concentrado que llega al complejo, por metal."""
+
+    anos_activos_por_unidad: dict[str, tuple[int, ...]]
+    """Años calendario en que cada unidad produce.
+
+    Es la salida calculada que sustituye a las filas `Ano con produccion` del
+    libro. Finanzas fijó el 01/09/2026 que la participación se deriva de los
+    datos, así que ponerla como entrada crearía un campo que puede contradecir
+    a las series.
+    """
+
+    discrepancias: tuple[Discrepancia, ...]
+    """Lo que el recálculo no pudo corroborar. Viaja con la corrida al congelarse."""
+
     capex: Serie
     depreciacion_tributaria_por_mina: dict[str, Serie]
     depreciacion_financiera_por_mina: dict[str, Serie]
@@ -208,6 +225,10 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         concentrado_alimentado=concentrado["alimentado"],
         concentrado_tratado=concentrado["tratado"],
         concentrado_excedente=concentrado["excedente"],
+        mineral_tratado_por_unidad=produccion_por_unidad,
+        ley_de_alimentacion=_ley_de_alimentacion(caso),
+        anos_activos_por_unidad=_anos_activos(caso),
+        discrepancias=corroborar(caso),
         capex=total_capex,
         depreciacion_tributaria_por_mina=depreciacion_tributaria,
         depreciacion_financiera_por_mina=depreciacion_financiera,
@@ -249,6 +270,45 @@ def _concentrado_del_complejo(caso: Caso) -> dict[str, Serie]:
         "alimentado": alimentado,
         "tratado": produccion.tratamiento_limitado(alimentado, capacidad),
         "excedente": produccion.excedente_por_capacidad(alimentado, capacidad),
+    }
+
+
+def _ley_de_alimentacion(caso: Caso) -> dict[str, Serie]:
+    """Ley promedio del concentrado que entra al complejo, por metal.
+
+    Ponderada por el concentrado que aporta cada unidad, no promediada entre
+    unidades: el libro usa `SUMPRODUCT` y con producción desigual la diferencia
+    entre ambas convenciones supera la tolerancia de N1.
+    """
+    horizonte = caso.horizonte
+    mineras = caso.unidades_mineras
+    salida: dict[str, Serie] = {}
+    for metal in sorted({m for u in mineras for m in u.produccion.concentrados}):
+        aportan = [u for u in mineras if metal in u.produccion.concentrados]
+        tonelajes = [
+            _serie(u.produccion.concentrados[metal].toneladas, horizonte, f"{u.nombre}/{metal}")
+            for u in aportan
+        ]
+        leyes = [
+            _serie(u.produccion.concentrados[metal].ley, horizonte, f"{u.nombre}/ley {metal}")
+            for u in aportan
+        ]
+        salida[metal] = tuple(
+            produccion.ley_agregada(
+                [t[i] for t in tonelajes],
+                [ley[i] for ley in leyes],
+            )
+            for i in range(horizonte.anos)
+        )
+    return salida
+
+
+def _anos_activos(caso: Caso) -> dict[str, tuple[int, ...]]:
+    """Años calendario en que cada unidad produce."""
+    calendario = caso.horizonte.anos_calendario
+    return {
+        nombre: tuple(calendario[i] for i in posiciones)
+        for nombre, posiciones in unidades_activas(caso).items()
     }
 
 

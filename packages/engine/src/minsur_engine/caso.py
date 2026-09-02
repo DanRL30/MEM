@@ -29,7 +29,18 @@ from minsur_engine.horizonte import Horizonte, Serie
 from minsur_engine.parametros import ParametrosCorporativos
 from minsur_engine.tributos import EscalaProgresiva
 
-TIPOS_DE_UNIDAD = ("mina", "preconcentracion", "concentradora", "relavera", "fundicion")
+TIPOS_DE_UNIDAD = ("mina", "fundicion")
+"""Solo hay dos: la que saca y trata mineral, y la que recibe concentrado.
+
+El libro no tiene unidades de tipo preconcentración, concentradora ni relavera.
+La preconcentración y la concentradora son **etapas de la planta** de una mina, y
+la relavera es el **origen** de su mineral: B2 tiene su sub-bloque `Mina` con
+mineral extraído y ley igual que San Rafael, porque se extrae de un depósito de
+relaves ya cerrado y desde ahí sigue la cadena normal.
+"""
+
+ORIGENES = ("yacimiento", "relave")
+ETAPAS = ("preconcentracion", "concentradora")
 
 
 class ErrorCaso(ValueError):
@@ -37,11 +48,46 @@ class ErrorCaso(ValueError):
 
 
 @dataclass(frozen=True)
+class CorrienteDeMineral:
+    """Un tonelaje con la ley de cada metal que lleva.
+
+    El libro escribe cada corriente como dos filas contiguas: el tonelaje y,
+    debajo, su ley. Las etiquetas de todas las leyes son iguales —`Ley Sn`— y lo
+    único que las distingue es esa vecindad. Aquí van juntas porque separarlas es
+    lo que deja una ley huérfana sin que nadie lo note.
+    """
+
+    toneladas: Serie
+    leyes: Mapping[str, Serie] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ConcentradoDeMetal:
+    """Lo que la planta produce para un metal.
+
+    Una unidad polimetálica declara uno por metal: el libro lleva `Concentrado
+    Producido Sn` y `Concentrado Producido Cu` como filas distintas.
+    """
+
+    toneladas: Serie
+    ley: Serie
+    recuperacion: Serie = ()
+    toneladas_finas: Serie = ()
+
+
+@dataclass(frozen=True)
 class ProduccionDeUnidad:
-    """Series de producción de una unidad, alineadas al horizonte del caso."""
+    """Series de producción de una unidad, alineadas al horizonte del caso.
+
+    Los dos primeros campos son los que el flujo consume. El resto describe la
+    cadena metalúrgica completa —de la mina al concentrado— y existe para que el
+    corroborador pueda recalcular lo que el usuario cargó y avisar si no cuadra.
+    Todos son opcionales: una unidad sin preconcentración no declara lo que no
+    tiene.
+    """
 
     mineral_tratado: Serie
-    """Base del cash cost unitario."""
+    """Base del cash cost unitario. Es `Mineral Tratado Total (Cash Cost)`."""
 
     concentrado_producido: Serie
     """Lo que la unidad entrega a la fundición del complejo."""
@@ -54,6 +100,40 @@ class ProduccionDeUnidad:
 
     capacidad_de_tratamiento: Serie = ()
     """Solo en unidades de fundición: el tope que acota lo alimentado."""
+
+    # --- La cadena, para corroborar ---
+
+    extraido: CorrienteDeMineral | None = None
+    """Sub-bloque `Mina`: lo que sale del yacimiento o del depósito de relaves."""
+
+    tratado_en_preconcentracion: CorrienteDeMineral | None = None
+    preconcentrado_a_concentradora: CorrienteDeMineral | None = None
+    directo_a_concentradora: CorrienteDeMineral | None = None
+    tratado_total: CorrienteDeMineral | None = None
+    """`Mineral Tratado Total en Concentradora`: preconcentrado más directo."""
+
+    leyes_del_tratado: Mapping[str, Serie] = field(default_factory=dict)
+    """Ley de `mineral_tratado`, que el libro repite bajo la fila de cash cost."""
+
+    concentrados: Mapping[str, ConcentradoDeMetal] = field(default_factory=dict)
+    """Concentrado producido por metal."""
+
+    # --- Solo en la unidad de fundición ---
+
+    alimentacion_recibida: Mapping[str, CorrienteDeMineral] = field(default_factory=dict)
+    """Concentrado que entrega cada unidad de origen, con su ley.
+
+    El libro lleva un par de filas por unidad —`Concentrado Alimentado SR` y su
+    ley— y no una sola fila agregada: sin eso no se sabe de dónde viene lo que
+    entra al complejo, y la ley promedio de alimentación no se puede recalcular.
+    """
+
+    recuperacion_por_grupo: Mapping[str, Serie] = field(default_factory=dict)
+    """Recuperación de la fundición por grupo de unidades de origen.
+
+    No hay una sola: el libro distingue `Recuperación Sn SR + B2` de
+    `Recuperación Sn NZ + SRP`. Qué criterio agrupa está consultado a Finanzas.
+    """
 
 
 @dataclass(frozen=True)
@@ -68,12 +148,34 @@ class UnidadProductiva:
 
     capital: CapitalDeUnidad | None = None
 
+    origen: str = "yacimiento"
+    """De dónde sale el mineral. `relave` es una relavera cerrada que se reprocesa."""
+
+    etapas: tuple[str, ...] = ("concentradora",)
+    """Etapas de la planta, en orden. Determinan qué filas tiene la unidad."""
+
+    entrega_a: str | None = None
+    """Unidad que recibe su concentrado. Vacío significa que lo vende directo."""
+
+    alias: tuple[str, ...] = ()
+    """Abreviaturas con que el libro nombra la unidad: `SR`, `SRP`, `NZ`."""
+
     def __post_init__(self) -> None:
         if not self.nombre.strip():
             raise ErrorCaso("Una unidad productiva sin nombre no se puede identificar.")
         if self.tipo not in TIPOS_DE_UNIDAD:
             raise ErrorCaso(
                 f"{self.nombre}: tipo {self.tipo!r} desconocido. Use {', '.join(TIPOS_DE_UNIDAD)}."
+            )
+        if self.origen not in ORIGENES:
+            raise ErrorCaso(
+                f"{self.nombre}: origen {self.origen!r} desconocido. Use {', '.join(ORIGENES)}."
+            )
+        desconocidas = [e for e in self.etapas if e not in ETAPAS]
+        if desconocidas:
+            raise ErrorCaso(
+                f"{self.nombre}: etapa(s) {', '.join(desconocidas)} desconocida(s). "
+                f"Use {', '.join(ETAPAS)}."
             )
         if self.capital is not None and self.capital.unidad != self.nombre:
             raise ErrorCaso(
@@ -171,6 +273,14 @@ class Caso:
                 f"El caso {self.nombre!r} declara mas de una fundicion. El tope de capacidad se "
                 "aplica sobre el concentrado del complejo y no sabria a cual acotar."
             )
+        conocidas = set(nombres)
+        for unidad in self.unidades:
+            if unidad.entrega_a is not None and unidad.entrega_a not in conocidas:
+                raise ErrorCaso(
+                    f"{unidad.nombre} entrega su concentrado a {unidad.entrega_a!r}, que el caso "
+                    f"{self.nombre!r} no declara. Un destino inexistente pierde la produccion "
+                    "sin que el flujo lo acuse."
+                )
 
     @property
     def fundicion(self) -> UnidadProductiva | None:

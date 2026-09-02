@@ -68,16 +68,30 @@ def _escribir(hoja: object, etiqueta: str, valores: list[float]) -> int:
 
 @pytest.fixture
 def plantilla_llena(tmp_path: Path) -> Path:
-    """Una plantilla de dos unidades y tres años, llena con cifras redondas."""
+    """Una plantilla de dos unidades y tres años, con la cadena completa llena.
+
+    Las cifras se eligen para seguirlas a mano y para que la cadena cuadre: 1 000
+    toneladas al 25 % son 250 tmf; con 80 % de recuperación y un concentrado al
+    40 % salen 500 toneladas de concentrado. El primer ejercicio invierte y no
+    produce.
+
+    Llenar la cadena entera y no solo las cuatro filas que el motor consumía
+    antes es lo que hace que la prueba cubra el vocabulario real de la plantilla.
+    """
     generador = _generador()
     ruta = tmp_path / "caso.xlsx"
-    unidades = [
-        generador.Unidad.desde_texto("Mina Alfa:mina:Sn"),  # type: ignore[attr-defined]
-        generador.Unidad.desde_texto("Fundicion:fundicion:Sn"),  # type: ignore[attr-defined]
-    ]
+    unidades = generador._encadenar(  # type: ignore[attr-defined]
+        [
+            generador.Unidad.desde_texto("Mina Alfa:mina:Sn"),  # type: ignore[attr-defined]
+            generador.Unidad.desde_texto("Fundicion:fundicion:Sn"),  # type: ignore[attr-defined]
+        ]
+    )
     libro = generador.Workbook()  # type: ignore[attr-defined]
     generador.hoja_caso(libro, unidades, 2027, 3)  # type: ignore[attr-defined]
-    generador.hoja_produccion(libro, unidades, 2027, 3)  # type: ignore[attr-defined]
+    for unidad in unidades:
+        generador.hoja_produccion_de_unidad(  # type: ignore[attr-defined]
+            libro, unidad, unidades, 2027, 3
+        )
     generador.hoja_opex(libro, unidades, 2027, 3)  # type: ignore[attr-defined]
     generador.hoja_capex(libro, unidades, 2027, 3)  # type: ignore[attr-defined]
     generador.hoja_precios(libro, unidades, 2027, 3)  # type: ignore[attr-defined]
@@ -89,11 +103,30 @@ def plantilla_llena(tmp_path: Path) -> Path:
     caso["B3"] = "Caso de prueba"
     caso["B9"] = "CP-2026-09"
 
-    produccion = libro["Produccion"]
-    _escribir(produccion, "Mineral tratado total para cash cost", [0.0, 1_000.0, 1_000.0])
-    _escribir(produccion, "Produccion de concentrado de Sn", [0.0, 500.0, 500.0])
-    _escribir(produccion, "Capacidad maxima de tratamiento", [900.0, 900.0, 900.0])
-    _escribir(produccion, "Produccion de metal refinado de Sn", [0.0, 100.0, 100.0])
+    mina = libro["Mina Alfa"]
+    _escribir(mina, "Mineral extraido", [0.0, 1_200.0, 1_200.0])
+    _escribir(mina, "Ley de Sn del mineral extraido", [0.0, 25.0, 25.0])
+    _escribir(mina, "Mineral directo a planta concentradora", [0.0, 1_000.0, 1_000.0])
+    _escribir(mina, "Ley de Sn del mineral directo", [0.0, 25.0, 25.0])
+    _escribir(mina, "Mineral tratado total en concentradora", [0.0, 1_000.0, 1_000.0])
+    _escribir(mina, "Ley de Sn del tratado total", [0.0, 25.0, 25.0])
+    _escribir(mina, "Mineral tratado total para cash cost", [0.0, 1_000.0, 1_000.0])
+    _escribir(mina, "Ley de Sn del tratado para cash cost", [0.0, 25.0, 25.0])
+    _escribir(mina, "Toneladas finas de Sn", [0.0, 250.0, 250.0])
+    _escribir(mina, "Ley de Sn en el concentrado", [0.0, 40.0, 40.0])
+    _escribir(mina, "Recuperacion de Sn", [0.0, 80.0, 80.0])
+    _escribir(mina, "Produccion de concentrado de Sn", [0.0, 500.0, 500.0])
+    _escribir(mina, "Concentrado entregado al complejo", [0.0, 500.0, 500.0])
+
+    complejo = libro["Fundicion"]
+    _escribir(complejo, "Concentrado alimentado desde Mina Alfa", [0.0, 500.0, 500.0])
+    _escribir(complejo, "Ley de Sn del concentrado de Mina Alfa", [0.0, 40.0, 40.0])
+    _escribir(complejo, "Toneladas alimentadas mas escoria", [0.0, 520.0, 520.0])
+    _escribir(complejo, "Capacidad maxima de tratamiento", [900.0, 900.0, 900.0])
+    _escribir(complejo, "Concentrado excedente", [0.0, 0.0, 0.0])
+    _escribir(complejo, "Ley promedio de alimentacion de Sn", [0.0, 40.0, 40.0])
+    _escribir(complejo, "Produccion de metal refinado de Sn", [0.0, 100.0, 100.0])
+    _escribir(complejo, "Recuperacion de Sn de Mina Alfa", [0.0, 90.0, 90.0])
 
     _escribir(libro["Opex"], "Mina", [0.0, 200_000.0, 200_000.0])
     _escribir(libro["Capex"], "    Maquinaria, equipos y vehiculos", [1_000_000.0, 0.0, 0.0])
@@ -122,6 +155,42 @@ class TestIdaYVuelta:
         assert alfa.produccion.mineral_tratado == (0.0, 1_000.0, 1_000.0)
         assert alfa.produccion.concentrado_producido == (0.0, 500.0, 500.0)
         assert alfa.costos["mina"] == (0.0, 200_000.0, 200_000.0)
+
+    def test_la_cadena_completa_llega_al_motor(self, plantilla_llena: Path) -> None:
+        # Hasta el 01/09/2026 el lector consumia cinco series por unidad y
+        # descartaba las dieciseis restantes. Esta prueba fija que la cadena
+        # entera —tonelajes, leyes y concentrado por metal— llega entera.
+        alfa = leer_o_fallar(plantilla_llena).unidades[0]
+        produccion = alfa.produccion
+        assert produccion.extraido is not None
+        assert produccion.extraido.toneladas == (0.0, 1_200.0, 1_200.0)
+        assert produccion.extraido.leyes["Sn"] == (0.0, 0.25, 0.25)
+        assert produccion.tratado_total is not None
+        assert produccion.tratado_total.toneladas == (0.0, 1_000.0, 1_000.0)
+        assert produccion.leyes_del_tratado["Sn"] == (0.0, 0.25, 0.25)
+
+        concentrado = produccion.concentrados["Sn"]
+        assert concentrado.toneladas_finas == (0.0, 250.0, 250.0)
+        assert concentrado.recuperacion == (0.0, 0.80, 0.80)
+        assert concentrado.ley == (0.0, 0.40, 0.40)
+        assert concentrado.toneladas == (0.0, 500.0, 500.0)
+
+    def test_el_origen_y_las_etapas_sobreviven_la_ida_y_vuelta(self, plantilla_llena: Path) -> None:
+        # Vivian en la hoja de instrucciones, que el lector no abre, de modo que
+        # de una plantilla llena no se podia regenerar la misma plantilla.
+        caso = leer_o_fallar(plantilla_llena)
+        alfa = caso.unidades[0]
+        assert alfa.origen == "yacimiento"
+        assert alfa.etapas == ("concentradora",)
+        assert alfa.entrega_a == "Fundicion"
+
+    def test_el_complejo_sabe_de_donde_viene_lo_que_recibe(self, plantilla_llena: Path) -> None:
+        fundicion = leer_o_fallar(plantilla_llena).fundicion
+        assert fundicion is not None
+        recibido = fundicion.produccion.alimentacion_recibida
+        assert set(recibido) == {"Mina Alfa"}
+        assert recibido["Mina Alfa"].toneladas == (0.0, 500.0, 500.0)
+        assert fundicion.produccion.recuperacion_por_grupo["Mina Alfa"] == (0.0, 0.90, 0.90)
 
     def test_la_capacidad_llega_a_la_fundicion(self, plantilla_llena: Path) -> None:
         caso = leer_o_fallar(plantilla_llena)
@@ -167,14 +236,14 @@ class TestConversionDeEscalas:
 class TestIncidencias:
     def test_una_celda_con_texto_se_reporta_con_su_ubicacion(self, plantilla_llena: Path) -> None:
         libro = load_workbook(plantilla_llena)
-        fila = _escribir(libro["Produccion"], "Mineral tratado total para cash cost", [0.0] * 3)
-        libro["Produccion"].cell(row=fila, column=4, value="mil toneladas")
+        fila = _escribir(libro["Mina Alfa"], "Mineral tratado total para cash cost", [0.0] * 3)
+        libro["Mina Alfa"].cell(row=fila, column=4, value="mil toneladas")
         libro.save(plantilla_llena)
 
         lectura = leer_plantilla(plantilla_llena)
         assert not lectura.valida
         incidencia = lectura.incidencias[0]
-        assert incidencia.hoja == "Produccion"
+        assert incidencia.hoja == "Mina Alfa"
         assert incidencia.celda == f"D{fila}"
         assert "se esperaba un numero" in incidencia.mensaje
 
@@ -182,7 +251,7 @@ class TestIncidencias:
         # Devolverlas de una en una obliga a corregir y reenviar tantas veces
         # como errores tenga la plantilla.
         libro = load_workbook(plantilla_llena)
-        hoja = libro["Produccion"]
+        hoja = libro["Mina Alfa"]
         fila = _escribir(hoja, "Mineral tratado total para cash cost", [0.0] * 3)
         hoja.cell(row=fila, column=3, value="a")
         hoja.cell(row=fila, column=4, value="b")
@@ -190,6 +259,31 @@ class TestIncidencias:
 
         lectura = leer_plantilla(plantilla_llena)
         assert len(lectura.incidencias) >= 2
+
+    def test_un_concepto_que_no_se_reconoce_se_reporta(self, plantilla_llena: Path) -> None:
+        # La regla invertida: antes una fila con concepto desconocido se
+        # descartaba con un `continue`. El usuario la llenaba, el caso se leia
+        # sin errores y su dato no se usaba, que es el peor fallo posible aqui.
+        libro = load_workbook(plantilla_llena)
+        hoja = libro["Mina Alfa"]
+        fila = hoja.max_row + 1
+        hoja.cell(row=fila, column=1, value="Mineral flotado en columna")
+        hoja.cell(row=fila, column=2, value="t")
+        hoja.cell(row=fila, column=3, value=10.0)
+        libro.save(plantilla_llena)
+
+        lectura = leer_plantilla(plantilla_llena)
+        assert not lectura.valida
+        assert any("no reconocido" in i.mensaje for i in lectura.incidencias)
+
+    def test_una_unidad_declarada_sin_pestana_se_reporta(self, plantilla_llena: Path) -> None:
+        libro = load_workbook(plantilla_llena)
+        del libro["Mina Alfa"]
+        libro.save(plantilla_llena)
+
+        lectura = leer_plantilla(plantilla_llena)
+        assert not lectura.valida
+        assert any("no tiene pestana" in i.mensaje for i in lectura.incidencias)
 
     def test_un_libro_que_no_es_la_plantilla_se_rechaza(self, tmp_path: Path) -> None:
         from openpyxl import Workbook
@@ -207,8 +301,8 @@ class TestIncidencias:
 
     def test_leer_o_fallar_levanta_con_todas(self, plantilla_llena: Path) -> None:
         libro = load_workbook(plantilla_llena)
-        fila = _escribir(libro["Produccion"], "Mineral tratado total para cash cost", [0.0] * 3)
-        libro["Produccion"].cell(row=fila, column=3, value="x")
+        fila = _escribir(libro["Mina Alfa"], "Mineral tratado total para cash cost", [0.0] * 3)
+        libro["Mina Alfa"].cell(row=fila, column=3, value="x")
         libro.save(plantilla_llena)
 
         with pytest.raises(ErrorDePlantilla, match="incidencia"):
@@ -221,8 +315,11 @@ class TestSinonimos:
         assert canonizar("Pta Subproductos")[0] == "planta de subproductos"
 
     def test_quita_el_nombre_de_la_unidad_pegado(self) -> None:
+        # El libro pega el nombre de la unidad a la etiqueta. Y `Tratamiento de
+        # Relaves B2` es una linea de costo operativo, no de produccion: hasta
+        # el 01/09/2026 el sinonimo la mandaba a un concepto de tonelaje.
         concepto, _ = canonizar("Tratamiento de Relaves B2", unidades=["B2"])
-        assert concepto == "mineral tratado de relaves"
+        assert concepto == "relavera"
 
     def test_tolera_los_parentesis_del_libro(self) -> None:
         assert canonizar("Mineral Tratado Total (Cash Cost)")[0] == (

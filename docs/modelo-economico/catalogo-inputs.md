@@ -95,7 +95,18 @@ Nombres tomados del vocabulario del libro y del control de supuestos de Finanzas
 | Recuperacion de Sn | % | unidad x ano |
 | Produccion de concentrado | t | unidad x ano |
 
-Las unidades polimetalicas repiten ley, recuperacion y produccion por cada metal (Sn, Cu, Ag).
+Las unidades polimetalicas repiten ley, recuperacion y produccion por cada metal, pero **no todos los
+metales tienen concentrado propio**: en el libro la plata va dentro del concentrado de cobre y lo
+unico que se declara de ella es su ley en ese concentrado. Pedirle a un proyecto la produccion de un
+concentrado de plata seria pedir un dato que no existe.
+
+**Cada corriente de tonelaje lleva su propia ley.** El libro escribe pares contiguos —el tonelaje y,
+debajo, su ley— y rotula todas las leyes igual, `Ley Sn`: lo unico que las distingue es esa vecindad.
+En el bloque de una mina con preconcentracion hay seis pares, no dos. El detalle y las brechas que
+abrio estan en [brechas-plantilla-produccion.md](brechas-plantilla-produccion.md).
+
+**Cada unidad se describe con dos sub-bloques, `Mina` y `Planta`**: de donde sale el mineral y por
+que proceso pasa. Es la estructura del libro y la que reproduce la plantilla.
 
 Dos conceptos mas que la verificacion de cobertura obligo a incorporar, y que cambian el modelo de
 datos: **concentrado alimentado desde otra unidad** y **concentrado excedente**. El libro encadena

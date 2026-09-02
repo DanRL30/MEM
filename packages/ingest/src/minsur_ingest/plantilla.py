@@ -35,26 +35,24 @@ from minsur_engine.capex import CapitalDeUnidad
 from minsur_engine.caso import (
     Caso,
     DatosComunes,
-    ProduccionDeUnidad,
     TerminosComerciales,
     UnidadProductiva,
 )
 from minsur_engine.horizonte import ErrorHorizonte, Horizonte, Serie
 from minsur_ingest.incidencias import ErrorDePlantilla, Incidencia
+from minsur_ingest.produccion import armar_produccion
 from minsur_ingest.sinonimos import canonizar, normalizar
 
-HOJAS_REQUERIDAS = ("Caso", "Produccion", "Opex", "Capex", "Precios")
+HOJAS_REQUERIDAS = ("Caso", "Opex", "Capex", "Precios")
+"""La produccion no esta aqui: viene en una pestana por proyecto.
+
+Sus nombres los declara la propia hoja `Caso`, de modo que no se pueden fijar en
+una constante. `Leeme` se ignora.
+"""
+
 PRIMERA_FILA_DE_DATOS = 5
 PRIMERA_COLUMNA_DE_ANOS = 3
-
-# Concepto del catalogo, ya normalizado, al campo del motor que alimenta.
-PRODUCCION_AL_MOTOR = {
-    "mineral tratado total para cash cost": "mineral_tratado",
-    "produccion de concentrado": "concentrado_producido",
-    "metal contenido en el concentrado": "metal_en_concentrado_vendido",
-    "produccion de metal refinado": "metal_refinado_vendido",
-    "capacidad maxima de tratamiento": "capacidad_de_tratamiento",
-}
+LIMITE_DE_NOMBRE_DE_HOJA = 31
 
 ETAPAS_DE_CAPEX = {
     "capex inicial": "inicial",
@@ -110,11 +108,25 @@ class Lectura:
 
 @dataclass(frozen=True)
 class _UnidadDeclarada:
-    """Una fila de la tabla de unidades de la hoja `Caso`."""
+    """Una fila de la tabla de unidades de la hoja `Caso`.
+
+    El origen y las etapas viajan aqui y no en la hoja de instrucciones porque
+    son los que deciden que filas tiene la pestana de la unidad: sin ellos, de
+    una plantilla llena no se puede regenerar la misma plantilla.
+    """
 
     nombre: str
     tipo: str
     metales: str
+    origen: str = "yacimiento"
+    etapas: str = ""
+    entrega_a: str = ""
+
+    @property
+    def hoja(self) -> str:
+        """Nombre de su pestana, con el limite que impone Excel."""
+        limpio = "".join(c for c in self.nombre if c not in r"[]:*?/\'")
+        return limpio[:LIMITE_DE_NOMBRE_DE_HOJA] or "Unidad"
 
 
 @dataclass
@@ -172,7 +184,20 @@ def leer_plantilla(ruta: Path, *, escenario: str | None = None) -> Lectura:
         return Lectura(None, tuple(incidencias))
 
     nombres = [u.nombre for u in cabecera.unidades]
-    produccion = _leer_hoja_de_series(libro["Produccion"], horizonte, nombres, incidencias)
+    produccion: dict[str, list[_Fila]] = {}
+    for declarada in cabecera.unidades:
+        if declarada.hoja not in libro.sheetnames:
+            incidencias.append(
+                Incidencia(
+                    "(libro)",
+                    declarada.hoja,
+                    f"la unidad {declarada.nombre!r} esta declarada en la hoja Caso y no tiene "
+                    "pestana de produccion.",
+                )
+            )
+            continue
+        produccion[declarada.nombre] = _leer_pestana_de_unidad(libro[declarada.hoja], horizonte)
+
     opex = _leer_hoja_de_series(libro["Opex"], horizonte, nombres, incidencias)
     capex = _leer_hoja_de_series(libro["Capex"], horizonte, nombres, incidencias)
     precios = _leer_hoja_de_series(libro["Precios"], horizonte, [], incidencias)
@@ -222,8 +247,8 @@ def _leer_hoja_caso(hoja: Worksheet, incidencias: list[Incidencia]) -> _Cabecera
     en_unidades = False
     en_comunes = False
 
-    for fila in hoja.iter_rows(min_row=1, max_col=3):
-        a, b, c = (celda.value for celda in fila)
+    for fila in hoja.iter_rows(min_row=1, max_col=6):
+        a, b, c, d, e, f = (celda.value for celda in fila)
         texto = normalizar(str(a)) if a is not None else ""
         if not texto:
             continue
@@ -238,7 +263,14 @@ def _leer_hoja_caso(hoja: Worksheet, incidencias: list[Incidencia]) -> _Cabecera
             if texto in ("unidad",) or b is None:
                 continue
             unidades.append(
-                _UnidadDeclarada(nombre=str(a).strip(), tipo=str(b).strip(), metales=str(c or ""))
+                _UnidadDeclarada(
+                    nombre=str(a).strip(),
+                    tipo=str(b).strip(),
+                    metales=str(c or ""),
+                    origen=str(d).strip() if d else "yacimiento",
+                    etapas=str(e or "").strip(),
+                    entrega_a=str(f or "").strip(),
+                )
             )
         elif en_comunes:
             comunes[texto] = _numero(c, hoja.title, fila[2].coordinate, incidencias) or 0.0
@@ -275,6 +307,36 @@ def _armar_horizonte(
     except ErrorHorizonte as error:
         incidencias.append(Incidencia(hoja, "B6:B7", str(error)))
         return None
+
+
+def _leer_pestana_de_unidad(hoja: Worksheet, horizonte: Horizonte) -> list[_Fila]:
+    """Filas de la pestaña de una unidad, con su etiqueta tal cual.
+
+    A diferencia de `_leer_hoja_de_series`, aquí no se separa el metal ni se
+    borran los nombres de unidad: en `concentrado alimentado desde San Rafael`
+    el nombre es el dato, y quitarlo deja una etiqueta que no significa nada.
+    Las filas de sección —`Mina`, `Planta`, `Complejo`— son rótulos y se saltan.
+    """
+    filas: list[_Fila] = []
+    ultima_columna = PRIMERA_COLUMNA_DE_ANOS + horizonte.anos - 1
+    for fila in hoja.iter_rows(min_row=PRIMERA_FILA_DE_DATOS, max_col=ultima_columna):
+        etiqueta = fila[0].value
+        medida = fila[1].value
+        if etiqueta is None or not str(etiqueta).strip() or medida is None:
+            continue
+        filas.append(
+            _Fila(
+                hoja=hoja.title,
+                numero=int(fila[0].row or 0),
+                seccion=hoja.title,
+                subseccion="",
+                concepto=normalizar(str(etiqueta)),
+                metal=None,
+                medida=_clave_de_medida(str(medida)),
+                valores=tuple(celda.value for celda in fila[2:]),
+            )
+        )
+    return filas
 
 
 def _leer_hoja_de_series(
@@ -328,7 +390,7 @@ def _leer_hoja_de_series(
 def _armar_unidades(
     cabecera: _Cabecera,
     horizonte: Horizonte,
-    produccion: list[_Fila],
+    produccion: dict[str, list[_Fila]],
     opex: list[_Fila],
     capex: list[_Fila],
     incidencias: list[Incidencia],
@@ -336,15 +398,10 @@ def _armar_unidades(
     unidades: list[UnidadProductiva] = []
     for declarada in cabecera.unidades:
         nombre = declarada.nombre
-        campos: dict[str, Serie] = {}
-        for fila in produccion:
-            if not _es_de(fila.seccion, nombre):
-                continue
-            campo = PRODUCCION_AL_MOTOR.get(fila.concepto)
-            if campo is None:
-                continue
-            campos[campo] = _serie(fila, horizonte, incidencias)
-
+        filas = [
+            (fila.concepto, _serie(fila, horizonte, incidencias))
+            for fila in produccion.get(nombre, [])
+        ]
         costos = {
             str(fila.concepto): _serie(fila, horizonte, incidencias)
             for fila in opex
@@ -356,18 +413,27 @@ def _armar_unidades(
             UnidadProductiva(
                 nombre=nombre,
                 tipo=declarada.tipo,
-                produccion=ProduccionDeUnidad(
-                    mineral_tratado=campos.get("mineral_tratado", horizonte.ceros()),
-                    concentrado_producido=campos.get("concentrado_producido", horizonte.ceros()),
-                    metal_refinado_vendido=campos.get("metal_refinado_vendido", ()),
-                    metal_en_concentrado_vendido=campos.get("metal_en_concentrado_vendido", ()),
-                    capacidad_de_tratamiento=campos.get("capacidad_de_tratamiento", ()),
+                produccion=armar_produccion(
+                    nombre,
+                    filas,
+                    horizonte,
+                    incidencias,
+                    hoja=declarada.hoja,
+                    declaradas=[u.nombre for u in cabecera.unidades],
                 ),
                 costos={c: s for c, s in costos.items() if any(s)},
                 capital=capital,
+                origen=declarada.origen,
+                etapas=_etapas(declarada),
+                entrega_a=declarada.entrega_a or None,
             )
         )
     return unidades
+
+
+def _etapas(declarada: _UnidadDeclarada) -> tuple[str, ...]:
+    """Etapas de la planta, tal como la hoja `Caso` las declara."""
+    return tuple(e.strip() for e in declarada.etapas.split(",") if e.strip())
 
 
 def _armar_capital(
