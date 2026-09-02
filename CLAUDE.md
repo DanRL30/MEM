@@ -175,7 +175,7 @@ despues, no deuda heredada.
 | `ruff check .` | Limpio |
 | `ruff format --check .` | Limpio, 93 archivos |
 | `mypy packages apps/api/src` | Limpio en modo estricto, 59 archivos |
-| `pytest` | 303 de 303, de las que 31 son el contraste de fidelidad |
+| `pytest` | 306 de 306, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -364,8 +364,13 @@ mas** —aplicar la recuperacion otra vez la cuenta dos veces—.
 
 Tres propiedades que no conviene romper:
 
-- **El dato cargado es el que usa el flujo.** El recalculo lo audita. Es la misma
-  regla de fidelidad que impide corregir el modelo corporativo.
+- **El dato cargado es el que usa el flujo.** El recalculo lo audita y no lo
+  sustituye nunca. Es la misma regla de fidelidad que impide corregir el modelo
+  corporativo, y esta atada por `test_corroboracion.py::TestElDatoDelUsuarioEsElQueManda`:
+  alterar una fila corroborable mueve el resultado **como mueve el dato**, no
+  como dice el recalculo, y alterar una que solo lee el corroborador deja el
+  resultado intacto hasta el ultimo decimal. Si alguna de esas dos pruebas
+  falla, es que el recalculo se colo en el calculo.
 - **Corroborar nunca detiene el calculo.** Un caso con una ley mal tecleada llega
   hasta el NPV para que se vea el efecto.
 - **El informe viaja en la corrida** y se congela con ella. Sin eso no se puede

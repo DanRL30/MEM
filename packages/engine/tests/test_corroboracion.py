@@ -19,12 +19,34 @@ import pytest
 from minsur_engine.caso import (
     Caso,
     DatosComunes,
+    DatosMaestros,
     ProduccionDeUnidad,
     TerminosComerciales,
     UnidadProductiva,
 )
+from minsur_engine.corrida import Corrida, calcular
 from minsur_engine.corroboracion import Discrepancia, corroborar, series_calculadas
+from minsur_engine.depreciacion import TasasDeDepreciacion
 from minsur_engine.horizonte import Horizonte
+from minsur_engine.parametros import ParametrosCorporativos
+from minsur_engine.tributos import EscalaProgresiva, Tramo
+
+MAESTROS = DatosMaestros(
+    parametros=ParametrosCorporativos(
+        version_datos_maestros="CP-PRUEBA",
+        tasa_descuento=0.10,
+        participacion_trabajadores=0.08,
+        impuesto_renta=0.295,
+        regalia_minima=0.01,
+        osinergmin=0.0,
+        oefa=0.0,
+        fondo_jubilacion_minera=0.005,
+    ),
+    tasas_tributarias=TasasDeDepreciacion(maquinaria=0.5, instalaciones=0.1, edificaciones=0.05),
+    tasas_financieras=TasasDeDepreciacion(maquinaria=0.5, instalaciones=0.1, edificaciones=0.05),
+    escala_regalia=EscalaProgresiva(tramos=(Tramo(0.0, 10.0, 0.01),)),
+    escala_iem=EscalaProgresiva(tramos=(Tramo(0.0, 10.0, 0.0),)),
+)
 
 HORIZONTE = Horizonte(primer_ano=2027, anos=2)
 
@@ -207,3 +229,57 @@ class TestSeriesCalculadas:
         assert calculadas["directo"] == [DIRECTO, DIRECTO]
         assert calculadas["toneladas_finas"][0] == pytest.approx(FINAS)
         assert calculadas["concentrado_producido"][0] == pytest.approx(CONCENTRADO)
+
+
+class TestElDatoDelUsuarioEsElQueManda:
+    """La propiedad que sostiene todo el diseño, y que es fácil romper.
+
+    El recálculo **audita** el dato cargado; no lo sustituye. Si un día alguien
+    decidiera "arreglar" una serie incoherente con su valor recalculado, el
+    motor dejaría de reproducir lo que el usuario cargó y el contraste de
+    fidelidad perdería sentido: estaría comparando contra un dato que la
+    plataforma se inventó.
+
+    Estas pruebas alteran una fila corroborable y comprueban que **el flujo
+    sigue el valor cargado**, no el que el sistema esperaba.
+    """
+
+    def _corrida(self, **cambios: tuple[float, ...]) -> Corrida:
+        return calcular(_caso(_unidad(**cambios)), MAESTROS)
+
+    def test_el_complejo_recibe_lo_que_la_mina_declara_aunque_no_cuadre(self) -> None:
+        # El concentrado cargado es el doble del que sale de la cadena. El
+        # complejo debe recibir el cargado, y la corrida debe avisar.
+        alterado = self._corrida(concentrado_producido=_par(CONCENTRADO * 2))
+        assert alterado.complejo.concentrado_entregado[0] == pytest.approx(CONCENTRADO * 2)
+        assert "Produccion Concentrado" in {d.concepto for d in alterado.discrepancias}
+
+        coherente = self._corrida()
+        assert coherente.complejo.concentrado_entregado[0] == pytest.approx(CONCENTRADO)
+        assert coherente.discrepancias == ()
+
+    def test_el_cash_cost_usa_el_tonelaje_cargado(self) -> None:
+        # `Mineral Tratado Total (Cash Cost)` es corroborable: el sistema espera
+        # el mineral extraido. Cargar otro no cambia lo que el motor usa.
+        alterado = self._corrida(mineral_tratado=_par(EXTRAIDO / 2))
+        assert alterado.mineral_tratado_por_unidad["Proyecto X"][0] == pytest.approx(EXTRAIDO / 2)
+        assert "Mineral Tratado Total (Cash Cost)" in {d.concepto for d in alterado.discrepancias}
+
+    def test_advertir_no_cambia_ninguna_cifra_del_resultado(self) -> None:
+        # `Ley Sn del cash cost` la lee el corroborador y nadie mas: no alimenta
+        # ninguna linea del flujo. Alterarla tiene que producir un aviso y dejar
+        # el resultado intacto hasta el ultimo decimal. Si algun dia una cifra
+        # cambiara aqui, seria porque el recalculo se colo en el calculo.
+        sin_aviso = self._corrida()
+        con_aviso = self._corrida(ley_del_cash_cost=_par(LEY_CABEZA * 2))
+
+        assert sin_aviso.discrepancias == ()
+        assert [d.concepto for d in con_aviso.discrepancias] == ["Ley Sn del cash cost"] * 2
+
+        assert con_aviso.ventas == sin_aviso.ventas
+        assert con_aviso.cash_cost == sin_aviso.cash_cost
+        assert con_aviso.complejo.concentrado_entregado == (
+            sin_aviso.complejo.concentrado_entregado
+        )
+        assert con_aviso.flujo.flujo_economico == sin_aviso.flujo.flujo_economico
+        assert con_aviso.indicadores.npv == sin_aviso.indicadores.npv
