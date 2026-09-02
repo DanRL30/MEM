@@ -88,6 +88,8 @@ FACTORES_DE_ESCALA = {
     "fraccion": 1.0,
     "dias": 1.0,
     "us$/t": 1.0,
+    # La ley de plata viene en onzas troy por tonelada, no en porcentaje.
+    "oz/t": 1.0,
 }
 
 
@@ -218,6 +220,10 @@ def leer_plantilla(ruta: Path, *, escenario: str | None = None) -> Lectura:
     nombres = [u.nombre for u in cabecera.unidades]
     produccion: dict[str, list[_Fila]] = {}
     for declarada in cabecera.unidades:
+        if declarada.tipo == "fundicion":
+            # El complejo no tiene pestana de produccion: sus filas son
+            # resultado de lo que producen las minas.
+            continue
         if declarada.hoja not in libro.sheetnames:
             incidencias.append(
                 Incidencia(
@@ -301,7 +307,7 @@ def leer_produccion(ruta: Path) -> LecturaDeProduccion:
             BloqueDeProduccion(
                 orden=orden,
                 hoja=nombre,
-                produccion=armar_produccion(nombre, filas, horizonte, incidencias, hoja=nombre),
+                produccion=armar_produccion(filas, horizonte, incidencias, hoja=nombre),
             )
         )
     libro.close()
@@ -532,14 +538,7 @@ def _armar_unidades(
             UnidadProductiva(
                 nombre=nombre,
                 tipo=declarada.tipo,
-                produccion=armar_produccion(
-                    nombre,
-                    filas,
-                    horizonte,
-                    incidencias,
-                    hoja=declarada.hoja,
-                    declaradas=[u.nombre for u in cabecera.unidades],
-                ),
+                produccion=armar_produccion(filas, horizonte, incidencias, hoja=declarada.hoja),
                 costos={c: s for c, s in costos.items() if any(s)},
                 capital=capital,
                 origen=declarada.origen,

@@ -175,7 +175,7 @@ despues, no deuda heredada.
 | `ruff check .` | Limpio |
 | `ruff format --check .` | Limpio, 89 archivos |
 | `mypy packages apps/api/src` | Limpio en modo estricto, 55 archivos |
-| `pytest` | 255 de 255, de las que 31 son el contraste de fidelidad |
+| `pytest` | 267 de 267, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -245,46 +245,65 @@ La lectura **acumula incidencias con su hoja y su celda** en vez de detenerse en
 plantilla llena a mano llega con varios errores a la vez, y devolverlos de uno en uno obliga a
 corregir y reenviar tantas veces como errores tenga.
 
-**La produccion viene en su propio libro, con una pestana por proyecto** y los sub-bloques `Mina` y
-`Planta` que usa el libro corporativo. `leer_produccion()` lo lee y devuelve los bloques **en el
-orden de las pestanas**, sin unidad asignada: el archivo se sube desde un caso que la plataforma ya
-tiene abierto, y `asociar_por_orden()` empareja la pestana n con la unidad n. El nombre de la
-pestana viaja como pista y nunca como identidad —quien llena el archivo rotula como quiera, y dos
-fuentes de identidad acaban contradiciendose—. Es lo que acordo el avance 02 del 28/08/2026.
+**La produccion viene en su propio libro, con una pestana por proyecto y una sola
+estructura para todas.** No se adapta al proyecto: uno sin preconcentracion deja
+esas filas en cero y la plataforma no las muestra. Las etiquetas, las unidades de
+medida y el orden son los del libro de MINSUR, y viven en
+[produccion.py](packages/ingest/src/minsur_ingest/produccion.py), que es la unica
+fuente de verdad: el generador la escribe y el lector la espera.
 
-Por lo mismo **el libro de produccion no lleva hoja `Caso`**, y el horizonte se deduce contando la
-fila de anos: nada fija el numero de ejercicios de antemano, de modo que un proyecto de vida larga
-no exige tocar el lector. Una fila de anos con saltos se reporta, porque un salto desplaza todas
-las series a partir de ahi sin dejar rastro en el resultado.
+**Se lee por secuencia, no por nombre.** El libro repite la etiqueta `Ley Sn`
+cinco veces y lo unico que las distingue es la fila que llevan encima. Si la
+secuencia se rompe, la lectura de esa pestana se detiene y se reporta: seguir
+leyendo asignaria cada serie al concepto de al lado y el caso saldria plausible y
+equivocado.
 
-[produccion.py](packages/ingest/src/minsur_ingest/produccion.py) hace el parseo, y ahi **no se
-borran los nombres de unidad de las etiquetas**, al reves que en las demas hojas: en `concentrado
-alimentado desde San Rafael` el nombre es el dato.
+`leer_produccion()` devuelve los bloques **en el orden de las pestanas**, sin
+unidad asignada: el archivo se sube desde un caso que la plataforma ya tiene
+abierto, y `asociar_por_orden()` empareja la pestana n con la unidad n. El nombre
+de la pestana viaja como pista y nunca como identidad. Por lo mismo el libro **no
+lleva hoja `Caso`**, y el horizonte se deduce contando la fila de anos: nada fija
+el numero de ejercicios de antemano, de modo que un proyecto de vida larga no
+exige tocar el lector.
 
-**Lo que la ingesta no sabe consumir se reporta.** Hasta el 01/09/2026 una fila con concepto
-desconocido se descartaba con un `continue`: el usuario la llenaba, el caso se leia sin errores y
-su dato no se usaba. Es el peor fallo posible en una frontera, porque no deja sintoma.
+**El complejo no tiene pestana.** Sus filas son resultado del concentrado que le
+entregan las minas —la lectura de las formulas del libro lo confirmo fila por
+fila— y sus dos entradas reales, la capacidad y la recuperacion, son supuestos
+que en el libro viven en la hoja `Supuestos`.
 
-### El corroborador: los inputs se auditan, no se sustituyen
+**Lo que la ingesta no sabe consumir se reporta.** Hasta el 01/09/2026 una fila
+con concepto desconocido se descartaba con un `continue`: el usuario la llenaba,
+el caso se leia sin errores y su dato no se usaba. Es el peor fallo posible en una
+frontera, porque no deja sintoma.
 
-Toda la produccion entra como dato, **incluidos los valores que el sistema sabe derivar**. El
-usuario carga sus series tal como las tiene, y
-[corroboracion.py](packages/engine/src/minsur_engine/corroboracion.py) rehace el calculo de las
-filas derivables y reporta cada celda donde el dato cargado no cuadra, con su unidad, su ano y su
-magnitud.
+### El corroborador: alarma y control de calidad, no correccion
+
+Toda la produccion entra como dato, **incluidos los valores que salen de un
+calculo interno**. El usuario carga sus series tal como las tiene y
+[corroboracion.py](packages/engine/src/minsur_engine/corroboracion.py) las rehace
+y compara, celda a celda, con su unidad, su ano y su magnitud.
+
+Las ocho reglas no son una interpretacion nuestra: son las formulas del bloque
+`Calculo Interno` del libro de produccion que MINSUR entrego el 01/09/2026. Estan
+transcritas en el docstring del modulo y en
+[brechas-plantilla-produccion.md](docs/modelo-economico/brechas-plantilla-produccion.md).
+Dos merecen atencion porque es facil equivocarlas: **las toneladas finas llevan
+el factor de recuperacion**, y **el concentrado es las finas entre su ley y nada
+mas** —aplicar la recuperacion otra vez la cuenta dos veces—.
 
 Tres propiedades que no conviene romper:
 
-- **El dato cargado es el que usa el flujo.** El recalculo lo audita. Es la misma regla de fidelidad
-  que impide corregir el modelo corporativo, y es coherente con la desviacion `D-01`.
-- **Corroborar nunca detiene el calculo.** Un caso con una ley mal tecleada llega hasta el NPV para
-  que se vea el efecto.
-- **El informe viaja en la corrida** y se congela con ella. Sin eso no se puede sustentar despues
-  por que se acepto una diferencia.
+- **El dato cargado es el que usa el flujo.** El recalculo lo audita. Es la misma
+  regla de fidelidad que impide corregir el modelo corporativo.
+- **Corroborar nunca detiene el calculo.** Un caso con una ley mal tecleada llega
+  hasta el NPV para que se vea el efecto.
+- **El informe viaja en la corrida** y se congela con ella. Sin eso no se puede
+  sustentar despues por que se acepto una diferencia.
 
-La tolerancia de corroboracion **no es la del contraste N1**: aquella compara el motor contra el
-libro y la fija Finanzas (`R-31`); esta compara el dato del usuario contra el recalculo del propio
-sistema. El 0,5 % de `TOLERANCIA_POR_DEFECTO` es propuesta de INVA y esta consultada.
+La tolerancia de corroboracion **no es la del contraste N1**: aquella compara el
+motor contra el libro y la fija Finanzas (`R-31`); esta compara el dato del
+usuario contra el recalculo del propio sistema. El 0,5 % de
+`TOLERANCIA_POR_DEFECTO` es propuesta de INVA y esta consultada.
 
 ### Lo que ya esta construido: el dominio
 

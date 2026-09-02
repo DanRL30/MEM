@@ -1,51 +1,26 @@
-"""Genera la plantilla canónica de inputs de un caso.
+"""Genera la plantilla de produccion de un caso.
 
-La plantilla no es un archivo fijo: se construye a partir de las unidades
-productivas que el caso declare, porque el catálogo de inputs demostró que las
-hojas del modelo repiten el mismo bloque de conceptos por unidad. Un proyecto
-con una mina y un metal recibe la misma estructura que uno con cuatro unidades
-y tres metales, instanciada menos veces.
+**Hay una sola estructura y es siempre la misma para todos los proyectos.** No
+se adapta a cada uno: un proyecto sin preconcentracion deja esas filas en cero y
+la plataforma no las muestra. Eso es lo que permite que un proyecto que hoy no
+existe use esta plantilla sin rehacerla.
 
-Se genera desde `docs/modelo-economico/catalogo-inputs.md`, del que este script
-es la contraparte ejecutable: los conceptos de aquí y los del catálogo son los
-mismos, y si divergen, manda el catálogo y este archivo se corrige.
-
-**La produccion sale en una pestana por proyecto**, con los sub-bloques `Mina` y
-`Planta` que usa el libro: de donde sale el mineral y por que proceso pasa. Cada
-corriente de tonelaje lleva debajo la ley de cada metal que transporta.
+Las etiquetas, las unidades de medida y el orden son los del libro de MINSUR, y
+la estructura vive en `minsur_ingest.produccion`, que es la unica fuente de
+verdad: el generador la escribe y el lector la espera.
 
 **El libro de produccion no identifica el caso.** No lleva hoja `Caso`: el
 usuario lo sube desde un caso que la plataforma ya tiene abierto, y cada pestana
 se asocia a una unidad **por su orden**, no por su nombre. El nombre final lo
-elige el usuario en un selector de la plataforma. Repetir aqui la identificacion
-solo abriria la puerta a que contradiga a la del caso.
+elige en un selector. El horizonte se deduce de la fila de anos, de modo que un
+proyecto de vida larga no exige tocar nada.
 
-El horizonte tampoco se declara aparte: se deduce de la fila de anos, de modo que
-un proyecto de vida larga no exige tocar nada.
+**Las celdas naranjas son calculo interno.** Se llenan igual que las azules, y
+ademas el sistema las rehace y avisa si el dato cargado no cuadra. Nunca las
+corrige: es una alarma y un control de calidad.
 
 Uso:
-    python scripts/generar_plantilla_inputs.py --salida produccion.xlsx \
-        --unidad "Proyecto X:mina:Sn,Cu" \
-        --unidad "San Rafael:mina:Sn:preconcentracion,concentradora" \
-        --unidad "B2:mina:Sn:concentradora:relave" \
-        --unidad "Pisco:fundicion:Sn" \
-        --primer-ano 2027 --anos 20
-
-El cuarto campo declara las etapas de la planta y el quinto el origen del
-mineral; los dos son opcionales. Sin etapas, una mina se describe con su
-concentradora y nada mas, que es el caso general: pedir datos de preconcentracion
-a un proyecto que no la tiene es pedir un dato que no existe.
-
-El origen distingue una mina de una relavera. **Una relavera no es una etapa de
-tratamiento: es una mina cuyo mineral sale de un deposito de relaves ya cerrado**,
-con su tonelaje extraido y su ley igual que cualquier otra, y desde ahi la misma
-cadena.
-
-Si el caso declara una fundicion, todas las minas le entregan su concentrado. Un
-proyecto que venda directo simplemente no declara ninguna.
-
-Las celdas verdes son **corroborables**: se llenan igual que las demas, y ademas
-el sistema las recalcula y avisa si el dato cargado no cuadra con la cadena.
+    python scripts/generar_plantilla_inputs.py --salida produccion.xlsx         --unidad "Proyecto X:mina:Sn"         --unidad "Proyecto Y:mina:Sn"         --primer-ano 2025 --anos 45
 
 La plantilla sale **vacía**. Llenarla con datos de un caso real la convierte en
 información confidencial de MINSUR: no vuelve al repositorio.
@@ -65,9 +40,13 @@ try:
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.datavalidation import DataValidation
     from openpyxl.worksheet.worksheet import Worksheet
+
+    from minsur_ingest.produccion import FILAS_DE_PRODUCCION
 except ImportError:  # pragma: no cover - entorno sin sincronizar
-    print("Falta openpyxl. Sincroniza el entorno con: uv sync --all-packages")
+    print("Falta openpyxl o minsur_ingest. Sincroniza con: uv sync --all-packages")
     raise SystemExit(1) from None
+
+PRIMERA_FILA_DE_DATOS = 5
 
 TIPOS_DE_UNIDAD = ("mina", "fundicion")
 ORIGENES = ("yacimiento", "relave")
@@ -75,46 +54,6 @@ ETAPAS = ("preconcentracion", "concentradora")
 ETAPAS_POR_DEFECTO = ("concentradora",)
 METALES = ("Sn", "Cu", "Ag")
 
-# Corrientes de mineral de una unidad, en el orden del libro. Cada una lleva su
-# tonelaje y, debajo, la ley de cada metal que transporta. El libro las escribe
-# asi, en pares contiguos, y rotula todas las leyes igual: lo unico que las
-# distingue es esa vecindad. Aqui cada ley se nombra por la corriente que
-# describe, que es lo que permite leerlas sin depender de la posicion.
-#
-#   (tonelaje, etapa que lo condiciona, como se nombra su ley, si se corrobora)
-CORRIENTES_DE_MINERAL = [
-    ("Mineral extraido", None, "del mineral extraido", False),
-    (
-        "Mineral tratado en preconcentracion",
-        "preconcentracion",
-        "de entrada a preconcentracion",
-        False,
-    ),
-    ("Mineral preconcentrado a concentradora", "preconcentracion", "del preconcentrado", False),
-    ("Mineral directo a planta concentradora", "concentradora", "del mineral directo", False),
-    ("Mineral tratado total en concentradora", "concentradora", "del tratado total", True),
-    ("Mineral tratado total para cash cost", None, "del tratado para cash cost", False),
-]
-# Lo que la planta produce para un metal con concentrado propio. El orden es el
-# del libro, que es el que Finanzas reconoce al revisar la plantilla.
-CONCENTRADO_POR_METAL = [
-    ("Toneladas finas de {metal}", "tmf", True),
-    ("Ley de {metal} en el concentrado", "%", False),
-    ("Recuperacion de {metal}", "%", False),
-    ("Produccion de concentrado de {metal}", "t", True),
-]
-# Filas de la unidad de fundicion. La capacidad es la regla 002: el libro la
-# escribia dentro de la formula y Finanzas confirmo el 01/09/2026 que es dato
-# editable, asi que es una fila mas.
-COMPLEJO = [
-    ("Toneladas alimentadas mas escoria", "t", False),
-    ("Capacidad maxima de tratamiento", "t", False),
-    ("Concentrado excedente", "t", False),
-]
-COMPLEJO_POR_METAL = [
-    ("Ley promedio de alimentacion de {metal}", "%", True),
-    ("Produccion de metal refinado de {metal}", "tmf", False),
-]
 OPEX_POR_UNIDAD = [
     ("Exploraciones", None),
     ("Geologia", None),
@@ -156,11 +95,26 @@ DATOS_COMUNES = [
 ]
 ESCENARIOS_DE_PRECIO = ["Base", "Alto", "Bajo"]
 
-TITULO = Font(bold=True, size=12)
-CABECERA = Font(bold=True)
-SECCION = PatternFill("solid", fgColor="DDDDDD")
-ENTRADA = PatternFill("solid", fgColor="FFF6CC")
-CORROBORABLE = PatternFill("solid", fgColor="E6F2E6")
+# Paleta del manual de marca y del propio libro de MINSUR. El azul oscuro es el
+# Pantone 2767 del manual; el gris azulado de las secciones es el que trae su
+# archivo de produccion.
+AZUL_OSCURO = "2D314D"
+BANDA_DE_SECCION = "BECBD2"
+BANDA_DE_UNIDAD = "D6DCE4"
+
+TITULO = Font(bold=True, size=12, color=AZUL_OSCURO)
+CABECERA = Font(bold=True, color=AZUL_OSCURO)
+CABECERA_DE_ANO = Font(bold=True, color="FFFFFF")
+ETIQUETA = Font(color=AZUL_OSCURO)
+MEDIDA = Font(size=9, color=AZUL_OSCURO)
+ANOS = PatternFill("solid", fgColor=AZUL_OSCURO)
+SECCION = PatternFill("solid", fgColor=BANDA_DE_SECCION)
+UNIDAD = PatternFill("solid", fgColor=BANDA_DE_UNIDAD)
+# El libro de MINSUR distingue con color lo que es dato de lo que es calculo
+# interno. Se conserva la convencion: el usuario llena las dos, y las calculadas
+# ademas se rehacen y se comparan.
+DATO = PatternFill("solid", fgColor="DDEBF7")
+CALCULADA = PatternFill("solid", fgColor="FBE5D6")
 
 
 def _leer_metales(nombre: str, texto: str) -> tuple[tuple[str, ...], dict[str, str]]:
@@ -269,21 +223,26 @@ class Unidad:
 
 
 def encabezar(hoja: Worksheet, titulo: str, primer_ano: int, anos: int) -> None:
-    """Escribe el título y la fila de años, y fija los paneles."""
+    """Escribe el titulo, la leyenda y la fila de anos, y fija los paneles."""
     hoja["A1"] = titulo
     hoja["A1"].font = TITULO
+    hoja["A1"].fill = UNIDAD
+    hoja["A2"] = "Azul: dato que se carga.  Naranja: se carga y ademas el sistema lo recalcula."
+    hoja["A2"].font = MEDIDA
     hoja["A3"] = "Concepto"
     hoja["B3"] = "Unidad"
-    hoja["A3"].font = CABECERA
-    hoja["B3"].font = CABECERA
+    for celda in (hoja["A3"], hoja["B3"]):
+        celda.font = CABECERA_DE_ANO
+        celda.fill = ANOS
     for i in range(anos):
         celda = hoja.cell(row=3, column=3 + i, value=primer_ano + i)
-        celda.font = CABECERA
+        celda.font = CABECERA_DE_ANO
+        celda.fill = ANOS
         celda.alignment = Alignment(horizontal="center")
-    hoja.column_dimensions["A"].width = 52
-    hoja.column_dimensions["B"].width = 12
+    hoja.column_dimensions["A"].width = 42
+    hoja.column_dimensions["B"].width = 8
     for i in range(anos):
-        hoja.column_dimensions[get_column_letter(3 + i)].width = 11
+        hoja.column_dimensions[get_column_letter(3 + i)].width = 12
     hoja.freeze_panes = "C4"
 
 
@@ -301,17 +260,20 @@ def fila_de_entrada(
     concepto: str,
     unidad: str,
     anos: int,
-    corroborable: bool = False,
+    calculada: bool = False,
 ) -> int:
     """Escribe una fila de datos.
 
-    Las corroborables se pintan distinto: son las que el sistema recalcula para
-    avisar si el dato cargado no cuadra. Se llenan igual que las demas, porque
-    el recalculo audita el dato y no lo sustituye.
+    Las calculadas se pintan distinto: son las que el sistema rehace para avisar
+    si el dato cargado no cuadra. Se llenan igual que las demas, porque el
+    recalculo audita el dato y no lo sustituye. Es la misma convencion de color
+    que usa el libro de produccion de MINSUR.
     """
-    hoja.cell(row=fila, column=1, value=concepto)
-    hoja.cell(row=fila, column=2, value=unidad)
-    relleno = CORROBORABLE if corroborable else ENTRADA
+    etiqueta = hoja.cell(row=fila, column=1, value=concepto)
+    etiqueta.font = ETIQUETA
+    medida = hoja.cell(row=fila, column=2, value=unidad)
+    medida.font = MEDIDA
+    relleno = CALCULADA if calculada else DATO
     for col in range(3, 3 + anos):
         hoja.cell(row=fila, column=col).fill = relleno
     return fila + 1
@@ -353,7 +315,7 @@ def hoja_caso(libro: Workbook, unidades: list[Unidad], primer_ano: int, anos: in
     for i, (etiqueta, valor) in enumerate(campos, start=3):
         hoja.cell(row=i, column=1, value=etiqueta).font = CABECERA
         celda = hoja.cell(row=i, column=2, value=valor)
-        celda.fill = ENTRADA
+        celda.fill = DATO
 
     fila = len(campos) + 5
     hoja.cell(row=fila, column=1, value="Unidades productivas declaradas").font = TITULO
@@ -382,7 +344,7 @@ def hoja_caso(libro: Workbook, unidades: list[Unidad], primer_ano: int, anos: in
     for concepto, unidad_medida in DATOS_COMUNES:
         hoja.cell(row=fila, column=1, value=concepto)
         hoja.cell(row=fila, column=2, value=unidad_medida)
-        hoja.cell(row=fila, column=3).fill = ENTRADA
+        hoja.cell(row=fila, column=3).fill = DATO
         fila += 1
 
     hoja.column_dimensions["A"].width = 52
@@ -390,154 +352,37 @@ def hoja_caso(libro: Workbook, unidades: list[Unidad], primer_ano: int, anos: in
     hoja.column_dimensions["C"].width = 22
 
 
-def hoja_produccion_de_unidad(
-    libro: Workbook, unidad: Unidad, unidades: list[Unidad], primer_ano: int, anos: int
-) -> None:
-    """Una pestana por proyecto, con los sub-bloques del libro.
+def hoja_produccion_de_unidad(libro: Workbook, nombre: str, primer_ano: int, anos: int) -> None:
+    """Una pestana por proyecto, con la estructura estandar de MINSUR.
 
-    El libro describe cada unidad con dos sub-bloques rotulados `Mina` y
-    `Planta`: de donde sale el mineral y por que proceso pasa. Reproducirlos es
-    lo que hace que Finanzas reconozca la plantilla al revisarla.
+    La estructura no se adapta al proyecto: es siempre la misma. Uno sin
+    preconcentracion deja esas filas en cero y la plataforma no las muestra.
+    Eso es lo que permite que un proyecto que hoy no existe use esta plantilla
+    sin rehacerla, y lo que deja leerla por secuencia.
     """
-    hoja = libro.create_sheet(_nombre_de_hoja(unidad.nombre))
-    encabezar(hoja, f"Produccion de {unidad.nombre}", primer_ano, anos)
-    hoja["A2"] = _descripcion(unidad)
-    fila, numericas = 5, []
-
-    if unidad.es_fundicion:
-        fila, numericas = _bloque_de_complejo(hoja, unidad, unidades, fila, numericas, anos)
-    else:
-        fila, numericas = _bloque_de_mina(hoja, unidad, fila, numericas, anos)
-    validacion_numerica(hoja, numericas, anos)
-
-
-def _bloque_de_mina(
-    hoja: Worksheet, unidad: Unidad, fila: int, numericas: list[int], anos: int
-) -> tuple[int, list[int]]:
-    fila = fila_de_seccion(hoja, fila, "Mina", anos)
-    extraido, resto = CORRIENTES_DE_MINERAL[0], CORRIENTES_DE_MINERAL[1:]
-    fila, numericas = _corriente(hoja, unidad, extraido, fila, numericas, anos)
-
-    fila = fila_de_seccion(hoja, fila, "Planta", anos)
-    for corriente in resto:
-        if not unidad.aplica(corriente[1]):
+    hoja = libro.create_sheet(_nombre_de_hoja(nombre))
+    encabezar(hoja, nombre, primer_ano, anos)
+    fila, numericas = PRIMERA_FILA_DE_DATOS, []
+    for definicion in FILAS_DE_PRODUCCION:
+        if definicion.es_seccion:
+            fila = fila_de_seccion(hoja, fila, definicion.etiqueta, anos)
             continue
-        fila, numericas = _corriente(hoja, unidad, corriente, fila, numericas, anos)
-
-    for metal in unidad.con_concentrado_propio():
-        for plantilla, medida, corroborable in CONCENTRADO_POR_METAL:
-            numericas.append(fila)
-            fila = fila_de_entrada(
-                hoja, fila, plantilla.format(metal=metal), medida, anos, corroborable
-            )
-        # Los subproductos que viajan en este concentrado no tienen concentrado
-        # propio: de ellos solo se declara su ley dentro del que los transporta.
-        for subproducto, dentro_de in sorted(unidad.portador.items()):
-            if dentro_de != metal:
-                continue
-            numericas.append(fila)
-            fila = fila_de_entrada(
-                hoja, fila, f"Ley de {subproducto} en el concentrado de {metal}", "%", anos
-            )
-
-    # Solo tiene sentido preguntarlo cuando la unidad produce mas de un
-    # concentrado y hay que decir cual va al complejo. Con un solo metal la
-    # respuesta es su propio concentrado y preguntarla seria pedir dos veces
-    # el mismo dato.
-    if len(unidad.con_concentrado_propio()) > 1:
-        numericas.append(fila)
-        fila = fila_de_entrada(hoja, fila, "Concentrado entregado al complejo", "t", anos, True)
-    return fila, numericas
-
-
-def _bloque_de_complejo(
-    hoja: Worksheet,
-    unidad: Unidad,
-    unidades: list[Unidad],
-    fila: int,
-    numericas: list[int],
-    anos: int,
-) -> tuple[int, list[int]]:
-    """El complejo no extrae ni trata mineral: recibe concentrado.
-
-    Lleva un par de filas por unidad de origen —lo alimentado y su ley— en vez
-    de una sola fila agregada. Sin ese detalle no se sabe de donde viene lo que
-    entra, y la ley promedio de alimentacion no se puede recalcular.
-    """
-    origenes = [u for u in unidades if u.entrega_a == unidad.nombre]
-    fila = fila_de_seccion(hoja, fila, "Alimentacion recibida", anos)
-    for origen in origenes:
         numericas.append(fila)
         fila = fila_de_entrada(
-            hoja, fila, f"Concentrado alimentado desde {origen.nombre}", "t", anos, True
+            hoja,
+            fila,
+            definicion.etiqueta,
+            definicion.medida or "",
+            anos,
+            definicion.calculada,
         )
-        # La ley que interesa es la de los metales que el complejo refina, no la
-        # de todos los que produce el origen: Pisco es una fundicion de estano y
-        # el concentrado de cobre de una unidad polimetalica se vende aparte.
-        for metal in unidad.metales:
-            numericas.append(fila)
-            fila = fila_de_entrada(
-                hoja, fila, f"Ley de {metal} del concentrado de {origen.nombre}", "%", anos
-            )
-
-    fila = fila_de_seccion(hoja, fila, "Complejo", anos)
-    for concepto, medida, corroborable in COMPLEJO:
-        numericas.append(fila)
-        fila = fila_de_entrada(hoja, fila, concepto, medida, anos, corroborable)
-    for metal in unidad.metales:
-        for plantilla, medida, corroborable in COMPLEJO_POR_METAL:
-            numericas.append(fila)
-            fila = fila_de_entrada(
-                hoja, fila, plantilla.format(metal=metal), medida, anos, corroborable
-            )
-
-    # El libro distingue la recuperacion de SR + B2 de la de NZ + SRP: no hay
-    # una sola para todo el complejo. Que criterio agrupa esta consultado a
-    # Finanzas; mientras tanto se pide una por unidad de origen, que es mas
-    # general y reproduce el libro dando el mismo valor a las de un grupo.
-    fila = fila_de_seccion(hoja, fila, "Recuperacion por origen", anos)
-    for origen in origenes:
-        for metal in unidad.metales:
-            numericas.append(fila)
-            fila = fila_de_entrada(
-                hoja, fila, f"Recuperacion de {metal} de {origen.nombre}", "%", anos
-            )
-    return fila, numericas
-
-
-def _corriente(
-    hoja: Worksheet,
-    unidad: Unidad,
-    corriente: tuple[str, str | None, str, bool],
-    fila: int,
-    numericas: list[int],
-    anos: int,
-) -> tuple[int, list[int]]:
-    """Un tonelaje y, debajo, la ley de cada metal que lleva."""
-    concepto, _, sufijo_de_ley, corroborable = corriente
-    numericas.append(fila)
-    fila = fila_de_entrada(hoja, fila, concepto, "t", anos, corroborable)
-    for metal in unidad.metales:
-        numericas.append(fila)
-        fila = fila_de_entrada(
-            hoja, fila, f"Ley de {metal} {sufijo_de_ley}", "%", anos, corroborable
-        )
-    return fila, numericas
+    validacion_numerica(hoja, numericas, anos)
 
 
 def _nombre_de_hoja(nombre: str) -> str:
     """Excel limita el nombre de una hoja a 31 caracteres y prohibe varios."""
-    limpio = "".join(c for c in nombre if c not in r"[]:*?/\'")
-    return limpio[:31] or "Unidad"
-
-
-def _descripcion(unidad: Unidad) -> str:
-    partes = [f"origen: {unidad.origen}", f"metales: {', '.join(unidad.metales)}"]
-    if unidad.etapas:
-        partes.append(f"etapas: {', '.join(unidad.etapas)}")
-    if unidad.entrega_a:
-        partes.append(f"entrega a: {unidad.entrega_a}")
-    return " · ".join(partes)
+    limpio = "".join(c for c in nombre if c not in r"[]:*?/'")
+    return limpio[:31] or "Proyecto"
 
 
 def hoja_opex(libro: Workbook, unidades: list[Unidad], primer_ano: int, anos: int) -> None:
@@ -723,12 +568,16 @@ def main() -> int:
         # pestanas se asocian a sus unidades por orden, no por nombre: repetir
         # aqui la identificacion abre la puerta a que contradiga a la del caso.
         libro.remove(libro.active)
+    # El complejo no tiene pestana: sus filas son resultado de lo que producen
+    # las minas, y sus dos supuestos —capacidad y recuperacion— viven en la
+    # hoja Supuestos del libro corporativo, no en produccion.
     for unidad in unidades:
-        hoja_produccion_de_unidad(libro, unidad, unidades, args.primer_ano, args.anos)
+        if unidad.es_fundicion:
+            continue
+        hoja_produccion_de_unidad(libro, unidad.nombre, args.primer_ano, args.anos)
     if args.bloque == "completo":
         # Opex, capex y precios siguen en hojas unicas con las unidades
-        # apiladas. Les toca su propia plantilla mas adelante; hasta entonces
-        # el libro completo es el que lee la ingesta de punta a punta.
+        # apiladas. Les toca su propia plantilla mas adelante.
         hoja_opex(libro, unidades, args.primer_ano, args.anos)
         hoja_capex(libro, unidades, args.primer_ano, args.anos)
         hoja_precios(libro, unidades, args.primer_ano, args.anos)

@@ -1,18 +1,29 @@
-"""Recalcula lo que el usuario cargó y reporta dónde no cuadra.
+"""Rehace los cálculos de producción y avisa dónde no cuadran.
 
-Toda la producción entra como dato, incluidos los valores que el sistema sabe
-derivar: el usuario carga las series tal como las tiene en su libro, donde una
-fila puede ser un número escrito a mano o el resultado de un cálculo interno que
-no viaja con el archivo. Este módulo rehace ese cálculo y compara.
+Toda la producción entra como dato, incluidos los valores que salen de un
+cálculo interno: el usuario carga sus series tal como las tiene y el sistema las
+rehace y compara. **Es una alarma y un control de calidad, no una corrección.**
+El dato del usuario es el que usa el flujo; el recálculo lo audita.
 
-**El dato del usuario es el que usa el flujo.** El recálculo no lo sustituye: lo
-audita. Es la misma regla de fidelidad que impide corregir el modelo corporativo,
-y es coherente con la desviación `D-01`, donde el LOM prevalece sobre lo calculado
-en los tres primeros años.
+Las ocho reglas de aquí no son una interpretación nuestra: son las fórmulas del
+bloque `Cálculo Interno` del libro de producción de MINSUR, fila por fila.
 
-**Corroborar nunca detiene el cálculo.** Devuelve una lista de discrepancias y la
-corrida sigue. Un caso con una ley mal tecleada tiene que llegar hasta el NPV para
-que se vea el efecto, no fallar en la lectura.
+    Mineral Directo             = extraído - tratado en preconcentración
+    Ley del directo             = (extraído x ley - preconc x ley entrada) / directo
+    Mineral Tratado Total       = directo + preconcentrado
+    Ley del tratado total       = ponderado por tonelaje de las dos corrientes
+    Tratado Total (Cash Cost)   = extraído
+    Ley del cash cost           = ley de cabeza
+    Toneladas finas             = tratado total x su ley x recuperación
+    Producción Concentrado      = toneladas finas / ley del concentrado
+
+Las divisiones van envueltas en `IFERROR(..., 0)` en el libro, y aquí un
+denominador nulo devuelve cero por lo mismo: una indeterminación no puede
+detener la corrida.
+
+**Corroborar nunca detiene el cálculo.** Devuelve la lista de discrepancias y la
+corrida sigue, para que una ley mal tecleada llegue hasta el NPV y se vea su
+efecto.
 """
 
 from __future__ import annotations
@@ -21,14 +32,13 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
 from minsur_engine.caso import Caso, ProduccionDeUnidad, UnidadProductiva
-from minsur_engine.produccion import ley_agregada
 
 TOLERANCIA_POR_DEFECTO = 0.005
 """Diferencia relativa a partir de la cual se reporta una celda.
 
 Es propuesta de INVA y está consultada. No es la tolerancia del contraste N1, que
-compara el motor contra el libro y la fija Finanzas (`R-31`): esta compara el dato
-del usuario contra el recálculo del propio sistema, y son dos cosas distintas.
+compara el motor contra el libro y la fija Finanzas (`R-31`): esta compara el
+dato del usuario contra el recálculo del propio sistema.
 """
 
 _INSIGNIFICANTE = 1e-9
@@ -55,189 +65,105 @@ class Discrepancia:
 
     def __str__(self) -> str:
         return (
-            f"{self.unidad} · {self.concepto} · {self.ano}: cargado {self.cargado:,.2f}, "
-            f"recalculado {self.recalculado:,.2f} "
-            f"({self.diferencia_relativa:.2%})"
+            f"{self.unidad} · {self.concepto} · {self.ano}: cargado {self.cargado:,.4f}, "
+            f"recalculado {self.recalculado:,.4f} ({self.diferencia_relativa:.2%})"
         )
 
 
 def corroborar(
     caso: Caso, *, tolerancia: float = TOLERANCIA_POR_DEFECTO
 ) -> tuple[Discrepancia, ...]:
-    """Recorre la cadena de producción del caso y devuelve lo que no cuadra.
-
-    Una serie que la unidad no declara no produce discrepancias: significa que el
-    concepto no aplica, no que valga cero. Confundir ambas cosas llenaría el
-    informe de falsos positivos y lo volvería inútil.
-    """
+    """Recorre la producción del caso y devuelve lo que no cuadra."""
     anos = caso.horizonte.anos_calendario
     halladas: list[Discrepancia] = []
     for unidad in caso.unidades:
         halladas.extend(_de_la_unidad(unidad, anos, tolerancia))
-    fundicion = caso.fundicion
-    if fundicion is not None:
-        halladas.extend(_del_complejo(caso, fundicion, anos, tolerancia))
     return tuple(halladas)
 
 
 def _de_la_unidad(
     unidad: UnidadProductiva, anos: Sequence[int], tolerancia: float
 ) -> Iterator[Discrepancia]:
-    produccion = unidad.produccion
-    yield from _tratado_total_es_la_suma(unidad, anos, tolerancia)
-    yield from _ley_del_tratado_es_la_ponderada(unidad, anos, tolerancia)
-    for metal in produccion.concentrados:
-        yield from _finas_son_tratado_por_ley(unidad, metal, anos, tolerancia)
-        yield from _concentrado_sale_de_finas_y_recuperacion(unidad, metal, anos, tolerancia)
-    yield from _concentrado_total_es_la_suma_por_metal(unidad, anos, tolerancia)
-
-
-def _tratado_total_es_la_suma(
-    unidad: UnidadProductiva, anos: Sequence[int], tolerancia: float
-) -> Iterator[Discrepancia]:
-    """`Mineral Tratado Total en Concentradora` = preconcentrado más directo."""
-    produccion = unidad.produccion
-    total = produccion.tratado_total
-    preconcentrado = produccion.preconcentrado_a_concentradora
-    directo = produccion.directo_a_concentradora
-    if total is None or (preconcentrado is None and directo is None):
-        return
-    aportes = [c.toneladas for c in (preconcentrado, directo) if c is not None]
+    p = unidad.produccion
     for i, ano in enumerate(anos):
-        esperado = sum(_en(serie, i) for serie in aportes)
-        yield from _comparar(
-            unidad.nombre,
-            "Mineral tratado total en concentradora",
-            ano,
-            _en(total.toneladas, i),
-            esperado,
-            tolerancia,
+        extraido = _en(p.mineral_extraido, i)
+        ley_cabeza = _en(p.ley_de_cabeza, i)
+        preconc_tratado = _en(p.tratado_en_preconcentracion, i)
+        ley_entrada = _en(p.ley_de_entrada, i)
+        preconcentrado = _en(p.preconcentrado, i)
+        ley_preconcentrado = _en(p.ley_del_preconcentrado, i)
+
+        directo = extraido - preconc_tratado
+        ley_directo = _dividir(extraido * ley_cabeza - preconc_tratado * ley_entrada, directo)
+        tratado_total = directo + preconcentrado
+        ley_tratado = _dividir(
+            preconcentrado * ley_preconcentrado + directo * ley_directo, tratado_total
         )
+        finas = tratado_total * ley_tratado * _en(p.recuperacion, i)
+        concentrado = _dividir(finas, _en(p.ley_del_concentrado, i))
+
+        esperados = (
+            ("Mineral Directo a Planta Concentradora", p.directo, directo),
+            ("Ley de Sn del mineral directo", p.ley_del_directo, ley_directo),
+            ("Mineral Tratado Total en Concentradora", p.tratado_total, tratado_total),
+            ("Ley Sn del tratado total", p.ley_del_tratado_total, ley_tratado),
+            ("Mineral Tratado Total (Cash Cost)", p.mineral_tratado, extraido),
+            ("Ley Sn del cash cost", p.ley_del_cash_cost, ley_cabeza),
+            ("Toneladas finas", p.toneladas_finas, finas),
+            ("Produccion Concentrado", p.concentrado_producido, concentrado),
+        )
+        for concepto, cargada, recalculado in esperados:
+            if not cargada:
+                continue
+            yield from _comparar(
+                unidad.nombre, concepto, ano, _en(cargada, i), recalculado, tolerancia
+            )
 
 
-def _ley_del_tratado_es_la_ponderada(
-    unidad: UnidadProductiva, anos: Sequence[int], tolerancia: float
-) -> Iterator[Discrepancia]:
-    """La ley del tratado total es la de sus corrientes, ponderada por tonelaje.
+def series_calculadas(produccion: ProduccionDeUnidad, anos: int) -> dict[str, list[float]]:
+    """Rehace las ocho series calculadas, para mostrarlas junto a las cargadas.
 
-    El libro usa `SUMPRODUCT` sobre tonelaje y ley, no el promedio de las leyes.
-    Con producción variable la diferencia entre ambas supera la tolerancia de N1.
+    Es la vista que la plataforma pone al lado del dato del usuario cuando avisa
+    de una diferencia: sin el valor recalculado, la alarma no dice qué esperaba.
     """
-    produccion = unidad.produccion
-    total = produccion.tratado_total
-    corrientes = [
-        c
-        for c in (produccion.preconcentrado_a_concentradora, produccion.directo_a_concentradora)
-        if c is not None
-    ]
-    if total is None or not corrientes:
-        return
-    for metal, ley_cargada in total.leyes.items():
-        if any(metal not in c.leyes for c in corrientes):
-            continue
-        for i, ano in enumerate(anos):
-            esperado = ley_agregada(
-                [_en(c.toneladas, i) for c in corrientes],
-                [_en(c.leyes[metal], i) for c in corrientes],
-            )
-            yield from _comparar(
-                unidad.nombre,
-                f"Ley de {metal} del tratado total",
-                ano,
-                _en(ley_cargada, i),
-                esperado,
-                tolerancia,
-            )
+    salida: dict[str, list[float]] = {
+        "directo": [],
+        "ley_del_directo": [],
+        "tratado_total": [],
+        "ley_del_tratado_total": [],
+        "mineral_tratado": [],
+        "ley_del_cash_cost": [],
+        "toneladas_finas": [],
+        "concentrado_producido": [],
+    }
+    for i in range(anos):
+        extraido = _en(produccion.mineral_extraido, i)
+        ley_cabeza = _en(produccion.ley_de_cabeza, i)
+        preconc_tratado = _en(produccion.tratado_en_preconcentracion, i)
+        preconcentrado = _en(produccion.preconcentrado, i)
 
-
-def _finas_son_tratado_por_ley(
-    unidad: UnidadProductiva, metal: str, anos: Sequence[int], tolerancia: float
-) -> Iterator[Discrepancia]:
-    """Toneladas finas = mineral tratado por su ley."""
-    produccion = unidad.produccion
-    concentrado = produccion.concentrados[metal]
-    ley = produccion.leyes_del_tratado.get(metal, ())
-    if not concentrado.toneladas_finas or not ley or not produccion.mineral_tratado:
-        return
-    for i, ano in enumerate(anos):
-        yield from _comparar(
-            unidad.nombre,
-            f"Toneladas finas de {metal}",
-            ano,
-            _en(concentrado.toneladas_finas, i),
-            _en(produccion.mineral_tratado, i) * _en(ley, i),
-            tolerancia,
+        directo = extraido - preconc_tratado
+        ley_directo = _dividir(
+            extraido * ley_cabeza - preconc_tratado * _en(produccion.ley_de_entrada, i), directo
         )
-
-
-def _concentrado_sale_de_finas_y_recuperacion(
-    unidad: UnidadProductiva, metal: str, anos: Sequence[int], tolerancia: float
-) -> Iterator[Discrepancia]:
-    """Concentrado = finas por recuperación, dividido por la ley del concentrado."""
-    concentrado = unidad.produccion.concentrados[metal]
-    if not concentrado.toneladas_finas or not concentrado.recuperacion or not concentrado.ley:
-        return
-    for i, ano in enumerate(anos):
-        ley = _en(concentrado.ley, i)
-        if abs(ley) <= _INSIGNIFICANTE:
-            continue
-        esperado = _en(concentrado.toneladas_finas, i) * _en(concentrado.recuperacion, i) / ley
-        yield from _comparar(
-            unidad.nombre,
-            f"Produccion de concentrado de {metal}",
-            ano,
-            _en(concentrado.toneladas, i),
-            esperado,
-            tolerancia,
+        tratado_total = directo + preconcentrado
+        ley_tratado = _dividir(
+            preconcentrado * _en(produccion.ley_del_preconcentrado, i) + directo * ley_directo,
+            tratado_total,
         )
+        finas = tratado_total * ley_tratado * _en(produccion.recuperacion, i)
 
-
-def _concentrado_total_es_la_suma_por_metal(
-    unidad: UnidadProductiva, anos: Sequence[int], tolerancia: float
-) -> Iterator[Discrepancia]:
-    """Lo que la unidad entrega es la suma de sus concentrados por metal."""
-    produccion = unidad.produccion
-    if not produccion.concentrados or not produccion.concentrado_producido:
-        return
-    for i, ano in enumerate(anos):
-        esperado = sum(_en(c.toneladas, i) for c in produccion.concentrados.values())
-        yield from _comparar(
-            unidad.nombre,
-            "Produccion de concentrado",
-            ano,
-            _en(produccion.concentrado_producido, i),
-            esperado,
-            tolerancia,
+        salida["directo"].append(directo)
+        salida["ley_del_directo"].append(ley_directo)
+        salida["tratado_total"].append(tratado_total)
+        salida["ley_del_tratado_total"].append(ley_tratado)
+        salida["mineral_tratado"].append(extraido)
+        salida["ley_del_cash_cost"].append(ley_cabeza)
+        salida["toneladas_finas"].append(finas)
+        salida["concentrado_producido"].append(
+            _dividir(finas, _en(produccion.ley_del_concentrado, i))
         )
-
-
-def _del_complejo(
-    caso: Caso, fundicion: UnidadProductiva, anos: Sequence[int], tolerancia: float
-) -> Iterator[Discrepancia]:
-    """Lo que el complejo dice recibir de cada unidad es lo que esa unidad entrega."""
-    recibido = fundicion.produccion.alimentacion_recibida
-    if not recibido:
-        return
-    por_nombre = {u.nombre: u.produccion for u in caso.unidades_mineras}
-    for origen, corriente in recibido.items():
-        entregado = _entregado_por(por_nombre.get(origen))
-        if entregado is None:
-            continue
-        for i, ano in enumerate(anos):
-            yield from _comparar(
-                fundicion.nombre,
-                f"Concentrado alimentado desde {origen}",
-                ano,
-                _en(corriente.toneladas, i),
-                _en(entregado, i),
-                tolerancia,
-            )
-
-
-def _entregado_por(produccion: ProduccionDeUnidad | None) -> Sequence[float] | None:
-    if produccion is None or not produccion.concentrado_producido:
-        return None
-    return produccion.concentrado_producido
+    return salida
 
 
 def _comparar(
@@ -261,11 +187,13 @@ def _comparar(
     yield Discrepancia(unidad, concepto, ano, cargado, recalculado)
 
 
-def _en(serie: Sequence[float], i: int) -> float:
-    """Valor del año `i`, o cero si la serie no llega.
+def _dividir(numerador: float, denominador: float) -> float:
+    """División del libro: envuelta en `IFERROR(..., 0)`."""
+    if abs(denominador) <= _INSIGNIFICANTE:
+        return 0.0
+    return numerador / denominador
 
-    Una serie más corta que el horizonte no es un error aquí: el horizonte ya la
-    valida al construirse, y el corroborador no debe fallar por algo que no le
-    corresponde diagnosticar.
-    """
+
+def _en(serie: Sequence[float], i: int) -> float:
+    """Valor del año `i`, o cero si la serie no llega."""
     return serie[i] if i < len(serie) else 0.0

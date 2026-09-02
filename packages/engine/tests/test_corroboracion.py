@@ -1,9 +1,15 @@
 """Pruebas del recálculo que audita los datos cargados por el usuario.
 
-Cada prueba fija una de las dos mitades de la señal: que una cadena coherente no
-reporta nada, y que una cadena alterada reporta esa celda y solo esa. Comprobar
-únicamente la primera dejaría pasar un corroborador que nunca encuentra nada, que
-es el modo de fallo peor: el informe sale limpio y nadie revisa.
+Las cifras salen del bloque `Cálculo Interno` del libro de producción de MINSUR:
+1 000 t extraídas al 2 %, de las que 600 pasan por preconcentración al 1,2 % y
+salen 300 t de preconcentrado al 2,4 %. De ahí el directo son 400 t y su ley
+sale del balance metalúrgico; el tratado total, 700 t; y con 90 % de
+recuperación y un concentrado al 40 % salen las toneladas finas y el concentrado.
+
+Cada prueba fija las dos mitades de la señal: que una cadena coherente no reporta
+nada, y que una cadena alterada reporta esa celda y solo esa. Comprobar solo la
+primera dejaría pasar un corroborador que nunca encuentra nada, que es el modo de
+fallo peor: el informe sale limpio y nadie revisa.
 """
 
 from __future__ import annotations
@@ -12,66 +18,62 @@ import pytest
 
 from minsur_engine.caso import (
     Caso,
-    ConcentradoDeMetal,
-    CorrienteDeMineral,
     DatosComunes,
     ProduccionDeUnidad,
     TerminosComerciales,
     UnidadProductiva,
 )
-from minsur_engine.corroboracion import Discrepancia, corroborar
+from minsur_engine.corroboracion import Discrepancia, corroborar, series_calculadas
 from minsur_engine.horizonte import Horizonte
 
-HORIZONTE = Horizonte(primer_ano=2027, anos=3)
+HORIZONTE = Horizonte(primer_ano=2027, anos=2)
+
+EXTRAIDO = 1_000.0
+LEY_CABEZA = 0.02
+PRECONC_TRATADO = 600.0
+LEY_ENTRADA = 0.012
+PRECONCENTRADO = 300.0
+LEY_PRECONCENTRADO = 0.024
+
+# Directo = 1 000 - 600 = 400. Su ley sale del balance: el fino que entra a la
+# mina menos el que se va a preconcentracion, repartido sobre el directo.
+DIRECTO = EXTRAIDO - PRECONC_TRATADO
+LEY_DIRECTO = (EXTRAIDO * LEY_CABEZA - PRECONC_TRATADO * LEY_ENTRADA) / DIRECTO
+TRATADO_TOTAL = DIRECTO + PRECONCENTRADO
+LEY_TRATADO = (PRECONCENTRADO * LEY_PRECONCENTRADO + DIRECTO * LEY_DIRECTO) / TRATADO_TOTAL
+RECUPERACION = 0.90
+LEY_CONCENTRADO = 0.40
+FINAS = TRATADO_TOTAL * LEY_TRATADO * RECUPERACION
+CONCENTRADO = FINAS / LEY_CONCENTRADO
 
 
-def _mina(
-    *,
-    preconcentrado: tuple[float, ...] = (400.0, 400.0, 400.0),
-    directo: tuple[float, ...] = (600.0, 600.0, 600.0),
-    tratado_total: tuple[float, ...] = (1_000.0, 1_000.0, 1_000.0),
-    ley_preconcentrado: tuple[float, ...] = (0.02, 0.02, 0.02),
-    ley_directo: tuple[float, ...] = (0.01, 0.01, 0.01),
-    ley_total: tuple[float, ...] = (0.014, 0.014, 0.014),
-    finas: tuple[float, ...] = (14.0, 14.0, 14.0),
-    concentrado: tuple[float, ...] = (28.0, 28.0, 28.0),
-) -> UnidadProductiva:
-    """Una mina coherente de punta a punta.
+def _par(valor: float) -> tuple[float, ...]:
+    return (valor, valor)
 
-    Los números se eligen para poder seguirlos a mano: 400 t al 2 % y 600 t al
-    1 % dan 1 000 t al 1,4 %, que son 14 tmf; con 80 % de recuperación y un
-    concentrado al 40 %, salen 28 t de concentrado.
-    """
-    serie = HORIZONTE.serie
+
+def _unidad(**cambios: tuple[float, ...]) -> UnidadProductiva:
+    """La cadena completa y coherente, con los cambios que pida la prueba."""
+    campos: dict[str, tuple[float, ...]] = {
+        "mineral_extraido": _par(EXTRAIDO),
+        "ley_de_cabeza": _par(LEY_CABEZA),
+        "tratado_en_preconcentracion": _par(PRECONC_TRATADO),
+        "ley_de_entrada": _par(LEY_ENTRADA),
+        "preconcentrado": _par(PRECONCENTRADO),
+        "ley_del_preconcentrado": _par(LEY_PRECONCENTRADO),
+        "directo": _par(DIRECTO),
+        "ley_del_directo": _par(LEY_DIRECTO),
+        "tratado_total": _par(TRATADO_TOTAL),
+        "ley_del_tratado_total": _par(LEY_TRATADO),
+        "mineral_tratado": _par(EXTRAIDO),
+        "ley_del_cash_cost": _par(LEY_CABEZA),
+        "toneladas_finas": _par(FINAS),
+        "ley_del_concentrado": _par(LEY_CONCENTRADO),
+        "recuperacion": _par(RECUPERACION),
+        "concentrado_producido": _par(CONCENTRADO),
+    }
+    campos.update(cambios)
     return UnidadProductiva(
-        nombre="Mina Norte",
-        tipo="mina",
-        etapas=("preconcentracion", "concentradora"),
-        produccion=ProduccionDeUnidad(
-            mineral_tratado=serie(tratado_total, nombre="tratado"),
-            concentrado_producido=serie(concentrado, nombre="concentrado"),
-            preconcentrado_a_concentradora=CorrienteDeMineral(
-                toneladas=serie(preconcentrado, nombre="preconcentrado"),
-                leyes={"Sn": serie(ley_preconcentrado, nombre="ley preconcentrado")},
-            ),
-            directo_a_concentradora=CorrienteDeMineral(
-                toneladas=serie(directo, nombre="directo"),
-                leyes={"Sn": serie(ley_directo, nombre="ley directo")},
-            ),
-            tratado_total=CorrienteDeMineral(
-                toneladas=serie(tratado_total, nombre="tratado total"),
-                leyes={"Sn": serie(ley_total, nombre="ley total")},
-            ),
-            leyes_del_tratado={"Sn": serie(ley_total, nombre="ley cash cost")},
-            concentrados={
-                "Sn": ConcentradoDeMetal(
-                    toneladas=serie(concentrado, nombre="concentrado Sn"),
-                    ley=serie((0.40, 0.40, 0.40), nombre="ley del concentrado"),
-                    recuperacion=serie((0.80, 0.80, 0.80), nombre="recuperacion"),
-                    toneladas_finas=serie(finas, nombre="finas"),
-                )
-            },
-        ),
+        nombre="Proyecto X", tipo="mina", produccion=ProduccionDeUnidad(**campos)
     )
 
 
@@ -97,98 +99,111 @@ def conceptos(halladas: tuple[Discrepancia, ...]) -> set[str]:
 
 class TestCadenaCoherente:
     def test_una_cadena_que_cuadra_no_reporta_nada(self) -> None:
-        assert corroborar(_caso(_mina())) == ()
+        assert corroborar(_caso(_unidad())) == ()
 
-    def test_una_unidad_que_no_declara_la_cadena_no_reporta_nada(self) -> None:
-        # Una serie ausente significa que el concepto no aplica, no que valga
-        # cero. Tratarla como cero llenaria el informe de falsos positivos.
-        unidad = UnidadProductiva(
-            nombre="Mina Simple",
-            tipo="mina",
-            produccion=ProduccionDeUnidad(
-                mineral_tratado=HORIZONTE.serie((1_000.0, 1_000.0, 1_000.0), nombre="tratado"),
-                concentrado_producido=HORIZONTE.ceros(),
-            ),
+    def test_una_unidad_sin_preconcentracion_tambien_cuadra(self) -> None:
+        # La estructura es la misma para todos: un proyecto sin preconcentracion
+        # deja esas filas en cero y el directo pasa a ser todo lo extraido.
+        finas = EXTRAIDO * LEY_CABEZA * RECUPERACION
+        unidad = _unidad(
+            tratado_en_preconcentracion=_par(0.0),
+            ley_de_entrada=_par(0.0),
+            preconcentrado=_par(0.0),
+            ley_del_preconcentrado=_par(0.0),
+            directo=_par(EXTRAIDO),
+            ley_del_directo=_par(LEY_CABEZA),
+            tratado_total=_par(EXTRAIDO),
+            ley_del_tratado_total=_par(LEY_CABEZA),
+            toneladas_finas=_par(finas),
+            concentrado_producido=_par(finas / LEY_CONCENTRADO),
         )
         assert corroborar(_caso(unidad)) == ()
 
+    def test_una_fila_calculada_vacia_no_reporta_nada(self) -> None:
+        # Una serie que no se lleno no es un error: significa que el concepto no
+        # aplica. Tratarla como cero llenaria el informe de falsos positivos.
+        assert corroborar(_caso(_unidad(toneladas_finas=()))) == ()
 
-class TestCadenaAlterada:
-    def test_el_tratado_total_que_no_es_la_suma_se_reporta(self) -> None:
-        halladas = corroborar(_caso(_mina(tratado_total=(1_000.0, 1_200.0, 1_000.0))))
-        assert "Mineral tratado total en concentradora" in conceptos(halladas)
-        del_tratado = [d for d in halladas if d.concepto.startswith("Mineral tratado")]
-        assert [d.ano for d in del_tratado] == [2028]
-        assert del_tratado[0].cargado == 1_200.0
-        assert del_tratado[0].recalculado == 1_000.0
 
-    def test_la_ley_promediada_en_vez_de_ponderada_se_reporta(self) -> None:
-        # El error clasico: 2 % y 1 % promediados dan 1,5 %; ponderados por
-        # 400 y 600 toneladas dan 1,4 %. El libro usa SUMPRODUCT.
-        halladas = corroborar(_caso(_mina(ley_total=(0.015, 0.015, 0.015))))
-        assert "Ley de Sn del tratado total" in conceptos(halladas)
-        leyes = [d for d in halladas if d.concepto.startswith("Ley de Sn")]
-        assert len(leyes) == 3
-        assert leyes[0].recalculado == pytest.approx(0.014)
+class TestLasOchoReglas:
+    def test_el_directo_es_lo_extraido_menos_lo_preconcentrado(self) -> None:
+        halladas = corroborar(_caso(_unidad(directo=_par(500.0))))
+        assert "Mineral Directo a Planta Concentradora" in conceptos(halladas)
+        assert halladas[0].recalculado == pytest.approx(400.0)
 
-    def test_las_finas_que_no_salen_de_tratado_por_ley_se_reportan(self) -> None:
-        halladas = corroborar(_caso(_mina(finas=(14.0, 20.0, 14.0))))
-        assert "Toneladas finas de Sn" in conceptos(halladas)
+    def test_la_ley_del_directo_sale_del_balance_metalurgico(self) -> None:
+        halladas = corroborar(_caso(_unidad(ley_del_directo=_par(0.02))))
+        assert "Ley de Sn del mineral directo" in conceptos(halladas)
+        # 1 000 x 2 % son 20 t de fino; 600 x 1,2 % son 7,2. Quedan 12,8 sobre
+        # 400 toneladas, que son 3,2 %.
+        recalculado = next(d.recalculado for d in halladas if d.concepto.startswith("Ley de Sn"))
+        assert recalculado == pytest.approx(0.032)
 
-    def test_el_concentrado_que_no_sale_de_finas_y_recuperacion_se_reporta(self) -> None:
-        halladas = corroborar(_caso(_mina(concentrado=(28.0, 28.0, 35.0))))
-        assert "Produccion de concentrado de Sn" in conceptos(halladas)
+    def test_el_tratado_total_es_directo_mas_preconcentrado(self) -> None:
+        halladas = corroborar(_caso(_unidad(tratado_total=_par(800.0))))
+        assert "Mineral Tratado Total en Concentradora" in conceptos(halladas)
 
-    def test_la_discrepancia_dice_cuanto_se_desvia(self) -> None:
-        halladas = corroborar(_caso(_mina(tratado_total=(1_000.0, 1_100.0, 1_000.0))))
-        del_tratado = next(d for d in halladas if d.concepto.startswith("Mineral tratado"))
-        assert del_tratado.diferencia == pytest.approx(100.0)
-        assert del_tratado.diferencia_relativa == pytest.approx(100.0 / 1_100.0)
+    def test_la_ley_del_tratado_se_pondera_por_tonelaje(self) -> None:
+        # El error clasico: promediar 2,4 % y 3,2 % da 2,8 %; ponderar por 300 y
+        # 400 toneladas da 2,857 %. El libro usa SUMPRODUCT.
+        halladas = corroborar(_caso(_unidad(ley_del_tratado_total=_par(0.028))))
+        assert "Ley Sn del tratado total" in conceptos(halladas)
+
+    def test_el_tratado_para_cash_cost_es_lo_extraido(self) -> None:
+        halladas = corroborar(_caso(_unidad(mineral_tratado=_par(700.0))))
+        assert "Mineral Tratado Total (Cash Cost)" in conceptos(halladas)
+        assert halladas[0].recalculado == pytest.approx(EXTRAIDO)
+
+    def test_la_ley_del_cash_cost_es_la_de_cabeza(self) -> None:
+        halladas = corroborar(_caso(_unidad(ley_del_cash_cost=_par(0.03))))
+        assert "Ley Sn del cash cost" in conceptos(halladas)
+
+    def test_las_finas_llevan_la_recuperacion(self) -> None:
+        # Sin el factor de recuperacion darian 20 t en vez de 18.
+        halladas = corroborar(_caso(_unidad(toneladas_finas=_par(TRATADO_TOTAL * LEY_TRATADO))))
+        assert "Toneladas finas" in conceptos(halladas)
+        assert halladas[0].recalculado == pytest.approx(FINAS)
+
+    def test_el_concentrado_es_las_finas_entre_su_ley(self) -> None:
+        # Y no las finas por la recuperacion otra vez: ya viene aplicada.
+        halladas = corroborar(_caso(_unidad(concentrado_producido=_par(CONCENTRADO * 0.9))))
+        assert "Produccion Concentrado" in conceptos(halladas)
+        assert halladas[0].recalculado == pytest.approx(CONCENTRADO)
 
 
 class TestTolerancia:
     def test_una_diferencia_bajo_la_tolerancia_no_se_reporta(self) -> None:
-        # Una milesima sobre 1 000 toneladas es ruido de redondeo del Excel,
-        # no un error de carga.
-        assert corroborar(_caso(_mina(tratado_total=(1_000.0, 1_001.0, 1_000.0)))) == ()
+        assert corroborar(_caso(_unidad(directo=_par(400.4)))) == ()
 
     def test_la_tolerancia_es_configurable(self) -> None:
-        caso = _caso(_mina(tratado_total=(1_000.0, 1_001.0, 1_000.0)))
-        assert corroborar(caso, tolerancia=0.0001) != ()
+        assert corroborar(_caso(_unidad(directo=_par(400.4))), tolerancia=0.0001) != ()
+
+    def test_la_discrepancia_dice_cuanto_se_desvia(self) -> None:
+        hallada = corroborar(_caso(_unidad(directo=_par(500.0))))[0]
+        assert hallada.diferencia == pytest.approx(100.0)
+        assert hallada.diferencia_relativa == pytest.approx(0.2)
+        assert hallada.ano == 2027
 
 
-class TestComplejo:
-    def test_lo_que_el_complejo_dice_recibir_es_lo_que_la_mina_entrega(self) -> None:
-        mina = _mina()
-        fundicion = UnidadProductiva(
-            nombre="Fundicion",
-            tipo="fundicion",
-            produccion=ProduccionDeUnidad(
-                mineral_tratado=HORIZONTE.ceros(),
-                concentrado_producido=HORIZONTE.ceros(),
-                alimentacion_recibida={
-                    "Mina Norte": CorrienteDeMineral(
-                        toneladas=HORIZONTE.serie((28.0, 28.0, 28.0), nombre="alimentado")
-                    )
-                },
-            ),
+class TestDivisionPorCero:
+    def test_un_denominador_nulo_devuelve_cero_y_no_falla(self) -> None:
+        # El libro envuelve estas divisiones en IFERROR y Finanzas confirmo que
+        # cero es el resultado esperado: una indeterminacion no detiene la
+        # corrida.
+        unidad = _unidad(
+            mineral_extraido=_par(0.0),
+            tratado_en_preconcentracion=_par(0.0),
+            preconcentrado=_par(0.0),
+            ley_del_concentrado=_par(0.0),
         )
-        assert corroborar(_caso(mina, fundicion)) == ()
+        assert corroborar(_caso(unidad)) != ()
 
-    def test_una_alimentacion_que_no_cuadra_con_el_origen_se_reporta(self) -> None:
-        mina = _mina()
-        fundicion = UnidadProductiva(
-            nombre="Fundicion",
-            tipo="fundicion",
-            produccion=ProduccionDeUnidad(
-                mineral_tratado=HORIZONTE.ceros(),
-                concentrado_producido=HORIZONTE.ceros(),
-                alimentacion_recibida={
-                    "Mina Norte": CorrienteDeMineral(
-                        toneladas=HORIZONTE.serie((28.0, 40.0, 28.0), nombre="alimentado")
-                    )
-                },
-            ),
-        )
-        halladas = corroborar(_caso(mina, fundicion))
-        assert "Concentrado alimentado desde Mina Norte" in conceptos(halladas)
+
+class TestSeriesCalculadas:
+    def test_devuelve_lo_que_el_sistema_esperaba(self) -> None:
+        # Es la vista que la plataforma pone al lado del dato cargado: sin el
+        # valor recalculado, la alarma no dice que esperaba.
+        calculadas = series_calculadas(_unidad().produccion, HORIZONTE.anos)
+        assert calculadas["directo"] == [DIRECTO, DIRECTO]
+        assert calculadas["toneladas_finas"][0] == pytest.approx(FINAS)
+        assert calculadas["concentrado_producido"][0] == pytest.approx(CONCENTRADO)

@@ -48,92 +48,54 @@ class ErrorCaso(ValueError):
 
 
 @dataclass(frozen=True)
-class CorrienteDeMineral:
-    """Un tonelaje con la ley de cada metal que lleva.
-
-    El libro escribe cada corriente como dos filas contiguas: el tonelaje y,
-    debajo, su ley. Las etiquetas de todas las leyes son iguales —`Ley Sn`— y lo
-    único que las distingue es esa vecindad. Aquí van juntas porque separarlas es
-    lo que deja una ley huérfana sin que nadie lo note.
-    """
-
-    toneladas: Serie
-    leyes: Mapping[str, Serie] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ConcentradoDeMetal:
-    """Lo que la planta produce para un metal.
-
-    Una unidad polimetálica declara uno por metal: el libro lleva `Concentrado
-    Producido Sn` y `Concentrado Producido Cu` como filas distintas.
-    """
-
-    toneladas: Serie
-    ley: Serie
-    recuperacion: Serie = ()
-    toneladas_finas: Serie = ()
-
-
-@dataclass(frozen=True)
 class ProduccionDeUnidad:
-    """Series de producción de una unidad, alineadas al horizonte del caso.
+    """Las series de producción de una unidad, en el orden del libro.
 
-    Los dos primeros campos son los que el flujo consume. El resto describe la
-    cadena metalúrgica completa —de la mina al concentrado— y existe para que el
-    corroborador pueda recalcular lo que el usuario cargó y avisar si no cuadra.
-    Todos son opcionales: una unidad sin preconcentración no declara lo que no
-    tiene.
+    **La estructura es fija y siempre la misma.** Una unidad sin preconcentración
+    deja esas series en cero; no declara una forma distinta. Es lo que permite
+    que un proyecto que hoy no existe use la misma plantilla y el mismo motor.
+
+    Cuatro campos son **calculados**: el mineral directo, el tratado total, el
+    tratado para cash cost y la producción de concentrado, cada uno con su ley.
+    Se cargan igual que los demás y el motor los rehace para avisar si no
+    cuadran; nunca los sustituye.
     """
 
     mineral_tratado: Serie
-    """Base del cash cost unitario. Es `Mineral Tratado Total (Cash Cost)`."""
+    """`Mineral Tratado Total (Cash Cost)`. Base del cash cost unitario."""
 
-    concentrado_producido: Serie
-    """Lo que la unidad entrega a la fundición del complejo."""
+    concentrado_producido: Serie = ()
+    """`Producción Concentrado`. Lo que la unidad entrega al complejo."""
 
+    # --- Mina ---
+    mineral_extraido: Serie = ()
+    ley_de_cabeza: Serie = ()
+
+    # --- Planta ---
+    tratado_en_preconcentracion: Serie = ()
+    ley_de_entrada: Serie = ()
+    preconcentrado: Serie = ()
+    ley_del_preconcentrado: Serie = ()
+    directo: Serie = ()
+    ley_del_directo: Serie = ()
+    tratado_total: Serie = ()
+    ley_del_tratado_total: Serie = ()
+    ley_del_cash_cost: Serie = ()
+    toneladas_finas: Serie = ()
+    ley_del_concentrado: Serie = ()
+    recuperacion: Serie = ()
+
+    # --- Concentrado de cobre ---
+    concentrado_de_cu: Serie = ()
+    ley_cu: Serie = ()
+    ley_ag: Serie = ()
+    """Ley de plata en onzas troy por tonelada, no en porcentaje."""
+
+    # --- Solo en la unidad del complejo ---
     metal_refinado_vendido: Serie = ()
-    """Contenido fino que se vende ya refinado, en tmf."""
-
     metal_en_concentrado_vendido: Serie = ()
-    """Contenido fino que se vende dentro del concentrado, en tmf."""
-
     capacidad_de_tratamiento: Serie = ()
-    """Solo en unidades de fundición: el tope que acota lo alimentado."""
-
-    # --- La cadena, para corroborar ---
-
-    extraido: CorrienteDeMineral | None = None
-    """Sub-bloque `Mina`: lo que sale del yacimiento o del depósito de relaves."""
-
-    tratado_en_preconcentracion: CorrienteDeMineral | None = None
-    preconcentrado_a_concentradora: CorrienteDeMineral | None = None
-    directo_a_concentradora: CorrienteDeMineral | None = None
-    tratado_total: CorrienteDeMineral | None = None
-    """`Mineral Tratado Total en Concentradora`: preconcentrado más directo."""
-
-    leyes_del_tratado: Mapping[str, Serie] = field(default_factory=dict)
-    """Ley de `mineral_tratado`, que el libro repite bajo la fila de cash cost."""
-
-    concentrados: Mapping[str, ConcentradoDeMetal] = field(default_factory=dict)
-    """Concentrado producido por metal."""
-
-    # --- Solo en la unidad de fundición ---
-
-    alimentacion_recibida: Mapping[str, CorrienteDeMineral] = field(default_factory=dict)
-    """Concentrado que entrega cada unidad de origen, con su ley.
-
-    El libro lleva un par de filas por unidad —`Concentrado Alimentado SR` y su
-    ley— y no una sola fila agregada: sin eso no se sabe de dónde viene lo que
-    entra al complejo, y la ley promedio de alimentación no se puede recalcular.
-    """
-
-    recuperacion_por_grupo: Mapping[str, Serie] = field(default_factory=dict)
-    """Recuperación de la fundición por grupo de unidades de origen.
-
-    No hay una sola: el libro distingue `Recuperación Sn SR + B2` de
-    `Recuperación Sn NZ + SRP`. Qué criterio agrupa está consultado a Finanzas.
-    """
+    """Tope que acota lo alimentado al complejo. Es un supuesto, no producción."""
 
 
 @dataclass(frozen=True)
@@ -159,6 +121,15 @@ class UnidadProductiva:
 
     alias: tuple[str, ...] = ()
     """Abreviaturas con que el libro nombra la unidad: `SR`, `SRP`, `NZ`."""
+
+    recuperacion_del_complejo: Mapping[str, Mapping[str, Serie]] = field(default_factory=dict)
+    """Solo en la unidad del complejo: su recuperación por origen y por metal.
+
+    No hay una sola para todo el complejo: el libro distingue la de un grupo de
+    unidades de la de otro y las toma de la hoja `Supuestos`. **Es un supuesto,
+    no una fila de producción**, y por eso no cuelga de `ProduccionDeUnidad`:
+    vive aquí hasta que exista la plantilla de supuestos.
+    """
 
     def __post_init__(self) -> None:
         if not self.nombre.strip():

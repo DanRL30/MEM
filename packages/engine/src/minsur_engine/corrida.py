@@ -77,8 +77,11 @@ class Corrida:
     concentrado_tratado: Serie
     concentrado_excedente: Serie
     mineral_tratado_por_unidad: dict[str, Serie]
-    ley_de_alimentacion: dict[str, Serie]
-    """Ley promedio del concentrado que llega al complejo, por metal."""
+    ley_de_alimentacion: Serie
+    """Ley promedio del concentrado que llega al complejo."""
+
+    metal_refinado_del_complejo: Serie
+    """Refinado que produce el complejo, calculado desde lo que le entregan las minas."""
 
     anos_activos_por_unidad: dict[str, tuple[int, ...]]
     """Años calendario en que cada unidad produce.
@@ -119,7 +122,8 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     parametros = maestros.parametros
 
     concentrado = _concentrado_del_complejo(caso)
-    ventas = _ventas(caso)
+    refinado_del_complejo = _refinado_del_complejo(caso)
+    ventas = _ventas(caso, refinado_del_complejo)
     cash_cost = _cash_cost(caso)
     capital = [u.capital for u in caso.unidades if u.capital is not None]
 
@@ -227,6 +231,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         concentrado_excedente=concentrado["excedente"],
         mineral_tratado_por_unidad=produccion_por_unidad,
         ley_de_alimentacion=_ley_de_alimentacion(caso),
+        metal_refinado_del_complejo=refinado_del_complejo,
         anos_activos_por_unidad=_anos_activos(caso),
         discrepancias=corroborar(caso),
         capex=total_capex,
@@ -273,8 +278,8 @@ def _concentrado_del_complejo(caso: Caso) -> dict[str, Serie]:
     }
 
 
-def _ley_de_alimentacion(caso: Caso) -> dict[str, Serie]:
-    """Ley promedio del concentrado que entra al complejo, por metal.
+def _ley_de_alimentacion(caso: Caso) -> Serie:
+    """Ley promedio del concentrado que entra al complejo.
 
     Ponderada por el concentrado que aporta cada unidad, no promediada entre
     unidades: el libro usa `SUMPRODUCT` y con producción desigual la diferencia
@@ -282,25 +287,18 @@ def _ley_de_alimentacion(caso: Caso) -> dict[str, Serie]:
     """
     horizonte = caso.horizonte
     mineras = caso.unidades_mineras
-    salida: dict[str, Serie] = {}
-    for metal in sorted({m for u in mineras for m in u.produccion.concentrados}):
-        aportan = [u for u in mineras if metal in u.produccion.concentrados]
-        tonelajes = [
-            _serie(u.produccion.concentrados[metal].toneladas, horizonte, f"{u.nombre}/{metal}")
-            for u in aportan
-        ]
-        leyes = [
-            _serie(u.produccion.concentrados[metal].ley, horizonte, f"{u.nombre}/ley {metal}")
-            for u in aportan
-        ]
-        salida[metal] = tuple(
-            produccion.ley_agregada(
-                [t[i] for t in tonelajes],
-                [ley[i] for ley in leyes],
-            )
-            for i in range(horizonte.anos)
-        )
-    return salida
+    tonelajes = [
+        _serie(u.produccion.concentrado_producido, horizonte, f"{u.nombre}/concentrado")
+        for u in mineras
+    ]
+    leyes = [
+        _serie(u.produccion.ley_del_concentrado, horizonte, f"{u.nombre}/ley del concentrado")
+        for u in mineras
+    ]
+    return tuple(
+        produccion.ley_agregada([t[i] for t in tonelajes], [ley[i] for ley in leyes])
+        for i in range(horizonte.anos)
+    )
 
 
 def _anos_activos(caso: Caso) -> dict[str, tuple[int, ...]]:
@@ -312,7 +310,43 @@ def _anos_activos(caso: Caso) -> dict[str, tuple[int, ...]]:
     }
 
 
-def _ventas(caso: Caso) -> Serie:
+def _refinado_del_complejo(caso: Caso) -> Serie:
+    """Metal refinado que produce el complejo, por año.
+
+    **No es un dato: es resultado.** La lectura de las fórmulas del libro lo
+    confirmó fila por fila. Lo que alimenta a la fundición es el concentrado de
+    cada mina y su ley, y el refinado es la suma del contenido fino por la
+    recuperación que corresponde a cada origen.
+
+    Se calcula sobre lo alimentado **sin acotar por la capacidad**, que es la
+    línea que el libro llama `Producción Sn Refinado (Sin Restricción Pisco)`.
+    Cómo se reparte el recorte cuando el complejo se satura es la regla `017`,
+    reportada y sin confirmar: en el libro se le resta entero a la última unidad
+    en entrar, y generalizarlo sin respuesta sería inventarlo.
+    """
+    horizonte = caso.horizonte
+    fundicion = caso.fundicion
+    if fundicion is None:
+        return horizonte.ceros()
+
+    recuperaciones = fundicion.recuperacion_del_complejo
+    refinado = [0.0] * horizonte.anos
+    for unidad in caso.unidades_mineras:
+        por_metal = recuperaciones.get(unidad.nombre, {})
+        recuperacion = por_metal.get("Sn")
+        if recuperacion is None:
+            continue
+        alimentado = _serie(
+            unidad.produccion.concentrado_producido, horizonte, f"{unidad.nombre}/concentrado"
+        )
+        ley = _serie(unidad.produccion.ley_del_concentrado, horizonte, f"{unidad.nombre}/ley")
+        tasa = _serie(recuperacion, horizonte, f"{unidad.nombre}/recuperacion")
+        for i in range(horizonte.anos):
+            refinado[i] += alimentado[i] * ley[i] * tasa[i]
+    return tuple(refinado)
+
+
+def _ventas(caso: Caso, refinado_del_complejo: Serie) -> Serie:
     """Venta anual: metal refinado más metal en concentrado, más ajustes."""
     horizonte = caso.horizonte
     terminos = caso.terminos
@@ -327,8 +361,14 @@ def _ventas(caso: Caso) -> Serie:
     refinado = [0.0] * horizonte.anos
     en_concentrado = [0.0] * horizonte.anos
     for unidad in caso.unidades:
-        volumen_refinado = _serie(
-            unidad.produccion.metal_refinado_vendido, horizonte, f"{unidad.nombre}/refinado"
+        # El complejo no declara su refinado: se calculo desde las minas. Una
+        # unidad que vende directo si lo declara, porque no pasa por fundicion.
+        volumen_refinado = (
+            refinado_del_complejo
+            if unidad.es_fundicion
+            else _serie(
+                unidad.produccion.metal_refinado_vendido, horizonte, f"{unidad.nombre}/refinado"
+            )
         )
         volumen_concentrado = _serie(
             unidad.produccion.metal_en_concentrado_vendido,

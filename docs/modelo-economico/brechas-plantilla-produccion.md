@@ -247,3 +247,73 @@ Corregido el 01/09/2026 sobre el rediseno, a peticion del Project Manager:
 - **`Concentrado entregado al complejo` solo aparece en unidades polimetalicas.** Con un solo metal
   la respuesta es su propio concentrado, y preguntarla seria pedir el mismo dato dos veces.
 
+## 10. La estructura estandar, y las ocho reglas que se corroboran
+
+MINSUR entrego el 01/09/2026 su libro de produccion con los calculos internos.
+Trae tres bloques por proyecto —`Calculo Interno`, `MINSUR` y `COMPARACION`— y es
+la especificacion exacta de lo que la plataforma debe hacer: rehacer el calculo,
+comparar contra lo que el usuario carga y **avisar sin corregir**.
+
+**Hay una sola estructura y es siempre la misma.** No se adapta al proyecto: en
+el libro, Santo Domingo usa la misma que San Rafael con las filas de
+preconcentracion en cero, y B2 igual. Una fila entera en cero simplemente no se
+muestra en la plataforma. Es lo que permite que un proyecto que hoy no existe use
+la plantilla sin rehacerla.
+
+| Bloque | Fila | Medida | Clase |
+|---|---|---|---|
+| `Mina` | Mineral extraído | t | dato |
+| | Ley Sn | % | dato |
+| `Planta` | Mineral Tratado en Pre Concentración | t | dato |
+| | Ley de Sn (entrada) | % | dato |
+| | Mineral Pre-Concentrado a Concentradora | t | dato |
+| | Ley Sn | % | dato |
+| | Mineral Directo a Planta Concentradora | t | **calculada** |
+| | Ley de Sn | % | **calculada** |
+| | Mineral Tratado Total en Concentradora | t | **calculada** |
+| | Ley Sn | % | **calculada** |
+| | Mineral Tratado Total (Cash Cost) | t | **calculada** |
+| | Ley Sn | % | **calculada** |
+| | Toneladas finas | t | **calculada** |
+| | Ley Sn Concentrado | % | dato |
+| | Recuperación Sn | % | dato |
+| | Producción Concentrado | t | **calculada** |
+| `Concentrado de Cu` | Concentrado Producido Cu | t | dato |
+| | Ley Cu | % | dato |
+| | Ley Ag | oz/t | dato |
+
+Las ocho reglas, tal como estan escritas en el bloque `Calculo Interno`:
+
+```
+Mineral Directo           = extraido - tratado en preconcentracion
+Ley del directo           = (extraido x ley - preconc x ley entrada) / directo
+Mineral Tratado Total     = directo + preconcentrado
+Ley del tratado total     = ponderado por tonelaje de las dos corrientes
+Tratado Total (Cash Cost) = extraido
+Ley del cash cost         = ley de cabeza
+Toneladas finas           = tratado total x su ley x recuperacion
+Produccion Concentrado    = toneladas finas / ley del concentrado
+```
+
+Tres cosas que este archivo corrige de lo que habiamos inferido del libro
+corporativo:
+
+1. **Las toneladas finas llevan la recuperacion.** Habiamos escrito `tratado x
+   ley`. Sin el factor, el fino sale sobrestimado y el concentrado con el.
+2. **El concentrado es las finas entre su ley, y nada mas.** Habiamos escrito
+   `finas x recuperacion / ley`, que aplica la recuperacion dos veces.
+3. **El tratado para cash cost es el mineral extraido**, no una serie
+   independiente, y su ley es la de cabeza.
+
+**La ley de plata va en onzas troy por tonelada**, no en porcentaje. Leerla como
+porcentaje la dividiria entre cien sin avisar.
+
+Las divisiones del bloque van envueltas en `IFERROR(..., 0)`, coherente con la
+regla `008`: una indeterminacion no detiene el calculo.
+
+### Un dato a devolver
+
+En la pestana `Nazareth` del archivo, el bloque `MINSUR` trae en `Ley Sn` el
+mismo valor que en `Mineral extraído` —108 491—, que es el tonelaje repetido en
+la fila de la ley. Se reporta; no se corrige.
+
