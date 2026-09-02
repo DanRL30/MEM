@@ -110,14 +110,14 @@ que proceso pasa. Es la estructura del libro y la que reproduce la plantilla.
 
 Dos conceptos mas que la verificacion de cobertura obligo a incorporar, y que cambian el modelo de
 datos: **concentrado alimentado desde otra unidad** y **concentrado excedente**. El libro encadena
-unidades — el concentrado de las minas alimenta a la fundicion y el sobrante se vende — de modo que
-una unidad no se describe sola. Y las unidades de fundicion anaden toneladas alimentadas mas
+unidades — el concentrado de las minas alimenta a la refineria y el sobrante se vende — de modo que
+una unidad no se describe sola. Y las unidades de refineria anaden toneladas alimentadas mas
 escoria, metal contenido en el concentrado y produccion de metal refinado.
 
 **La capacidad maxima de tratamiento es un input, y es de la refineria.** La lectura de las formulas
-mostro que el tope de la regla 002 no acota una planta concentradora: acota la **fundicion**, sobre
+mostro que el tope de la regla 002 no acota una planta concentradora: acota la **refineria**, sobre
 la suma del concentrado que le entregan las cinco unidades. Finanzas confirmo el 01/09/2026 que el
-usuario debe poder cambiarlo, asi que entra como serie por ano de la unidad de fundicion. Lo tratado
+usuario debe poder cambiarlo, asi que entra como serie por ano de la unidad de refineria. Lo tratado
 es el minimo entre lo alimentado y esa capacidad; el resto es concentrado excedente.
 
 **La ley agregada se pondera por tonelaje.** El libro la calcula como `SUMPRODUCT(tonelaje, ley) /

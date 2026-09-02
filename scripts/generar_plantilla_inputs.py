@@ -54,7 +54,7 @@ except ImportError:  # pragma: no cover - entorno sin sincronizar
 
 PRIMERA_FILA_DE_DATOS = 5
 
-TIPOS_DE_UNIDAD = ("mina", "fundicion")
+TIPOS_DE_UNIDAD = ("mina", "refineria")
 ORIGENES = ("yacimiento", "relave")
 ETAPAS = ("preconcentracion", "concentradora")
 ETAPAS_POR_DEFECTO = ("concentradora",)
@@ -194,18 +194,8 @@ class Unidad:
         return cls(nombre, tipo, lista, etapas, origen, portador=portador)
 
     @property
-    def es_fundicion(self) -> bool:
-        return self.tipo == "fundicion"
-
-    def aplica(self, etapa: str | None) -> bool:
-        """Si la fila condicionada por `etapa` corresponde a esta unidad."""
-        if etapa is None:
-            return True
-        if etapa == "fundicion":
-            return self.es_fundicion
-        if etapa == "relavera":
-            return self.origen == "relave"
-        return etapa in self.etapas
+    def es_refineria(self) -> bool:
+        return self.tipo == "refineria"
 
 
 def encabezar(hoja: Worksheet, titulo: str, primer_ano: int, anos: int) -> None:
@@ -581,22 +571,22 @@ def hoja_instrucciones(libro: Workbook, unidades: list[Unidad], bloque: str = "p
 
 
 def _encadenar(unidades: list[Unidad]) -> list[Unidad]:
-    """Dirige el concentrado de cada mina a la fundicion, si el caso declara una.
+    """Dirige el concentrado de cada mina a la refineria, si el caso declara una.
 
-    No se pide como campo aparte porque el caso admite una sola fundicion, y en
+    No se pide como campo aparte porque el caso admite una sola refineria, y en
     el libro las cinco minas entregan a Pisco. Un proyecto que venda su
-    concentrado directo simplemente no declara fundicion.
+    concentrado directo simplemente no declara refineria.
     """
-    fundiciones = [u for u in unidades if u.es_fundicion]
-    if len(fundiciones) > 1:
+    refinerias = [u for u in unidades if u.es_refineria]
+    if len(refinerias) > 1:
         raise ValueError(
-            "El caso declara mas de una fundicion. El tope de capacidad se aplica sobre el "
+            "El caso declara mas de una refineria. El tope de capacidad se aplica sobre el "
             "concentrado de la refinería y no sabria a cual acotar."
         )
-    if not fundiciones:
+    if not refinerias:
         return unidades
-    destino = fundiciones[0].nombre
-    return [u if u.es_fundicion else replace(u, entrega_a=destino) for u in unidades]
+    destino = refinerias[0].nombre
+    return [u if u.es_refineria else replace(u, entrega_a=destino) for u in unidades]
 
 
 def main() -> int:
@@ -670,7 +660,7 @@ def main() -> int:
     # las minas, y sus dos supuestos —capacidad y recuperacion— viven en la
     # hoja Supuestos del libro corporativo, no en produccion.
     for unidad in unidades:
-        if unidad.es_fundicion:
+        if unidad.es_refineria:
             continue
         hoja_produccion_de_unidad(libro, unidad.nombre, args.primer_ano, args.anos)
     if args.bloque == "completo":

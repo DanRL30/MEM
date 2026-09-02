@@ -292,7 +292,7 @@ def leer_plantilla(ruta: Path, *, escenario: str | None = None) -> Lectura:
     nombres = [u.nombre for u in cabecera.unidades]
     produccion: dict[str, list[_Fila]] = {}
     for declarada in cabecera.unidades:
-        if declarada.tipo == "fundicion":
+        if declarada.tipo == "refineria":
             # La refinería no tiene pestana de produccion: sus filas son
             # resultado de lo que producen las minas.
             continue

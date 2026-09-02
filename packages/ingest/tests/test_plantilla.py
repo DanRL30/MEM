@@ -125,7 +125,7 @@ def plantilla_llena(tmp_path: Path) -> Path:
     unidades = generador._encadenar(  # type: ignore[attr-defined]
         [
             generador.Unidad.desde_texto("Mina Alfa:mina:Sn"),  # type: ignore[attr-defined]
-            generador.Unidad.desde_texto("Fundicion:fundicion:Sn"),  # type: ignore[attr-defined]
+            generador.Unidad.desde_texto("Refineria:refineria:Sn"),  # type: ignore[attr-defined]
         ]
     )
     libro = generador.Workbook()  # type: ignore[attr-defined]
@@ -159,7 +159,7 @@ class TestIdaYVuelta:
         assert caso is not None
         assert caso.nombre == "Caso de prueba"
         assert caso.horizonte.primer_ano == 2027
-        assert [u.nombre for u in caso.unidades] == ["Mina Alfa", "Fundicion"]
+        assert [u.nombre for u in caso.unidades] == ["Mina Alfa", "Refineria"]
 
     def test_la_cadena_completa_llega_al_motor(self, plantilla_llena: Path) -> None:
         # Hasta el 01/09/2026 el lector consumia cinco series por unidad y
@@ -181,13 +181,13 @@ class TestIdaYVuelta:
         # Sus filas son resultado de lo que producen las minas: pedirlas como
         # dato invitaria a que contradijeran a su origen.
         caso = leer_o_fallar(plantilla_llena)
-        assert caso.fundicion is not None
-        assert not any(caso.fundicion.produccion.concentrado_producido)
+        assert caso.refineria is not None
+        assert not any(caso.refineria.produccion.concentrado_producido)
 
     def test_el_origen_y_el_destino_sobreviven_la_ida_y_vuelta(self, plantilla_llena: Path) -> None:
         alfa = leer_o_fallar(plantilla_llena).unidades[0]
         assert alfa.origen == "yacimiento"
-        assert alfa.entrega_a == "Fundicion"
+        assert alfa.entrega_a == "Refineria"
 
     def test_el_capital_cuadra_en_sus_dos_clasificaciones(self, plantilla_llena: Path) -> None:
         capital = leer_o_fallar(plantilla_llena).unidades[0].capital

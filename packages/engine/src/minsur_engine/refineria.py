@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 from minsur_engine.horizonte import Horizonte, Serie
 from minsur_engine.produccion import (
-    alimentacion_a_fundicion,
+    alimentacion_a_la_refineria,
     excedente_por_capacidad,
     ley_agregada,
     tratamiento_limitado,
@@ -115,7 +115,7 @@ def calcular(
     y el excedente es cero.
     """
     concentrados = [_serie(c.concentrado, horizonte) for c in componentes]
-    entregado = alimentacion_a_fundicion(horizonte, concentrados)
+    entregado = alimentacion_a_la_refineria(horizonte, concentrados)
     if capacidad:
         tope = _serie(capacidad, horizonte)
         alimentado = tratamiento_limitado(entregado, tope)

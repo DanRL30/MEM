@@ -222,8 +222,8 @@ class TestAplicarAlCaso:
             ),
         )
         refinería = UnidadProductiva(
-            nombre="Fundicion",
-            tipo="fundicion",
+            nombre="Refineria",
+            tipo="refineria",
             produccion=ProduccionDeUnidad(mineral_tratado=ceros),
         )
         return Caso(
@@ -260,9 +260,9 @@ class TestAplicarAlCaso:
         del_caso = leer_supuestos(supuestos).supuestos
         assert del_caso is not None
         caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
-        fundicion = caso.fundicion
-        assert fundicion is not None
-        assert fundicion.recuperacion_en_la_refineria["Mina Alfa"]["Sn"] == pytest.approx(
+        refineria = caso.refineria
+        assert refineria is not None
+        assert refineria.recuperacion_en_la_refineria["Mina Alfa"]["Sn"] == pytest.approx(
             (0.95, 0.95, 0.95)
         )
 

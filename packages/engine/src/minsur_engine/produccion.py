@@ -1,4 +1,4 @@
-"""Producción: agregación de leyes y restricción de capacidad de fundición.
+"""Producción: agregación de leyes y restricción de capacidad de la refinería.
 
 Las series de producción son datos del caso, no resultados: el libro
 corporativo las tiene como valores dentro de la banda de cada caso. Lo que sí
@@ -13,7 +13,7 @@ N1. La ley del concentrado se pondera por la producción de concentrado y no por
 el mineral tratado, que es una excepción fácil de pasar por alto.
 
 **La refinería tiene un cuello de botella.** Todas las unidades entregan
-concentrado a la fundición, y la fundición tiene una capacidad máxima. El libro
+concentrado a la refinería, y la refinería tiene una capacidad máxima. El libro
 la escribía como el número 90 000 dentro de la fórmula; Finanzas confirmó el
 01/09/2026 que es capacidad de planta y que el usuario debe poder cambiarla, de
 modo que aquí es un dato del caso. Ver la regla 002 de
@@ -55,8 +55,8 @@ def ley_agregada(tonelajes: Sequence[float], leyes: Sequence[float]) -> float:
     return sum(t * ley for t, ley in zip(tonelajes, leyes, strict=True)) / total
 
 
-def alimentacion_a_fundicion(horizonte: Horizonte, aportes: Sequence[Serie]) -> Serie:
-    """Concentrado que las unidades entregan a la fundición, año a año.
+def alimentacion_a_la_refineria(horizonte: Horizonte, aportes: Sequence[Serie]) -> Serie:
+    """Concentrado que las unidades entregan a la refinería, año a año.
 
     Cada unidad aporta su serie. El libro las suma explícitamente, una celda
     por unidad, porque el número de unidades está fijado por la banda; aquí la

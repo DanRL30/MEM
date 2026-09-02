@@ -9,7 +9,7 @@ Los tres reproducen la **forma** de los arquetipos del libro, que es lo que
 importa para el contraste estructural:
 
     unidad simple       una mina que vende metal refinado
-    refinería            minas que alimentan una fundicion con tope de capacidad
+    refinería            minas que alimentan una refineria con tope de capacidad
     dos proyectos       una operacion en marcha y un proyecto que entra tarde
 
 Los casos certificados con datos reales son otra cosa: viven en el tenant de
@@ -100,10 +100,10 @@ def unidad_simple() -> Caso:
 
 
 def caso_con_refineria() -> Caso:
-    """Dos minas que alimentan una fundición cuyo tope acota el tratamiento.
+    """Dos minas que alimentan una refinería cuyo tope acota el tratamiento.
 
     Es el arquetipo de operación consolidada: el cuello de botella está en la
-    fundición y el concentrado que no cabe queda como excedente.
+    refinería y el concentrado que no cabe queda como excedente.
     """
     horizonte = Horizonte(primer_ano=2027, anos=4)
 
@@ -124,24 +124,24 @@ def caso_con_refineria() -> Caso:
             costos={"Mina": horizonte.serie([c * 100.0 for c in concentrado], nombre="mina")},
         )
 
-    fundicion = UnidadProductiva(
-        nombre="Fundicion",
-        tipo="fundicion",
+    refineria = UnidadProductiva(
+        nombre="Refineria",
+        tipo="refineria",
         produccion=ProduccionDeUnidad(
-            mineral_tratado=horizonte.serie([100.0] * 4, nombre="fundicion/tratado"),
+            mineral_tratado=horizonte.serie([100.0] * 4, nombre="refineria/tratado"),
             concentrado_producido=horizonte.ceros(),
             capacidad_de_tratamiento=horizonte.serie([1_500.0] * 4, nombre="capacidad"),
         ),
-        costos={"Fundicion": horizonte.serie([50_000.0] * 4, nombre="fundicion")},
+        costos={"Fundición": horizonte.serie([50_000.0] * 4, nombre="refineria")},
     )
 
     return Caso(
-        nombre="Sintetico: refinería con fundicion",
+        nombre="Sintetico: dos minas y una refineria",
         horizonte=horizonte,
         unidades=(
             mina("Mina Norte", [800.0, 900.0, 1_000.0, 1_000.0]),
             mina("Mina Sur", [400.0, 500.0, 600.0, 700.0]),
-            fundicion,
+            refineria,
         ),
         terminos=TerminosComerciales(
             precio_metal_refinado=horizonte.ceros(),

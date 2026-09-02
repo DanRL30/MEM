@@ -128,7 +128,7 @@ def _caso() -> Caso:
             ),
             UnidadProductiva(
                 nombre="Refineria",
-                tipo="fundicion",
+                tipo="refineria",
                 produccion=ProduccionDeUnidad(mineral_tratado=ceros),
             ),
         ),
@@ -180,7 +180,7 @@ class TestIdaYVuelta:
         # Su produccion es resultado, pero su costo es dato: por eso el libro de
         # opex trae una pestana mas que el de produccion.
         refineria = _con_opex(libro_de_opex).unidades[1]
-        assert refineria.es_fundicion
+        assert refineria.es_refineria
         assert refineria.costos["Fundición"] == (0.0, 100_000.0, 100_000.0)
 
     def test_el_caso_leido_calcula(self, libro_de_opex: Path) -> None:

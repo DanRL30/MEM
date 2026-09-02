@@ -193,7 +193,7 @@ class TestN1:
                 resultado.utilidad_operativa, base - resultado.fondo_jubilacion_minera
             ), f"el lazo del fondo no cierra en el ano {ano}"
 
-    def test_el_tope_de_la_fundicion_acota_el_tratamiento(self, con_refineria: Corrida) -> None:
+    def test_el_tope_de_la_refineria_acota_el_tratamiento(self, con_refineria: Corrida) -> None:
         # Alimentado 1 200, 1 400, 1 600 y 1 700 contra una capacidad de 1 500.
         contrastar(
             con_refineria.refineria.concentrado_entregado,

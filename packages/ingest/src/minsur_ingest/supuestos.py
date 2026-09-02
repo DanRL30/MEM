@@ -274,7 +274,7 @@ def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProdu
     propios_de: dict[str, dict[str, Serie]] = {}
     mineras = 0
     for unidad in caso.unidades:
-        if unidad.es_fundicion:
+        if unidad.es_refineria:
             continue
         propios = de_cada_pestana[mineras] if mineras < len(de_cada_pestana) else {}
         mineras += 1
@@ -290,7 +290,7 @@ def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProdu
             recuperacion_en_la_refineria=recuperaciones,
             produccion=replace(unidad.produccion, capacidad_de_tratamiento=capacidad),
         )
-        if unidad.es_fundicion
+        if unidad.es_refineria
         else replace(
             unidad,
             fraccion_gestion_social_deducible=propios_de[unidad.nombre].get(

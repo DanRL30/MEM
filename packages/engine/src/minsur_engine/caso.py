@@ -29,7 +29,7 @@ from minsur_engine.horizonte import Horizonte, Serie
 from minsur_engine.parametros import ParametrosCorporativos
 from minsur_engine.tributos import EscalaProgresiva
 
-TIPOS_DE_UNIDAD = ("mina", "fundicion")
+TIPOS_DE_UNIDAD = ("mina", "refineria")
 """Solo hay dos: la que saca y trata mineral, y la que recibe concentrado.
 
 El libro no tiene unidades de tipo preconcentración, concentradora ni relavera.
@@ -124,7 +124,7 @@ def campos_con_dato(produccion: ProduccionDeUnidad) -> frozenset[str]:
 
 @dataclass(frozen=True)
 class UnidadProductiva:
-    """Una mina, una planta o una fundición, con todo lo suyo."""
+    """Una mina, una planta o la refinería, con todo lo suyo."""
 
     nombre: str
     tipo: str
@@ -190,8 +190,8 @@ class UnidadProductiva:
             )
 
     @property
-    def es_fundicion(self) -> bool:
-        return self.tipo == "fundicion"
+    def es_refineria(self) -> bool:
+        return self.tipo == "refineria"
 
 
 @dataclass(frozen=True)
@@ -324,9 +324,9 @@ class Caso:
                 f"El caso {self.nombre!r} repite la unidad {sorted(repetidos)}. El desglose por "
                 "mina exige nombres unicos."
             )
-        if sum(1 for u in self.unidades if u.es_fundicion) > 1:
+        if sum(1 for u in self.unidades if u.es_refineria) > 1:
             raise ErrorCaso(
-                f"El caso {self.nombre!r} declara mas de una fundicion. El tope de capacidad se "
+                f"El caso {self.nombre!r} declara mas de una refineria. El tope de capacidad se "
                 "aplica sobre el concentrado de la refinería y no sabria a cual acotar."
             )
         conocidas = set(nombres)
@@ -339,9 +339,9 @@ class Caso:
                 )
 
     @property
-    def fundicion(self) -> UnidadProductiva | None:
-        return next((u for u in self.unidades if u.es_fundicion), None)
+    def refineria(self) -> UnidadProductiva | None:
+        return next((u for u in self.unidades if u.es_refineria), None)
 
     @property
     def unidades_mineras(self) -> tuple[UnidadProductiva, ...]:
-        return tuple(u for u in self.unidades if not u.es_fundicion)
+        return tuple(u for u in self.unidades if not u.es_refineria)

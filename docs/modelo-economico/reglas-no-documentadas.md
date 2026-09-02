@@ -171,7 +171,7 @@ Ver la bitácora de discrepancias abiertas en `bitacora-discrepancias.md`.
 
 ## La regla de oro de la refineria: nada se agrupa
 
-El libro agrupa las recuperaciones de la fundición: lleva una `Recuperación Sn
+El libro agrupa las recuperaciones de la refinería: lleva una `Recuperación Sn
 SR + B2` y otra `Recuperación Sn NZ + SRP`, y con ellas calcula un único
 `Producción Sn Refinado` para toda la refineria. La plataforma **no reproduce ese
 agrupamiento**. Es la excepción decidida por el Project Manager el 01/09/2026, y

@@ -297,7 +297,7 @@ presentes antes de tocarlo.
 **La refineria lleva pestana**, al reves que en produccion. Su produccion es
 resultado, pero su costo es dato. Por eso el libro de opex trae **una pestana
 mas** que el de produccion, y `aplicar()` recorre `caso.unidades` sin saltar la
-fundicion.
+refineria.
 
 **Sus conceptos van en la misma estructura que los de las minas**, no en una
 plantilla aparte: fundicion, refineria, planta de subproductos y su

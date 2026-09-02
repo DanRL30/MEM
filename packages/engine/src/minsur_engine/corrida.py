@@ -344,8 +344,11 @@ def _bloque_de_la_refineria(caso: Caso) -> BloqueDeLaRefineria:
     un proyecto nuevo no cabe en ningun grupo y una diferencia en el total no se
     puede atribuir a una unidad.
     """
-    fundicion = caso.fundicion
-    recuperaciones = fundicion.recuperacion_en_la_refineria if fundicion is not None else {}
+    # La unidad se llama `planta` y no `refineria` porque el modulo homonimo esta
+    # importado: la variable lo taparia y `refineria.calcular` dejaria de ser la
+    # funcion del bloque para ser un atributo inexistente de la unidad.
+    planta = caso.refineria
+    recuperaciones = planta.recuperacion_en_la_refineria if planta is not None else {}
     terminos = caso.terminos
     componentes = [
         refineria.Componente(
@@ -365,7 +368,7 @@ def _bloque_de_la_refineria(caso: Caso) -> BloqueDeLaRefineria:
         )
         for u in caso.unidades_mineras
     ]
-    capacidad = fundicion.produccion.capacidad_de_tratamiento if fundicion is not None else ()
+    capacidad = planta.produccion.capacidad_de_tratamiento if planta is not None else ()
     return refineria.calcular(caso.horizonte, componentes, capacidad)
 
 
@@ -382,7 +385,7 @@ def _refinado_de_la_refineria(caso: Caso) -> Serie:
     """Metal refinado que produce la refinería, por año.
 
     **No es un dato: es resultado.** La lectura de las fórmulas del libro lo
-    confirmó fila por fila. Lo que alimenta a la fundición es el concentrado de
+    confirmó fila por fila. Lo que alimenta a la refinería es el concentrado de
     cada mina y su ley, y el refinado es la suma del contenido fino por la
     recuperación que corresponde a cada origen.
 
@@ -393,11 +396,11 @@ def _refinado_de_la_refineria(caso: Caso) -> Serie:
     en entrar, y generalizarlo sin respuesta sería inventarlo.
     """
     horizonte = caso.horizonte
-    fundicion = caso.fundicion
-    if fundicion is None:
+    planta = caso.refineria
+    if planta is None:
         return horizonte.ceros()
 
-    recuperaciones = fundicion.recuperacion_en_la_refineria
+    recuperaciones = planta.recuperacion_en_la_refineria
     refinado = [0.0] * horizonte.anos
     for unidad in caso.unidades_mineras:
         por_metal = recuperaciones.get(unidad.nombre, {})
@@ -443,10 +446,10 @@ def _ventas(caso: Caso, bloque: BloqueDeLaRefineria) -> _Ventas:
     liquidado: dict[str, Serie] = {}
     for unidad in caso.unidades:
         # La refinería no declara su refinado: se calculo desde las minas. Una
-        # unidad que vende directo si lo declara, porque no pasa por fundicion.
+        # unidad que vende directo si lo declara, porque no pasa por refineria.
         volumen_refinado = (
             bloque.refinado
-            if unidad.es_fundicion
+            if unidad.es_refineria
             else _serie(
                 unidad.produccion.metal_refinado_vendido, horizonte, f"{unidad.nombre}/refinado"
             )
@@ -456,7 +459,7 @@ def _ventas(caso: Caso, bloque: BloqueDeLaRefineria) -> _Ventas:
             horizonte,
             f"{unidad.nombre}/en concentrado",
         )
-        if unidad.es_fundicion:
+        if unidad.es_refineria:
             volumen_concentrado = tuple(
                 volumen_concentrado[i] + bloque.refinado_del_excedente[i]
                 for i in range(horizonte.anos)

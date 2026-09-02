@@ -14,7 +14,7 @@ from minsur_engine.horizonte import ErrorHorizonte, Horizonte, anos_con_dato
 from minsur_engine.parametros import ErrorParametros, ParametrosCorporativos
 from minsur_engine.produccion import (
     ErrorProduccion,
-    alimentacion_a_fundicion,
+    alimentacion_a_la_refineria,
     excedente_por_capacidad,
     ley_agregada,
     tratamiento_limitado,
@@ -46,7 +46,7 @@ class TestLeyAgregada:
             ley_agregada([1.0, 2.0], [0.01])
 
 
-class TestCapacidadDeFundicion:
+class TestCapacidadDeLaRefineria:
     """min(alimentado, capacidad) y su complementaria, filas 90 a 100 del libro."""
 
     def test_sin_restriccion_trata_todo_lo_alimentado(self) -> None:
@@ -80,18 +80,24 @@ class TestCapacidadDeFundicion:
             tratamiento_limitado((10.0,), (-1.0,))
 
 
-class TestAlimentacionAFundicion:
+class TestAlimentacionALaRefineria:
     def test_suma_los_aportes_de_las_unidades(self, horizonte: Horizonte) -> None:
         sr = horizonte.serie([10.0, 10.0, 10.0, 10.0, 10.0], nombre="SR")
         nazareth = horizonte.serie([0.0, 0.0, 5.0, 5.0, 5.0], nombre="Nazareth")
-        assert alimentacion_a_fundicion(horizonte, [sr, nazareth]) == (10.0, 10.0, 15.0, 15.0, 15.0)
+        assert alimentacion_a_la_refineria(horizonte, [sr, nazareth]) == (
+            10.0,
+            10.0,
+            15.0,
+            15.0,
+            15.0,
+        )
 
     def test_un_caso_sin_unidades_da_serie_nula(self, horizonte: Horizonte) -> None:
-        assert alimentacion_a_fundicion(horizonte, []) == (0.0, 0.0, 0.0, 0.0, 0.0)
+        assert alimentacion_a_la_refineria(horizonte, []) == (0.0, 0.0, 0.0, 0.0, 0.0)
 
     def test_aporte_desalineado_es_error(self, horizonte: Horizonte) -> None:
         with pytest.raises(ErrorProduccion, match="horizonte tiene 5 anos"):
-            alimentacion_a_fundicion(horizonte, [(1.0, 2.0)])
+            alimentacion_a_la_refineria(horizonte, [(1.0, 2.0)])
 
 
 class TestHorizonte:
