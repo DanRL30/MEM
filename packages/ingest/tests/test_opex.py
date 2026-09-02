@@ -378,3 +378,97 @@ class TestAsociacionPorOrden:
         lectura = leer_opex(libro_de_opex)
         with pytest.raises(ErrorDeAsociacion, match="sobra o falta"):
             aplicar(_caso(), [b.opex for b in lectura.bloques][:1])
+
+
+@pytest.fixture
+def libro_con_servidumbre(tmp_path: Path) -> Path:
+    """El mismo libro, con servidumbre y predios cargados por separado.
+
+    Son las filas `InputsOpex!176` y `!177`, que el libro lleva a sitios
+    distintos: los predios al flujo de inversiones y la servidumbre a la base
+    imponible, a la bolsa de egresos y al flujo operativo.
+    """
+    generador = _generador()
+    ruta = tmp_path / "opex-servidumbre.xlsx"
+    libro = generador.Workbook()  # type: ignore[attr-defined]
+    libro.remove(libro.active)
+    for nombre in ("Mina Alfa", "Refineria"):
+        generador.hoja_opex_de_unidad(libro, nombre, 2027, ANOS)  # type: ignore[attr-defined]
+    libro.save(ruta)
+
+    libro = load_workbook(ruta)
+    mina = libro["Mina Alfa"]
+    _escribir(mina, "Mina", [0.0, 200.0, 200.0])
+    _escribir(mina, "Planta Concentradora", [0.0, 100.0, 100.0])
+    _escribir(mina, "Servidumbres y usufructos", [0.0, 7.0, 7.0])
+    _escribir(mina, "Predios", [11.0, 0.0, 0.0])
+    libro.save(ruta)
+    return ruta
+
+
+class TestLaServidumbreVaDondeElLibroLaPone:
+    """`InputsOpex!177` no es un predio, y el libro no la trata como tal.
+
+    Hasta el 02/09/2026 la plataforma sumaba las dos filas en una sola linea de
+    inversion, y la servidumbre no rebajaba la base imponible. Es la regla
+    `059`, y la decision de alinearse al modelo la tomo el Project Manager el
+    mismo dia: donde el libro y la plataforma difieran, manda el libro.
+    """
+
+    def test_la_servidumbre_rebaja_la_base_imponible_y_los_predios_no(
+        self, libro_con_servidumbre: Path
+    ) -> None:
+        # `Impuestos!16 = -Otros!49 - Otros!50`, y `Otros!50 = InputsOpex!177`.
+        # Los predios no aparecen en ninguna de las dos bases.
+        corrida = calcular(_con_opex(libro_con_servidumbre), MAESTROS)
+        renta = corrida.impuestos.renta
+        assert renta.otros_gastos == (0.0, -7_000.0, -7_000.0)
+        # El primer ejercicio solo carga predios: la base no se mueve por ellos.
+        assert renta.otros_gastos[0] == 0.0
+
+    def test_la_servidumbre_entra_en_las_dos_bases_por_igual(
+        self, libro_con_servidumbre: Path
+    ) -> None:
+        corrida = calcular(_con_opex(libro_con_servidumbre), MAESTROS)
+        assert corrida.impuestos.renta.otros_gastos == corrida.impuestos.regalias.otros_gastos
+
+    def test_la_bolsa_lleva_la_servidumbre_y_no_los_predios(
+        self, libro_con_servidumbre: Path
+    ) -> None:
+        # `Otros!44:54` incluye la fila 50, `Servidumbre`, y no la 93,
+        # `Compra de Predios`, que vive fuera del bloque.
+        corrida = calcular(_con_opex(libro_con_servidumbre), MAESTROS)
+        assert corrida.bolsa_de_egresos[0] == pytest.approx(0.0)
+        assert corrida.bolsa_de_egresos[1] == pytest.approx(300_000.0 + 7_000.0)
+
+    def test_los_predios_siguen_en_el_flujo_de_inversiones(
+        self, libro_con_servidumbre: Path
+    ) -> None:
+        # `Otros!93 = -InputsOpex!176`. Es lo unico que queda de aquella linea.
+        corrida = calcular(_con_opex(libro_con_servidumbre), MAESTROS)
+        assert corrida.flujo.flujo_de_inversiones[0] == pytest.approx(-11_000.0)
+
+    def test_la_servidumbre_del_flujo_espera_al_ejercicio_con_gasto(
+        self, libro_con_servidumbre: Path
+    ) -> None:
+        # `Otros!30` multiplica la fila por `FC NZ!8`, `Periodo con gastos`. En
+        # el primer ejercicio no hay opex, de modo que ahi no entra al flujo
+        # operativo aunque si rebaje la base imponible, que no lleva bandera.
+        from dataclasses import replace
+
+        caso = _con_opex(libro_con_servidumbre)
+        adelantada = caso.horizonte.serie((5.0, 7.0, 7.0), nombre="servidumbre")
+        mina = caso.unidades[0]
+        con_gasto_previo = replace(
+            caso,
+            unidades=(
+                replace(mina, gastos={**mina.gastos, "Servidumbres y usufructos": adelantada}),
+                caso.unidades[1],
+            ),
+        )
+        corrida = calcular(con_gasto_previo, MAESTROS)
+        # La base imponible la descuenta el primer ano.
+        assert corrida.impuestos.renta.otros_gastos[0] == pytest.approx(-5.0)
+        # El flujo operativo no, porque ese ejercicio no tiene cash cost.
+        assert corrida.cash_cost[0] == 0.0
+        assert corrida.flujo.flujo_operativo[0] == pytest.approx(0.0)

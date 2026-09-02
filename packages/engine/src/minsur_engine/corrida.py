@@ -145,6 +145,12 @@ class _Gastos:
     donaciones: Serie
     planilla: Serie
     predios: Serie
+    """`InputsOpex!176`, y nada mas. Va al flujo de inversiones."""
+
+    servidumbres: Serie
+    """`InputsOpex!177`, que el libro lleva aparte de los predios y a otros
+    tres sitios: la base imponible, la bolsa de egresos y el flujo operativo."""
+
     estudios: Serie
     estudios_deducibles: Serie
     exploraciones: Serie
@@ -330,13 +336,27 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     )
     administrativos = gastos.administrativos
     gestion_social = gastos.gestion_social
+    otros_egresos = _serie(comunes.otros_egresos, horizonte, "otros egresos")
+    # `Otros!30`: la servidumbre entra al flujo operativo por su importe entero,
+    # pero solo en los ejercicios con gasto. El libro multiplica la fila por la
+    # bandera `Periodo con gastos` de `FC NZ!8`, que vale uno cuando hay opex.
+    servidumbre_del_flujo = tuple(
+        gastos.servidumbres[i] if cash_cost[i] > 0.0 else 0.0 for i in range(horizonte.anos)
+    )
     # La planilla es un gasto operativo derivado del cash cost de cada unidad, y
     # va donde el libro la deja: con los otros gastos del flujo operativo.
     otros_gastos = tuple(
         _serie(comunes.otros_gastos, horizonte, "otros gastos")[i]
         + gastos.planilla[i]
         + gastos.donaciones[i]
+        + servidumbre_del_flujo[i]
         for i in range(horizonte.anos)
+    )
+    # `Impuestos!16` y `!38` no leen la fila anterior: leen `Otros!49` y `!50`,
+    # que son los otros egresos y la servidumbre entera, sin la bandera. Es la
+    # regla `059`, y por eso las dos series existen por separado.
+    otros_gastos_deducibles = tuple(
+        otros_egresos[i] + gastos.servidumbres[i] for i in range(horizonte.anos)
     )
     estudios = gastos.estudios
     exploraciones = gastos.exploraciones
@@ -355,7 +375,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         administrativos=administrativos,
         estudios_deducibles=gastos.estudios_deducibles,
         gestion_social_deducible=gastos.gestion_social_deducible,
-        otros_gastos=otros_gastos,
+        otros_gastos=otros_gastos_deducibles,
         tasa_osinergmin=tasa_osinergmin,
         tasa_oefa=tasa_oefa,
         depreciacion_financiera=total_depreciado(horizonte, depreciacion_financiera),
@@ -380,7 +400,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         gasto_de_ventas=gasto_de_ventas,
         gastos=gastos,
         capex=total_capex,
-        otros_egresos=_serie(comunes.otros_egresos, horizonte, "otros egresos"),
+        otros_egresos=otros_egresos,
     )
     igv = capital_trabajo.bloque_de_igv(
         horizonte,
@@ -921,7 +941,8 @@ def _gastos(caso: Caso, costo_por_unidad: dict[str, Serie]) -> _Gastos:
         gestion_social_deducible=sumadas(GESTION_SOCIAL_DEDUCIBLE, comun=comunes.gestion_social),
         donaciones=sumadas(DONACIONES),
         planilla=sumadas(PLANILLA),
-        predios=sumadas(PREDIOS, SERVIDUMBRES, comun=comunes.predios),
+        predios=sumadas(PREDIOS, comun=comunes.predios),
+        servidumbres=sumadas(SERVIDUMBRES),
         estudios=tuple(estudios_deducibles[i] + capitalizables[i] for i in range(horizonte.anos)),
         estudios_deducibles=estudios_deducibles,
         exploraciones=sumadas(EXPLORACIONES, comun=comunes.exploraciones),
@@ -962,7 +983,7 @@ def _bolsa_de_egresos(
         gasto_de_ventas,
         gastos.gestion_social,
         gastos.donaciones,
-        gastos.predios,
+        gastos.servidumbres,
         gastos.estudios,
         gastos.planilla,
         gastos.exploraciones,

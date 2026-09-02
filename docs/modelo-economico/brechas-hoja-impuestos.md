@@ -144,28 +144,40 @@ los aportes reguladores como serie del caso. La aritmetica de la hoja esta repro
 | El bloque de perdida tributaria era una variable local | Sus cuatro filas no se pueden contrastar ni mostrar |
 | El armado de las dos bases vivia en `corrida.py` | Doce conceptos colapsados en dos escalares, fuera del modulo del bloque |
 
-**Una brecha de fondo, que no se cierra aqui.** La fila 16 del libro -y su gemela, la 38- suma
-`Otros!49` (`Otros Egresos`, tecleada) y `Otros!50` (`Servidumbre`, entera). El motor alimenta esa
-misma linea con `DatosComunes.otros_gastos` -que es `Otros!32`-, la planilla y las donaciones. Son
-cinco conceptos que no coinciden:
+**Una brecha de fondo, y se cierra alineandose al libro.** La fila 16 -y su gemela, la 38- suma
+`Otros!49` (`Otros Egresos`, tecleada) y `Otros!50` (`Servidumbre`, entera). El motor alimentaba esa
+misma linea con `DatosComunes.otros_gastos` -que es `Otros!32`-, la planilla y las donaciones. Eran
+cinco conceptos que no coincidian:
 
-- **`Servidumbre` rebaja la base imponible en el libro** y en la plataforma va a `predios`, al flujo
-  de inversiones, sin tocar la base.
-- **`Otros Egresos` la rebaja en el libro** y en la plataforma solo entra a la bolsa de egresos.
-- **Las donaciones y la planilla la rebajan en la plataforma** y en el libro no llegan a esta hoja:
-  viajan por `FC NZ!21`, que ninguna de las dos bases lee.
+- **`Servidumbre` rebaja la base imponible en el libro** y en la plataforma iba a `predios`, al
+  flujo de inversiones, sin tocar la base.
+- **`Otros Egresos` la rebaja en el libro** y en la plataforma solo entraba a la bolsa de egresos.
+- **Las donaciones y la planilla la rebajaban en la plataforma** y en el libro no llegan a esta
+  hoja: viajan por `FC NZ!21`, que ninguna de las dos bases lee.
 - `Otros!32` vale cero en las 36 columnas del libro, de modo que la diferencia **no se ve en las
   cifras de este archivo** y solo aparece al leer de donde viene cada fila.
 
-Que un gasto sea deducible o no lo decide la norma tributaria, no el motor, y la deducibilidad de
-las donaciones esta limitada por ley. **No se implementa sin la confirmacion de Finanzas**, conforme
-a la regla de este registro. Queda como regla `059`, pendiente, y como consulta abierta. Mientras
-tanto la base se arma como hoy y el traslado del codigo no mueve ni un decimal.
+**El Project Manager decidio el 02/09/2026 alinearse al modelo.** Es la regla de fidelidad y no
+admite un termino medio: una diferencia con el libro que no cite una desviacion acordada es un
+fallo, tambien cuando la diferencia nos parezca la mas prudente. Quedo como regla `059`.
+
+Alinearla obliga a separar la servidumbre de los predios, que es lo que la regla `055` habia dejado
+pendiente por este mismo motivo. El libro las lleva a sitios distintos y ahora la plataforma
+tambien:
+
+| Fila del libro | Concepto | Donde va |
+|---|---|---|
+| `InputsOpex!176`, `Otros!93` | `Predios` | Flujo de inversiones, y **nada mas** |
+| `InputsOpex!177`, `Otros!50` | `Servidumbre + Usufructos` | Las dos bases y la bolsa de egresos, entera |
+| `InputsOpex!177`, `Otros!30` | la misma | Flujo operativo, **sujeta a `Periodo con gastos`** |
+
+La bandera `FC NZ!8` vale uno en los ejercicios con opex, de modo que la servidumbre entra al flujo
+operativo solo entonces. **La base imponible no lleva bandera**: la descuenta siempre. Es una
+asimetria del libro y se reproduce.
 
 ## 8. Lo que queda pendiente de Finanzas
 
-1. **Que conceptos alimentan la fila 16.** La brecha de la seccion 7. Es la unica que cambia cifras.
-2. **Si `Ingresos Financieros` y `Gastos Financieros` entran al alcance.** Hoy el libro las deja
+1. **Si `Ingresos Financieros` y `Gastos Financieros` entran al alcance.** Hoy el libro las deja
    vacias y el estandar las nombra. Ver la nota 2 de [mapa-n1.md](mapa-n1.md) y `R-32`.
-3. **Si el limite del 50 % de arrastre de perdidas es el vigente.** Esta incrustado en las filas 48
+2. **Si el limite del 50 % de arrastre de perdidas es el vigente.** Esta incrustado en las filas 48
    y 66 y no aparece en ningun parametro; el estandar corporativo no lo menciona.
