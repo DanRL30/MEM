@@ -166,6 +166,13 @@ def _reparto_por_merito(
     unidad en entrar, y esa asimetría no se puede generalizar a un proyecto
     nuevo. Queda registrada como desviación acordada.
 
+    **El análisis es de cada año y solo de ese año.** El orden se decide con las
+    leyes de ese ejercicio y el excedente de ese ejercicio; nada se arrastra del
+    anterior. Una unidad que no produce ese año no cede nada, aunque haya sido la
+    de menor ley en otros: en el modelo, B2 tiene cinco años con dato sobre un
+    horizonte de treinta y siete, y en los demás el recorte lo absorbe quien
+    corresponda entre las que sí están produciendo.
+
     El empate se resuelve por nombre, para que dos corridas del mismo caso den
     exactamente lo mismo.
     """
@@ -174,7 +181,11 @@ def _reparto_por_merito(
         resto = excedente[i]
         if resto <= 0.0:
             continue
-        for componente in sorted(componentes, key=lambda c: (_en(c.ley, i), c.unidad)):
+        # Solo entran al reparto las que entregan concentrado ese año. Sin este
+        # filtro, una unidad parada ordenaria primero -su ley es cero- y no
+        # cederia nada, dejando el orden real escondido detras de ella.
+        activas = [c for c in componentes if _en(c.concentrado, i) > 0.0]
+        for componente in sorted(activas, key=lambda c: (_en(c.ley, i), c.unidad)):
             if resto <= 0.0:
                 break
             cede = min(_en(componente.concentrado, i), resto)

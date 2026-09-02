@@ -130,6 +130,13 @@ El contraste de esta linea se hace contra el valor que define el acuerdo, no con
 modelo. El motor expone las dos: `refinado` con el tope aplicado y `refinado_sin_restriccion` sin
 el, que es la linea que el libro rotula asi.
 
+**El analisis es de cada ano y solo de ese ano.** El orden se decide con las leyes de ese ejercicio y
+el excedente de ese ejercicio; nada se arrastra del anterior, y un ano sin saturacion no deja deuda
+al siguiente. Una unidad que no produce ese ano no cede nada, aunque haya sido la de menor ley en
+otros: B2 tiene cinco anos con dato sobre un horizonte de treinta y siete, y en los demas el recorte
+lo absorbe quien corresponda entre las que si estan produciendo. Esa es la razon de que la ley de lo
+que va a spot cambie de un ano a otro.
+
 Queda por precisar: si el criterio de merito es la ley del concentrado o el margen por tonelada, que
 tambien depende del cargo de tratamiento de cada origen.
 

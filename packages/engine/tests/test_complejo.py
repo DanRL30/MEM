@@ -146,6 +146,48 @@ class TestRepartoPorMerito:
             a.unidad: a.a_spot[0] for a in segunda.aportes
         }
 
+    def test_el_analisis_es_de_cada_ano_y_no_arrastra(self) -> None:
+        # El orden se decide con las leyes de ese ejercicio y el excedente de
+        # ese ejercicio. Aqui las leyes se invierten entre un ano y el otro, y
+        # el reparto se invierte con ellas: no hay memoria del ano anterior.
+        horizonte = Horizonte(primer_ano=2027, anos=2)
+        minas = [
+            Componente("Alfa", (600.0, 600.0), (0.40, 0.25), (0.90, 0.90)),
+            Componente("Beta", (400.0, 400.0), (0.30, 0.35), (0.70, 0.70)),
+        ]
+        bloque = calcular(horizonte, minas, capacidad=(900.0, 900.0))
+        por_unidad = {a.unidad: a.a_spot for a in bloque.aportes}
+        assert por_unidad["Beta"] == pytest.approx((100.0, 0.0))
+        assert por_unidad["Alfa"] == pytest.approx((0.0, 100.0))
+
+    def test_una_unidad_parada_ese_ano_no_cede_nada(self) -> None:
+        # En el modelo, B2 tiene cinco anos con dato sobre treinta y siete. En
+        # los anos en que no produce, el recorte lo absorbe quien corresponda
+        # entre las que si estan produciendo, y no la que esta parada por tener
+        # ley cero.
+        horizonte = Horizonte(primer_ano=2027, anos=2)
+        minas = [
+            Componente("B2", (400.0, 0.0), (0.30, 0.0), (0.70, 0.70)),
+            Componente("Alfa", (600.0, 1_000.0), (0.40, 0.40), (0.90, 0.90)),
+        ]
+        bloque = calcular(horizonte, minas, capacidad=(900.0, 900.0))
+        por_unidad = {a.unidad: a.a_spot for a in bloque.aportes}
+        assert por_unidad["B2"] == pytest.approx((100.0, 0.0))
+        assert por_unidad["Alfa"] == pytest.approx((0.0, 100.0))
+
+    def test_un_ano_sin_saturacion_no_deja_deuda_al_siguiente(self) -> None:
+        # Si el primer ano no satura, el segundo reparte solo su propio
+        # excedente. Acumular dejaria a alguien cediendo de mas.
+        horizonte = Horizonte(primer_ano=2027, anos=2)
+        minas = [
+            Componente("Alfa", (300.0, 600.0), (0.40, 0.40), (0.90, 0.90)),
+            Componente("Beta", (200.0, 400.0), (0.30, 0.30), (0.70, 0.70)),
+        ]
+        bloque = calcular(horizonte, minas, capacidad=(900.0, 900.0))
+        assert bloque.concentrado_excedente == pytest.approx((0.0, 100.0))
+        por_unidad = {a.unidad: a.a_spot for a in bloque.aportes}
+        assert por_unidad["Beta"] == pytest.approx((0.0, 100.0))
+
     def test_sin_saturacion_nadie_cede_nada(self) -> None:
         bloque = calcular(
             HORIZONTE,
