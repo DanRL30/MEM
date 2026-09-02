@@ -137,8 +137,24 @@ otros: B2 tiene cinco anos con dato sobre un horizonte de treinta y siete, y en 
 lo absorbe quien corresponda entre las que si estan produciendo. Esa es la razon de que la ley de lo
 que va a spot cambie de un ano a otro.
 
-Queda por precisar: si el criterio de merito es la ley del concentrado o el margen por tonelada, que
-tambien depende del cargo de tratamiento de cada origen.
+**El criterio de merito es la ley, y el margen por tonelada desempata.** Decidido por el Project
+Manager el 01/09/2026. Entre dos concentrados de distinta ley sale el de menor contenido; entre dos
+de la misma ley sale el que menos deja refinar, que con igual contenido es el de menor recuperacion.
+El nombre queda como ultimo desempate y no decide nada: solo evita que dos corridas del mismo caso
+repartan distinto.
+
+El margen es lo que gana el complejo por refinar una tonelada en vez de venderla: refinarla rinde
+`ley x recuperacion` toneladas de metal al precio mas el premio, y venderla rinde `ley` toneladas de
+contenido, de las que se paga la fraccion pagable.
+
+**Falta el cargo de tratamiento**, que va por tonelada de concentrado y vive en la hoja `Supuestos`,
+sin plantilla todavia. Mientras sea el mismo para todos los origenes se cancela al comparar y no
+altera el orden; solo importa si difiere por origen, que es justo lo que esa hoja tiene que decir.
+
+Una observacion que el criterio deja a la vista y que conviene llevar a Finanzas: **con los precios
+del caso, algunos origenes dan margen negativo**, es decir que conviene venderlos antes que
+refinarlos aunque el complejo no este saturado. Hoy eso no se hace: el excedente aparece solo cuando
+se supera la capacidad. Reportado, no implementado.
 
 ---
 

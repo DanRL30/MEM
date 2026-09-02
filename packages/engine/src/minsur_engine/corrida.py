@@ -249,12 +249,22 @@ def _bloque_del_complejo(caso: Caso) -> BloqueDelComplejo:
     """
     fundicion = caso.fundicion
     recuperaciones = fundicion.recuperacion_del_complejo if fundicion is not None else {}
+    terminos = caso.terminos
     componentes = [
         complejo.Componente(
             unidad=u.nombre,
             concentrado=u.produccion.concentrado_producido,
             ley=u.produccion.ley_del_concentrado,
             recuperacion=recuperaciones.get(u.nombre, {}).get("Sn", ()),
+            margen=complejo.margen_de_refinar(
+                caso.horizonte,
+                u.produccion.ley_del_concentrado,
+                recuperaciones.get(u.nombre, {}).get("Sn", ()),
+                precio_refinado=terminos.precio_metal_refinado,
+                premio=terminos.premio_metal_refinado,
+                precio_en_concentrado=terminos.precio_metal_en_concentrado,
+                factor_pagable=terminos.factor_metal_pagable,
+            ),
         )
         for u in caso.unidades_mineras
     ]

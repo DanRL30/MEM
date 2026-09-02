@@ -175,7 +175,7 @@ despues, no deuda heredada.
 | `ruff check .` | Limpio |
 | `ruff format --check .` | Limpio, 91 archivos |
 | `mypy packages apps/api/src` | Limpio en modo estricto, 57 archivos |
-| `pytest` | 282 de 282, de las que 31 son el contraste de fidelidad |
+| `pytest` | 287 de 287, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -295,8 +295,9 @@ unidad. El efecto es medible, no un matiz, y esta fijado en
 reproduce el comportamiento del libro sin tocar el motor.
 
 **Cuando el complejo se satura, el recorte se reparte por merito**: va a spot
-primero el concentrado de menor ley, de modo que se refina el mejor y se vende el
-peor. El libro se lo resta entero a la ultima unidad en entrar, y eso no se
+primero el concentrado de menor ley, y **con leyes iguales decide el margen por
+tonelada** —lo que gana el complejo por refinar una tonelada en vez de venderla—,
+que con igual contenido es la diferencia de recuperaciones. El libro se lo resta entero a la ultima unidad en entrar, y eso no se
 generaliza a un proyecto nuevo. Es la desviacion `D-05`, y arrastra una segunda
 consecuencia de coherencia: **el excedente se valoriza a la ley de lo que
 efectivamente fue a spot**, no a la del conjunto. Decir que sale el peor

@@ -10,9 +10,11 @@ grupo sin decidir a cuál se parece.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
-from minsur_engine.complejo import Componente, calcular
+from minsur_engine.complejo import Componente, calcular, margen_de_refinar
 from minsur_engine.horizonte import Horizonte
 
 HORIZONTE = Horizonte(primer_ano=2027, anos=2)
@@ -24,6 +26,23 @@ def _componente(nombre: str, concentrado: float, ley: float, recuperacion: float
         concentrado=(concentrado, concentrado),
         ley=(ley, ley),
         recuperacion=(recuperacion, recuperacion),
+    )
+
+
+def _con_margen(nombre: str, concentrado: float, ley: float, recuperacion: float) -> Componente:
+    """Como `_componente`, con su margen por tonelada ya calculado."""
+    base = _componente(nombre, concentrado, ley, recuperacion)
+    return replace(
+        base,
+        margen=margen_de_refinar(
+            HORIZONTE,
+            base.ley,
+            base.recuperacion,
+            precio_refinado=(30_000.0, 30_000.0),
+            premio=(500.0, 500.0),
+            precio_en_concentrado=(30_000.0, 30_000.0),
+            factor_pagable=(0.90, 0.90),
+        ),
     )
 
 
@@ -137,9 +156,34 @@ class TestRepartoPorMerito:
         assert bloque.refinado[0] == pytest.approx(279.0)
         assert bloque.refinado_sin_restriccion[0] == pytest.approx(300.0)
 
-    def test_el_empate_de_leyes_se_resuelve_igual_en_cada_corrida(self) -> None:
-        # Sin desempate, dos corridas del mismo caso podrian repartir distinto.
-        minas = [_componente("Beta", 400.0, 0.35, 0.70), _componente("Alfa", 400.0, 0.35, 0.90)]
+    def test_con_leyes_iguales_decide_el_margen_por_tonelada(self) -> None:
+        # Mismo contenido en las dos, asi que la ley no separa. Alfa recupera el
+        # 90 % y Beta el 70 %: refinar la de Alfa deja mas, de modo que la que
+        # sale a spot es Beta. Sin el margen decidiria el nombre, y "Alfa"
+        # ordena antes: cederia justo la que conviene refinar.
+        minas = [
+            _con_margen("Alfa", 400.0, 0.35, 0.90),
+            _con_margen("Beta", 400.0, 0.35, 0.70),
+        ]
+        bloque = calcular(HORIZONTE, minas, capacidad=(700.0, 700.0))
+        a_spot = {a.unidad: a.a_spot[0] for a in bloque.aportes}
+        assert a_spot == {"Alfa": 0.0, "Beta": pytest.approx(100.0)}
+
+    def test_la_ley_manda_sobre_el_margen(self) -> None:
+        # Beta deja mas margen por su recuperacion, pero Alfa tiene menor ley y
+        # la ley decide primero: sale Alfa.
+        minas = [
+            _con_margen("Alfa", 400.0, 0.30, 0.70),
+            _con_margen("Beta", 400.0, 0.40, 0.95),
+        ]
+        bloque = calcular(HORIZONTE, minas, capacidad=(700.0, 700.0))
+        a_spot = {a.unidad: a.a_spot[0] for a in bloque.aportes}
+        assert a_spot == {"Alfa": pytest.approx(100.0), "Beta": 0.0}
+
+    def test_el_empate_completo_se_resuelve_igual_en_cada_corrida(self) -> None:
+        # Con la misma ley y el mismo margen queda el nombre, que no decide
+        # nada pero evita que dos corridas del mismo caso repartan distinto.
+        minas = [_componente("Beta", 400.0, 0.35, 0.70), _componente("Alfa", 400.0, 0.35, 0.70)]
         primera = calcular(HORIZONTE, minas, capacidad=(700.0, 700.0))
         segunda = calcular(HORIZONTE, list(reversed(minas)), capacidad=(700.0, 700.0))
         assert {a.unidad: a.a_spot[0] for a in primera.aportes} == {

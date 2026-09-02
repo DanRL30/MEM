@@ -40,6 +40,13 @@ class Componente:
     concentrado: Serie
     ley: Serie
     recuperacion: Serie = ()
+    margen: Serie = ()
+    """Lo que gana el complejo por refinar una tonelada de este concentrado.
+
+    Desempata el reparto cuando dos unidades tienen la misma ley. Lo calcula
+    `margen_de_refinar`; sin él, el desempate cae en el nombre, que ordena pero
+    no decide nada.
+    """
 
 
 @dataclass(frozen=True)
@@ -166,6 +173,12 @@ def _reparto_por_merito(
     unidad en entrar, y esa asimetría no se puede generalizar a un proyecto
     nuevo. Queda registrada como desviación acordada.
 
+    Con leyes iguales decide el **margen por tonelada**: entre dos concentrados
+    del mismo contenido se refina el que más deja y se vende el otro. Con la
+    misma ley, esa diferencia es la de sus recuperaciones, que es exactamente lo
+    que debe decidir. El nombre queda como último desempate, y solo para que dos
+    corridas del mismo caso den lo mismo.
+
     **El análisis es de cada año y solo de ese año.** El orden se decide con las
     leyes de ese ejercicio y el excedente de ese ejercicio; nada se arrastra del
     anterior. Una unidad que no produce ese año no cede nada, aunque haya sido la
@@ -185,7 +198,8 @@ def _reparto_por_merito(
         # filtro, una unidad parada ordenaria primero -su ley es cero- y no
         # cederia nada, dejando el orden real escondido detras de ella.
         activas = [c for c in componentes if _en(c.concentrado, i) > 0.0]
-        for componente in sorted(activas, key=lambda c: (_en(c.ley, i), c.unidad)):
+        orden = sorted(activas, key=lambda c: (_en(c.ley, i), _en(c.margen, i), c.unidad))
+        for componente in orden:
             if resto <= 0.0:
                 break
             cede = min(_en(componente.concentrado, i), resto)
@@ -213,6 +227,42 @@ def _aporte(
         refinado_sin_restriccion=tuple(
             concentrado[i] * ley[i] * recuperacion[i] for i in range(horizonte.anos)
         ),
+    )
+
+
+def margen_de_refinar(
+    horizonte: Horizonte,
+    ley: Serie,
+    recuperacion: Serie,
+    *,
+    precio_refinado: Serie,
+    premio: Serie,
+    precio_en_concentrado: Serie,
+    factor_pagable: Serie,
+) -> Serie:
+    """Lo que deja refinar una tonelada de concentrado en vez de venderla.
+
+    Refinarla rinde `ley x recuperacion` toneladas de metal, que se cobran al
+    precio mas el premio. Venderla como concentrado rinde `ley` toneladas de
+    contenido, de las que se paga la fraccion pagable. La diferencia es lo que
+    el complejo gana por tratarla, y es lo que decide a quien conviene refinar
+    cuando dos concentrados tienen la misma ley.
+
+    **Falta el cargo de tratamiento**, que va por tonelada de concentrado y vive
+    en la hoja `Supuestos`, sin plantilla todavia. Mientras sea el mismo para
+    todos los origenes se cancela al comparar y no altera el orden; solo importa
+    si difiere por origen, que es justo lo que esa hoja tiene que decir.
+    """
+    ley = _serie(ley, horizonte)
+    recuperacion = _serie(recuperacion, horizonte)
+    precio_refinado = _serie(precio_refinado, horizonte)
+    premio = _serie(premio, horizonte)
+    precio_en_concentrado = _serie(precio_en_concentrado, horizonte)
+    factor_pagable = _serie(factor_pagable, horizonte)
+    return tuple(
+        (precio_refinado[i] + premio[i]) * ley[i] * recuperacion[i]
+        - precio_en_concentrado[i] * factor_pagable[i] * ley[i]
+        for i in range(horizonte.anos)
     )
 
 
