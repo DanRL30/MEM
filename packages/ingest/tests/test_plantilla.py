@@ -131,7 +131,6 @@ def plantilla_llena(tmp_path: Path) -> Path:
     libro = generador.Workbook()  # type: ignore[attr-defined]
     generador.hoja_caso(libro, unidades, 2027, 3)  # type: ignore[attr-defined]
     generador.hoja_produccion_de_unidad(libro, "Mina Alfa", 2027, 3)  # type: ignore[attr-defined]
-    generador.hoja_capex(libro, unidades, 2027, 3)  # type: ignore[attr-defined]
     generador.hoja_precios(libro, unidades, 2027, 3)  # type: ignore[attr-defined]
     generador.hoja_instrucciones(libro, unidades)  # type: ignore[attr-defined]
     libro.save(ruta)
@@ -141,8 +140,6 @@ def plantilla_llena(tmp_path: Path) -> Path:
     caso["B3"] = "Caso de prueba"
     caso["B9"] = "CP-2026-09"
     _llenar_cadena(libro["Mina Alfa"])
-
-    _escribir(libro["Capex"], "    Maquinaria, equipos y vehiculos", [1_000_000.0, 0.0, 0.0])
 
     precios = libro["Precios"]
     _escribir(precios, "Precio, escenario Base", [10_000.0] * 3)
@@ -188,11 +185,6 @@ class TestIdaYVuelta:
         alfa = leer_o_fallar(plantilla_llena).unidades[0]
         assert alfa.origen == "yacimiento"
         assert alfa.entrega_a == "Refineria"
-
-    def test_el_capital_cuadra_en_sus_dos_clasificaciones(self, plantilla_llena: Path) -> None:
-        capital = leer_o_fallar(plantilla_llena).unidades[0].capital
-        assert capital is not None
-        assert capital.total_por_etapa() == pytest.approx(1_000_000.0)
 
     def test_el_caso_leido_calcula_y_no_reporta_discrepancias(self, plantilla_llena: Path) -> None:
         # La prueba de que la frontera funciona y de que la cadena cargada es

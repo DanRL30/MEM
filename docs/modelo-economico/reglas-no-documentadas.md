@@ -46,6 +46,13 @@ que es lo que el motor necesita.
 | 028 | `InputsOpex`, fila 132, leida por `Depreciacion` | San Rafael y San Rafael Potencial traen una fila `Estudios` que alimenta la depreciacion; Nazareth y Santo Domingo la parten en `Estudios Pre Factibilidad (Gasto)` y `Estudios Factibilidad (Capitalizable)` | Un `Estudios` sin calificar es capitalizable. **La eleccion cambia la base imponible**, no solo el vocabulario | | | `opex.py` |
 | 029 | `InputsOpex`, columna de total de siete de los nueve escenarios | La columna `Total` suma desde el segundo ano del bloque y excluye el primero. Dos escenarios si lo incluyen | Arrastre al construir los bloques. La columna es de presentacion y no alimenta el flujo | | | |
 | 030 | `InputsOpex`, filas 108 y 119 | La fila rotulada `Reclasif COVID` calcula sobre `Relavera`, y el `Cash Cost Santo Domingo /tmf` de dos escenarios divide por la fila del titulo del bloque en vez de por su total | Referencias arrastradas en filas de presentacion. Ninguna de las dos alimenta el flujo | | | |
+| 031 | `InputsCapex`, filas 7 a 11 frente a 15 a 69 | La etapa no se carga: `Cierre Mina` es el codigo `NOD` de todas las unidades, `Capex Inicial` es la unidad en sus primeros anos productivos y el resto es `Sostenimiento` | La clasificacion contable es el unico dato del capital y la etapa sale de ella | Derivada del libro | 02/09/2026 | `capex.py` |
+| 032 | `InputsCapex`, fila 10 | La cuarta etapa esta rotulada `xxx`, no tiene formula en ninguna columna de ano y vale cero siempre. `Depreciacion` la arrastra rotulada `Otros` | Ranura reservada y nunca usada, como las ocho del comite de precios | Derivada del libro | 02/09/2026 | `capex.py` |
+| 033 | `Depreciacion`, filas 7 a 10 | Cada fila de capex entra a la depreciacion multiplicada por `(1 + Supuestos!H114)`, con rango declarado `-35, +50` y valor cero hoy | Banda de precision del estimado que afecta al capital entero, no solo a la depreciacion | | | `corrida.py` |
+| 034 | `Depreciacion`, escudo de cierre | `No Depreciable` entra con tasa 1, es decir se deduce entero en su ano | El motor lo trata como tasa cero por definicion. **Mueve la base imponible del ano de cierre y no se implementa hasta que Finanzas confirme** | | | |
+| 035 | `Depreciacion`, filas 781 y siguientes | La depreciacion financiera no es lineal: la tasa es `MIN(produccion / reservas, 100 %)` | Metodo de unidades de produccion. El motor la calcula lineal con otra tasa | | | |
+| 036 | `Depreciacion` frente a `InputsCapex` | `Equipos de Cómputo` se fusiona con maquinaria en la via tributaria, por su codigo, y se excluye de maquinaria en la financiera | El mismo importe con dos naturalezas segun el motor que lo mire | | | |
+| 037 | `Depreciacion`, columna de tasas | La tasa declarada para `Estudios` es 0,05 | **Cierra la consulta que abrio la regla `028`**: el estudio capitalizable se deprecia como una edificacion | | | |
 
 ## Detalle de las que no caben en una fila
 
@@ -157,15 +164,18 @@ utilidad`. Esa cancelación es lo que sostiene la decisión del ADR.
 4. **Precisión numérica** — se evalúa contra la tolerancia acordada y se documenta como aceptable
    sin corrección si queda dentro del umbral.
 
-Las treinta del registro son de tipo 2, salvo la 005, la 007, la 010, la 015 y nueve de las
+Las treinta y siete del registro son de tipo 2, salvo la 005, la 007, la 010, la 015 y nueve de las
 que salieron el 01/09/2026 de leer el bloque de Pisco y la hoja de supuestos —016 a 023 y 025—,
 que son de tipo 3: se reproducen y se reportan. Las dos que salieron el 02/09/2026 de leer
 `InputsOpex` —029 y 030— tambien son de tipo 3, y ninguna de las dos alimenta el flujo: viven en
-columnas y filas de presentacion. La 024 nacio como tipo 3 y MINSUR la confirmo el
+columnas y filas de presentacion. De las siete que salieron el 02/09/2026 de leer `InputsCapex`, la
+031, la 032 y la 033 son de tipo 2 y estan implementadas; la 034, la 035 y la 036 son
+inconsistencias del modelo que se reportan, y la 037 cierra una consulta abierta. La 024 nacio como tipo 3 y MINSUR la confirmo el
 mismo dia como deliberada, de modo que paso a tipo 2. La 015 es la única donde el motor **no** reproduce el libro, porque las dos
 hojas del libro se contradicen entre sí: sigue a `FC NZ`, que es la hoja del caso. Seis quedaron confirmadas por Finanzas el 01/09/2026; siguen abiertas la 003 (unidades de
 medida), la 004 (tramos tributarios), la 007 (valores guardados sin recalcular), la 027 (fraccion
-deducible de la gestion social) y la 028 (los estudios sin calificar).
+deducible de la gestion social), la 033 (el rango del ajuste de capex) y la 034 (la deduccion entera
+de lo no depreciable). La 028 queda contestada por la 037.
 
 Ver la bitácora de discrepancias abiertas en `bitacora-discrepancias.md`.
 

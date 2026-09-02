@@ -19,7 +19,7 @@ se marcan `tenant_minsur`.
 
 from __future__ import annotations
 
-from minsur_engine.capex import CapitalDeUnidad
+from minsur_engine.capex import CapitalDeUnidad, clasificar_por_etapa
 from minsur_engine.caso import (
     Caso,
     DatosComunes,
@@ -67,12 +67,13 @@ def unidad_simple() -> Caso:
     mismo. Es el caso cuyos números se verifican uno a uno.
     """
     horizonte = Horizonte(primer_ano=2027, anos=3)
+    # La etapa no se declara: se deriva de la naturaleza y de los anos con
+    # produccion, que es lo que hace el libro y lo que hace la ingesta.
+    naturaleza = {"maquinaria": horizonte.serie([1_000_000.0, 0.0, 0.0], nombre="maquinaria")}
     capital = CapitalDeUnidad(
         unidad="Mina Unica",
-        por_etapa={"inicial": horizonte.serie([1_000_000.0, 0.0, 0.0], nombre="inicial")},
-        por_naturaleza={
-            "maquinaria": horizonte.serie([1_000_000.0, 0.0, 0.0], nombre="maquinaria")
-        },
+        por_etapa=clasificar_por_etapa(horizonte, naturaleza, anos_activos=(1, 2)),
+        por_naturaleza=naturaleza,
     )
     unidad = UnidadProductiva(
         nombre="Mina Unica",

@@ -21,11 +21,16 @@ un NPV correcto sobre un modelo roto.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
 
 from minsur_engine import capital_trabajo, refineria, tributos
-from minsur_engine.capex import capex_de_etapa, capex_de_sostenimiento, capex_total
+from minsur_engine.capex import (
+    CapitalDeUnidad,
+    capex_de_etapa,
+    capex_de_sostenimiento,
+    capex_total,
+)
 from minsur_engine.cash_cost import (
     ESTUDIOS_CAPITALIZABLES,
     ESTUDIOS_DE_GASTO,
@@ -209,17 +214,22 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     resultado_de_costos = _cash_cost(caso)
     cash_cost = resultado_de_costos.total
     gastos = _gastos(caso, resultado_de_costos.por_unidad)
-    capital = [u.capital for u in caso.unidades if u.capital is not None]
+    capital = _capital_ajustado(caso)
 
     produccion_por_unidad = {
         u.nombre: _serie(u.produccion.mineral_tratado, horizonte, f"{u.nombre}/tratado")
         for u in caso.unidades
     }
+    # La regla 013 no deja correr la depreciacion antes del primer ano con
+    # produccion, y solo se aplica a las unidades que producen. Una refineria o
+    # una relavera de deposito no lo hacen nunca por diseno, de modo que la
+    # puerta les anularia el escudo fiscal entero en vez de retrasarlo.
+    con_produccion = {u.nombre: produccion_por_unidad[u.nombre] for u in caso.unidades if u.produce}
     depreciacion_tributaria = depreciacion_por_mina(
-        horizonte, capital, maestros.tasas_tributarias, produccion=produccion_por_unidad
+        horizonte, capital, maestros.tasas_tributarias, produccion=con_produccion
     )
     depreciacion_financiera = depreciacion_por_mina(
-        horizonte, capital, maestros.tasas_financieras, produccion=produccion_por_unidad
+        horizonte, capital, maestros.tasas_financieras, produccion=con_produccion
     )
 
     comunes = caso.datos_comunes
@@ -584,6 +594,38 @@ def _cash_cost(caso: Caso) -> _CashCost:
         for nombre, costo in cash_cost_por_unidad(unidades).items():
             por_unidad[nombre][i] = costo
     return _CashCost(tuple(total), {n: tuple(v) for n, v in por_unidad.items()})
+
+
+def _capital_ajustado(caso: Caso) -> list[CapitalDeUnidad]:
+    """Capital de las unidades, afectado por la banda de ajuste del caso.
+
+    La hoja `Depreciacion` multiplica cada fila de capex por `(1 + ajuste)`
+    antes de depreciarla, y el flujo de inversiones ve ese mismo capital. Es la
+    banda de precisión del estimado, que el libro declara entre -35 % y +50 %.
+
+    El factor afecta a las dos clasificaciones por igual, de modo que el cuadre
+    entre ellas se conserva.
+    """
+    capitales = [u.capital for u in caso.unidades if u.capital is not None]
+    if not caso.datos_comunes.ajuste_de_capex:
+        return capitales
+    factor = _serie(caso.datos_comunes.ajuste_de_capex, caso.horizonte, "ajuste de capex")
+    return [
+        replace(
+            capital,
+            por_etapa=_escalado(capital.por_etapa, factor),
+            por_naturaleza=_escalado(capital.por_naturaleza, factor),
+        )
+        for capital in capitales
+    ]
+
+
+def _escalado(clasificacion: Mapping[str, Serie], factor: Serie) -> dict[str, Serie]:
+    """Aplica el factor año a año sobre cada serie de una clasificación."""
+    return {
+        nombre: tuple(valor * (1.0 + factor[i]) for i, valor in enumerate(serie))
+        for nombre, serie in clasificacion.items()
+    }
 
 
 def _gastos(caso: Caso, costo_por_unidad: dict[str, Serie]) -> _Gastos:

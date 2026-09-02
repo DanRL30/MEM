@@ -163,21 +163,32 @@ usuario puede anadir conceptos que solo afecten al total. La plantilla lo resuel
 longitud fija al cierre del bloque, en `minsur_ingest.opex`. Ahi entran las reclasificaciones de
 covid de los casos historicos, que son de un caso concreto y no del catalogo.
 
-### 4.3 Capital — por unidad productiva, ano y doble clasificacion
+### 4.3 Capital — por unidad productiva y ano
 
-`InputsCapex` es el caso mas limpio del libro: **no tiene ni una formula propia**. Sus 5 394
-formulas son enlaces a otro libro y el resto son valores. Todo el capital entra como input.
+**Se pide una sola clasificacion, la contable, y son cinco conceptos**, en `$k` y con la dimension
+unidad x ano:
 
-Se clasifica dos veces, y las dos clasificaciones son independientes:
+No depreciable · Equipos de computo · Maquinaria, equipos y vehiculos · Instalaciones y equipos
+diversos y de comunicaciones · Edificaciones y construcciones.
 
-| Clasificacion | Valores |
-|---|---|
-| Por etapa | Capex inicial · Sostenimiento · Cierre de mina · Otros |
-| Por naturaleza contable | No depreciable · Maquinaria, equipos y vehiculos · Instalaciones y equipos diversos y de comunicaciones · Edificaciones y construcciones |
+Los dos del medio comparten el codigo `MAQ` del libro y se consolidan al leer, que es lo que hace
+la via tributaria. Se piden separados porque asi llega el dato y porque los equipos de computo
+suelen depreciarse mas rapido: si Finanzas confirma una tasa propia, se le da sin volver a pedir
+los datos.
 
-La segunda es la que gobierna la depreciacion, y por eso `Depreciacion` repite el mismo bloque
-contable por unidad. La desviacion acordada `D-04` obliga a que ese calculo sea **separado por
-mina** en todos los casos.
+**La etapa —inicial, sostenimiento, cierre— no es dato: se deriva.** La auditoria del 02/09/2026
+mostro que la primera version de esta seccion la daba por entrada y describia una doble
+clasificacion cargada que el libro no tiene. Las tres reglas de la derivacion, la clasificacion de
+cada bloque de la hoja y las cuatro consultas que abrio estan en
+[brechas-plantilla-capex.md](brechas-plantilla-capex.md).
+
+La naturaleza contable es la que gobierna la depreciacion, y por eso `Depreciacion` repite el mismo
+bloque por unidad. La desviacion acordada `D-04` obliga a que ese calculo sea **separado por mina**
+en todos los casos.
+
+**Una clase de unidad mas: la relavera de deposito.** Recibe relave, no extrae mineral, y de ella
+solo hay capital y depreciacion; su costo operativo se carga en la linea `Relavera` de la mina a la
+que sirve. No lleva pestana en el libro de produccion, si en los de opex y capex.
 
 ### 4.4 Comercial y precios — por metal y ano
 

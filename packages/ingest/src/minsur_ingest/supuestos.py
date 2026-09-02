@@ -223,6 +223,7 @@ def aplicar(caso: Caso, supuestos: SupuestosDelCaso, comite: ComiteDePrecios | N
             planilla_sobre_cash_cost=comunes.get(
                 "planilla_sobre_cash_cost", caso.datos_comunes.planilla_sobre_cash_cost
             ),
+            ajuste_de_capex=comunes.get("ajuste_de_capex", caso.datos_comunes.ajuste_de_capex),
             intereses=comunes.get("gastos_financieros", caso.datos_comunes.intereses),
             otros_flujo=comunes.get("otros_flujo_operativo", caso.datos_comunes.otros_flujo),
             osinergmin=comunes.get("osinergmin", ()),

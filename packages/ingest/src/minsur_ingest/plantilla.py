@@ -31,7 +31,6 @@ from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
-from minsur_engine.capex import CapitalDeUnidad
 from minsur_engine.caso import (
     Caso,
     DatosComunes,
@@ -40,6 +39,7 @@ from minsur_engine.caso import (
     UnidadProductiva,
 )
 from minsur_engine.horizonte import ErrorHorizonte, Horizonte, Serie
+from minsur_ingest.capex import CapexDeUnidad, armar_capex
 from minsur_ingest.incidencias import ErrorDePlantilla, Incidencia
 from minsur_ingest.opex import OpexDeUnidad, armar_opex
 from minsur_ingest.produccion import armar_produccion
@@ -53,8 +53,8 @@ from minsur_ingest.supuestos import (
     armar_filas,
 )
 
-HOJAS_REQUERIDAS = ("Caso", "Capex", "Precios")
-"""Ni la produccion ni el opex estan aqui: vienen en su propio libro.
+HOJAS_REQUERIDAS = ("Caso", "Precios")
+"""Ni la produccion, ni el opex, ni el capex: cada bloque viene en su libro.
 
 Los nombres de sus pestanas los declara el caso o el orden, de modo que no se
 pueden fijar en una constante. `Leeme` se ignora.
@@ -70,19 +70,6 @@ HOJA_COMUN = "Comunes"
 
 HOJAS_SIN_DATOS = ("leeme", "caso")
 """Pestanas del libro de produccion que no son un proyecto."""
-
-ETAPAS_DE_CAPEX = {
-    "capex inicial": "inicial",
-    "sostenimiento": "sostenimiento",
-    "cierre de mina": "cierre",
-    "otros": "otros",
-}
-NATURALEZAS_DE_CAPEX = {
-    "no depreciable": "no_depreciable",
-    "maquinaria equipos y vehiculos": "maquinaria",
-    "instalaciones y equipos diversos y de comunicaciones": "instalaciones",
-    "edificaciones y construcciones": "edificaciones",
-}
 
 # Unidad de medida declarada en la columna B, y su factor a la unidad del motor.
 # La clave conserva el simbolo de moneda y el de porcentaje: son lo unico que
@@ -200,6 +187,28 @@ class BloqueDeOpex:
 
 
 @dataclass(frozen=True)
+class BloqueDeCapex:
+    """Una pestaña del libro de capex, sin unidad asignada todavía."""
+
+    orden: int
+    hoja: str
+    capex: CapexDeUnidad
+
+
+@dataclass(frozen=True)
+class LecturaDeCapex:
+    """Resultado de leer el libro de capex."""
+
+    bloques: tuple[BloqueDeCapex, ...]
+    horizonte: Horizonte | None
+    incidencias: tuple[Incidencia, ...]
+
+    @property
+    def valida(self) -> bool:
+        return bool(self.bloques) and not self.incidencias
+
+
+@dataclass(frozen=True)
 class LecturaDeOpex:
     """Resultado de leer el libro de opex."""
 
@@ -253,7 +262,6 @@ class _Fila:
     hoja: str
     numero: int
     seccion: str
-    subseccion: str
     concepto: str
     metal: str | None
     medida: str
@@ -289,12 +297,11 @@ def leer_plantilla(ruta: Path, *, escenario: str | None = None) -> Lectura:
     if horizonte is None:
         return Lectura(None, tuple(incidencias))
 
-    nombres = [u.nombre for u in cabecera.unidades]
     produccion: dict[str, list[_Fila]] = {}
     for declarada in cabecera.unidades:
-        if declarada.tipo == "refineria":
-            # La refinería no tiene pestana de produccion: sus filas son
-            # resultado de lo que producen las minas.
+        if declarada.tipo != "mina":
+            # Ni la refinería ni un deposito tienen pestana de produccion: la
+            # primera recibe concentrado y el segundo relave.
             continue
         if declarada.hoja not in libro.sheetnames:
             incidencias.append(
@@ -308,11 +315,10 @@ def leer_plantilla(ruta: Path, *, escenario: str | None = None) -> Lectura:
             continue
         produccion[declarada.nombre] = _leer_pestana_de_unidad(libro[declarada.hoja], horizonte)
 
-    capex = _leer_hoja_de_series(libro["Capex"], horizonte, nombres, incidencias)
     precios = _leer_hoja_de_series(libro["Precios"], horizonte, [], incidencias)
     libro.close()
 
-    unidades = _armar_unidades(cabecera, horizonte, produccion, capex, incidencias)
+    unidades = _armar_unidades(cabecera, horizonte, produccion, incidencias)
     terminos = _armar_terminos(precios, horizonte, escenario or cabecera.escenario, incidencias)
     comunes = _armar_datos_comunes(cabecera, horizonte)
 
@@ -427,6 +433,46 @@ def leer_opex(ruta: Path) -> LecturaDeOpex:
     return LecturaDeOpex(tuple(bloques), horizonte, tuple(incidencias))
 
 
+def leer_capex(ruta: Path) -> LecturaDeCapex:
+    """Lee el libro de capex: una pestaña por unidad, en orden.
+
+    Trae **una pestaña por cada unidad que el caso declare**, refinería y
+    depósitos incluidos: los tres tipos invierten, aunque solo uno produzca.
+    """
+    incidencias: list[Incidencia] = []
+    if not ruta.exists():
+        return LecturaDeCapex((), None, (Incidencia("(archivo)", str(ruta), "no existe"),))
+
+    libro = load_workbook(ruta, data_only=True, read_only=True)
+    hojas = [h for h in libro.sheetnames if normalizar(h) not in HOJAS_SIN_DATOS]
+    if not hojas:
+        libro.close()
+        return LecturaDeCapex(
+            (),
+            None,
+            (Incidencia("(libro)", "-", "el libro no trae ninguna pestana de proyecto"),),
+        )
+
+    horizonte = _horizonte_de_la_cabecera(libro[hojas[0]], incidencias)
+    if horizonte is None:
+        libro.close()
+        return LecturaDeCapex((), None, tuple(incidencias))
+
+    bloques: list[BloqueDeCapex] = []
+    for orden, nombre in enumerate(hojas, start=1):
+        hoja = libro[nombre]
+        _reportar_importes_sin_concepto(hoja, horizonte, incidencias)
+        bloques.append(
+            BloqueDeCapex(
+                orden=orden,
+                hoja=nombre,
+                capex=armar_capex(_pares(hoja, horizonte, incidencias), incidencias, hoja=nombre),
+            )
+        )
+    libro.close()
+    return LecturaDeCapex(tuple(bloques), horizonte, tuple(incidencias))
+
+
 def _reportar_importes_sin_concepto(
     hoja: Worksheet, horizonte: Horizonte, incidencias: list[Incidencia]
 ) -> None:
@@ -438,7 +484,12 @@ def _reportar_importes_sin_concepto(
     saltarla en silencio lo haría desaparecer del total sin dejar rastro.
     """
     ultima = PRIMERA_COLUMNA_DE_ANOS + horizonte.anos - 1
-    for fila in hoja.iter_rows(min_row=PRIMERA_FILA_DE_DATOS, max_col=ultima):
+    # El numero de fila se lleva contado y no se pide a la celda: sin concepto,
+    # la primera columna llega como celda vacia y una celda vacia no sabe donde
+    # esta.
+    for numero, fila in enumerate(
+        hoja.iter_rows(min_row=PRIMERA_FILA_DE_DATOS, max_col=ultima), start=PRIMERA_FILA_DE_DATOS
+    ):
         etiqueta, medida = fila[0].value, fila[1].value
         if medida is None or (etiqueta is not None and str(etiqueta).strip()):
             continue
@@ -446,7 +497,7 @@ def _reportar_importes_sin_concepto(
             incidencias.append(
                 Incidencia(
                     hoja.title,
-                    f"A{fila[0].row}",
+                    f"A{numero}",
                     "hay importes en una fila sin concepto. Un costo sin nombre no se puede "
                     "atribuir, y quedaria fuera del total sin que nada lo acuse.",
                 )
@@ -730,7 +781,6 @@ def _leer_pestana_de_unidad(hoja: Worksheet, horizonte: Horizonte) -> list[_Fila
                 hoja=hoja.title,
                 numero=int(fila[0].row or 0),
                 seccion=hoja.title,
-                subseccion="",
                 concepto=str(etiqueta).strip(),
                 metal=None,
                 medida=_clave_de_medida(str(medida)),
@@ -750,7 +800,6 @@ def _leer_hoja_de_series(
     """
     filas: list[_Fila] = []
     seccion = ""
-    subseccion = ""
     ultima_columna = PRIMERA_COLUMNA_DE_ANOS + horizonte.anos - 1
 
     for fila in hoja.iter_rows(min_row=PRIMERA_FILA_DE_DATOS, max_col=ultima_columna):
@@ -759,14 +808,7 @@ def _leer_hoja_de_series(
         if etiqueta is None or not str(etiqueta).strip():
             continue
         if medida is None:
-            # La hoja de capital anida: la unidad abre seccion y cada etapa
-            # abre subseccion. Distinguirlas por el nombre y no por la sangria
-            # evita que un espacio de mas desarme la lectura.
-            texto = str(etiqueta).strip()
-            if normalizar(texto) in ETAPAS_DE_CAPEX:
-                subseccion = texto
-            else:
-                seccion, subseccion = texto, ""
+            seccion = str(etiqueta).strip()
             continue
 
         concepto, metal = canonizar(str(etiqueta), unidades)
@@ -775,7 +817,6 @@ def _leer_hoja_de_series(
                 hoja=hoja.title,
                 numero=int(fila[0].row or 0),
                 seccion=seccion,
-                subseccion=subseccion,
                 concepto=concepto,
                 metal=metal,
                 medida=_clave_de_medida(str(medida)),
@@ -792,10 +833,9 @@ def _armar_unidades(
     cabecera: _Cabecera,
     horizonte: Horizonte,
     produccion: dict[str, list[_Fila]],
-    capex: list[_Fila],
     incidencias: list[Incidencia],
 ) -> list[UnidadProductiva]:
-    """Arma las unidades del caso. El opex llega despues, en su propio libro."""
+    """Arma las unidades del caso. El opex y el capex llegan en su propio libro."""
     unidades: list[UnidadProductiva] = []
     for declarada in cabecera.unidades:
         nombre = declarada.nombre
@@ -803,14 +843,12 @@ def _armar_unidades(
             (fila.concepto, _serie(fila, horizonte, incidencias))
             for fila in produccion.get(nombre, [])
         ]
-        capital = _armar_capital(nombre, horizonte, capex, incidencias)
 
         unidades.append(
             UnidadProductiva(
                 nombre=nombre,
                 tipo=declarada.tipo,
                 produccion=armar_produccion(filas, horizonte, incidencias, hoja=declarada.hoja),
-                capital=capital,
                 origen=declarada.origen,
                 etapas=_etapas(declarada),
                 entrega_a=declarada.entrega_a or None,
@@ -822,41 +860,6 @@ def _armar_unidades(
 def _etapas(declarada: _UnidadDeclarada) -> tuple[str, ...]:
     """Etapas de la planta, tal como la hoja `Caso` las declara."""
     return tuple(e.strip() for e in declarada.etapas.split(",") if e.strip())
-
-
-def _armar_capital(
-    unidad: str, horizonte: Horizonte, capex: list[_Fila], incidencias: list[Incidencia]
-) -> CapitalDeUnidad | None:
-    """Reconstruye la doble clasificación del capital de una unidad.
-
-    La hoja anida naturaleza dentro de etapa, así que el mismo importe alimenta
-    las dos clasificaciones. Si no cuadraran, `CapitalDeUnidad` lo rechaza: es
-    la fila `Check` del libro, convertida en condición.
-    """
-    por_etapa: dict[str, list[float]] = {}
-    por_naturaleza: dict[str, list[float]] = {}
-
-    for fila in capex:
-        if not _es_de(fila.seccion, unidad):
-            continue
-        etapa_actual = ETAPAS_DE_CAPEX.get(normalizar(fila.subseccion))
-        naturaleza = NATURALEZAS_DE_CAPEX.get(normalizar(str(fila.concepto)))
-        if naturaleza is None or etapa_actual is None:
-            continue
-        valores = _serie(fila, horizonte, incidencias)
-        acumulado_etapa = por_etapa.setdefault(etapa_actual, [0.0] * horizonte.anos)
-        acumulado_naturaleza = por_naturaleza.setdefault(naturaleza, [0.0] * horizonte.anos)
-        for i, valor in enumerate(valores):
-            acumulado_etapa[i] += valor
-            acumulado_naturaleza[i] += valor
-
-    if not por_etapa:
-        return None
-    return CapitalDeUnidad(
-        unidad=unidad,
-        por_etapa={etapa: tuple(serie) for etapa, serie in por_etapa.items()},
-        por_naturaleza={n: tuple(serie) for n, serie in por_naturaleza.items()},
-    )
 
 
 def _armar_terminos(
@@ -952,14 +955,3 @@ def _numero(valor: object, hoja: str, celda: str, incidencias: list[Incidencia])
             Incidencia(hoja, celda, f"se esperaba un numero y hay {str(valor)[:40]!r}")
         )
         return None
-
-
-def _es_de(seccion: str, unidad: str) -> bool:
-    """Si una sección pertenece a una unidad.
-
-    La plantilla escribe la sección como `San Rafael (mina)`, y el libro a
-    veces solo el nombre. Comparar por prefijo normalizado cubre ambas.
-    """
-    normalizada = normalizar(seccion)
-    objetivo = normalizar(unidad)
-    return normalizada == objetivo or normalizada.startswith(f"{objetivo} ")

@@ -41,6 +41,7 @@ try:
     from openpyxl.worksheet.datavalidation import DataValidation
     from openpyxl.worksheet.worksheet import Worksheet
 
+    from minsur_ingest.capex import FILAS_DE_CAPEX
     from minsur_ingest.opex import FILAS_DE_OPEX
     from minsur_ingest.produccion import FILAS_DE_PRODUCCION
     from minsur_ingest.supuestos import (
@@ -54,19 +55,12 @@ except ImportError:  # pragma: no cover - entorno sin sincronizar
 
 PRIMERA_FILA_DE_DATOS = 5
 
-TIPOS_DE_UNIDAD = ("mina", "refineria")
+TIPOS_DE_UNIDAD = ("mina", "refineria", "deposito")
 ORIGENES = ("yacimiento", "relave")
 ETAPAS = ("preconcentracion", "concentradora")
 ETAPAS_POR_DEFECTO = ("concentradora",)
 METALES = ("Sn", "Cu", "Ag")
 
-CAPEX_ETAPAS = ["Capex inicial", "Sostenimiento", "Cierre de mina", "Otros"]
-CAPEX_NATURALEZAS = [
-    "No depreciable",
-    "Maquinaria, equipos y vehiculos",
-    "Instalaciones y equipos diversos y de comunicaciones",
-    "Edificaciones y construcciones",
-]
 DATOS_COMUNES = [
     ("Dias de working capital", "dias"),
     ("Tratamiento del IGV en working capital", "si / no"),
@@ -196,6 +190,16 @@ class Unidad:
     @property
     def es_refineria(self) -> bool:
         return self.tipo == "refineria"
+
+    @property
+    def produce(self) -> bool:
+        """Solo una mina extrae y trata mineral.
+
+        La refineria recibe concentrado y un deposito recibe relave: ninguno de
+        los dos lleva pestana en el libro de produccion, y los dos si la llevan
+        en los de opex y capex.
+        """
+        return self.tipo == "mina"
 
 
 def encabezar(hoja: Worksheet, titulo: str, primer_ano: int, anos: int) -> None:
@@ -421,6 +425,15 @@ def hoja_supuestos_de_unidad(libro: Workbook, nombre: str, primer_ano: int, anos
     _hoja_de_filas(libro, nombre, f"Supuestos de {nombre}", FILAS_POR_UNIDAD, primer_ano, anos)
 
 
+def hoja_capex_de_unidad(libro: Workbook, nombre: str, primer_ano: int, anos: int) -> None:
+    """Una pestana de capital, con la misma estructura para todas las unidades.
+
+    Se pide una sola clasificacion, la contable: la etapa la deriva la
+    plataforma, que es lo que hace el libro.
+    """
+    _hoja_de_filas(libro, nombre, f"Capex de {nombre}", FILAS_DE_CAPEX, primer_ano, anos)
+
+
 def hoja_opex_de_unidad(libro: Workbook, nombre: str, primer_ano: int, anos: int) -> None:
     """Una pestana de opex, con la misma estructura para todas las unidades.
 
@@ -428,21 +441,6 @@ def hoja_opex_de_unidad(libro: Workbook, nombre: str, primer_ano: int, anos: int
     resultado, pero su costo es un dato como el de cualquier mina.
     """
     _hoja_de_filas(libro, nombre, f"Opex de {nombre}", FILAS_DE_OPEX, primer_ano, anos)
-
-
-def hoja_capex(libro: Workbook, unidades: list[Unidad], primer_ano: int, anos: int) -> None:
-    hoja = libro.create_sheet("Capex")
-    encabezar(hoja, "Capital por unidad, etapa y naturaleza contable, en US$", primer_ano, anos)
-    fila, numericas = 5, []
-    for unidad in unidades:
-        fila = fila_de_seccion(hoja, fila, f"{unidad.nombre} ({unidad.tipo})", anos)
-        for etapa in CAPEX_ETAPAS:
-            fila = fila_de_seccion(hoja, fila, f"  {etapa}", anos)
-            for naturaleza in CAPEX_NATURALEZAS:
-                numericas.append(fila)
-                fila = fila_de_entrada(hoja, fila, f"    {naturaleza}", "US$", anos)
-        fila += 1
-    validacion_numerica(hoja, numericas, anos)
 
 
 def hoja_precios(libro: Workbook, unidades: list[Unidad], primer_ano: int, anos: int) -> None:
@@ -472,6 +470,30 @@ def hoja_precios(libro: Workbook, unidades: list[Unidad], primer_ano: int, anos:
 
 def _leeme_del_bloque(bloque: str) -> list[tuple[str, Font | None]]:
     """Lo que cambia entre plantillas, que es mas de lo que comparten."""
+    if bloque == "capex":
+        return [
+            ("Se pide una sola clasificacion: la contable", CABECERA),
+            ("Cinco conceptos por unidad, y de ellos sale todo lo demas. La etapa", None),
+            ("-inicial, sostenimiento o cierre- no se pide: la calcula la", None),
+            ("plataforma, que es lo que hace el libro. El cierre de mina es lo no", None),
+            ("depreciable; el capital anterior al primer ano con produccion es", None),
+            ("inicial; el resto es sostenimiento.", None),
+            ("", None),
+            ("Equipos de computo va aparte de maquinaria", CABECERA),
+            ("Se piden separados porque asi llega el dato. Para depreciar se suman,", None),
+            ("que es lo que hace el libro; tenerlos aparte permite darles una tasa", None),
+            ("propia el dia que se confirme, sin volver a pedir los datos.", None),
+            ("", None),
+            ("Una pestana por unidad, las tres clases incluidas", CABECERA),
+            ("La refineria y las relaveras de deposito invierten aunque no", None),
+            ("produzcan, asi que llevan pestana aqui igual que las minas. Una", None),
+            ("relavera de deposito solo llena esta plantilla.", None),
+            ("", None),
+            ("Los importes van en miles de dolares", CABECERA),
+            ("Es lo que dice la columna de unidad, y es la escala del libro. La", None),
+            ("plataforma convierte al leer.", None),
+            ("", None),
+        ]
     if bloque == "opex":
         return [
             ("Todo lo que se pide aqui es dato", CABECERA),
@@ -586,7 +608,7 @@ def _encadenar(unidades: list[Unidad]) -> list[Unidad]:
     if not refinerias:
         return unidades
     destino = refinerias[0].nombre
-    return [u if u.es_refineria else replace(u, entrega_a=destino) for u in unidades]
+    return [replace(u, entrega_a=destino) if u.produce else u for u in unidades]
 
 
 def main() -> int:
@@ -603,7 +625,7 @@ def main() -> int:
     p.add_argument("--anos", type=int, default=36)
     p.add_argument(
         "--bloque",
-        choices=("produccion", "opex", "supuestos", "precios", "completo"),
+        choices=("produccion", "opex", "capex", "supuestos", "precios", "completo"),
         default="produccion",
         help="Bloque a emitir. 'completo' mantiene el libro unico anterior.",
     )
@@ -640,6 +662,15 @@ def main() -> int:
         hoja_instrucciones(libro, unidades, "opex")
         return _guardar(libro, args)
 
+    if args.bloque == "capex":
+        # Aqui llevan pestana las tres clases de unidad: la refineria y los
+        # depositos invierten, aunque no produzcan.
+        libro.remove(libro.active)
+        for unidad in unidades:
+            hoja_capex_de_unidad(libro, unidad.nombre, args.primer_ano, args.anos)
+        hoja_instrucciones(libro, unidades, "capex")
+        return _guardar(libro, args)
+
     if args.bloque == "supuestos":
         libro.remove(libro.active)
         hoja_supuestos(libro, args.primer_ano, args.anos)
@@ -656,17 +687,17 @@ def main() -> int:
         # pestanas se asocian a sus unidades por orden, no por nombre: repetir
         # aqui la identificacion abre la puerta a que contradiga a la del caso.
         libro.remove(libro.active)
-    # La refinería no tiene pestana: sus filas son resultado de lo que producen
-    # las minas, y sus dos supuestos —capacidad y recuperacion— viven en la
-    # hoja Supuestos del libro corporativo, no en produccion.
+    # Ni la refinería ni un deposito tienen pestana de produccion: la primera
+    # recibe concentrado y el segundo relave. Los dos supuestos de la refineria
+    # —capacidad y recuperacion— viven en la hoja Supuestos, no en produccion.
     for unidad in unidades:
-        if unidad.es_refineria:
+        if not unidad.produce:
             continue
         hoja_produccion_de_unidad(libro, unidad.nombre, args.primer_ano, args.anos)
     if args.bloque == "completo":
-        # Capex y precios siguen en hojas unicas con las unidades apiladas. Les
-        # toca su propia plantilla mas adelante; el opex ya tiene la suya.
-        hoja_capex(libro, unidades, args.primer_ano, args.anos)
+        # Precios sigue en una hoja unica con las unidades apiladas. Le toca su
+        # propia plantilla mas adelante; produccion, opex y capex ya tienen la
+        # suya y por eso el libro completo ya no las lleva.
         hoja_precios(libro, unidades, args.primer_ano, args.anos)
     hoja_instrucciones(libro, unidades)
 

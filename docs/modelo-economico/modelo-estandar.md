@@ -34,7 +34,7 @@ Caso
   Horizonte              primer ano, numero de anos, ano de valuacion
   EscenarioDePrecios     juego de precios por metal y ano (base, alto, bajo)
   UnidadProductiva [1..n]
-      tipo               mina, refineria
+      tipo               mina, refineria, deposito
       origen             yacimiento, relave
       etapas             preconcentracion, concentradora
       entrega_a          unidad receptora, o vacio si vende directo
@@ -50,7 +50,9 @@ Caso
 Los tipos son dos, no cinco. **La preconcentracion y la concentradora son etapas de la planta de una
 mina, no unidades**, y **la relavera es el origen de su mineral**: en el libro B2 tiene su sub-bloque
 `Mina` con mineral extraido y ley igual que San Rafael, porque se extrae de un deposito de relaves ya
-cerrado y desde ahi sigue la cadena normal. La refineria si es una unidad, y hasta el 01/09/2026
+cerrado y desde ahi sigue la cadena normal. **Una relavera de deposito si es una unidad**, y de otra
+clase: recibe relave, no extrae nada, y de ella solo hay capital y depreciacion. La refineria si es
+una unidad, y hasta el 01/09/2026
 faltaba en esta lista.
 
 Los roles de metal salen del libro y no se declaran libres: **Sn** se refina y se vende con premio, y

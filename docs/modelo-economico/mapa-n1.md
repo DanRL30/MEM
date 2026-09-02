@@ -20,7 +20,7 @@ modulo responsable, de modo que una discrepancia se localiza en un archivo.
 | CAPEX inicial por clasificacion | `capex.py` | `::test_capex_inicial` |
 | CAPEX diferido y de sostenimiento | `capex.py` | `::test_capex_diferido` |
 | Costos de cierre | `capex.py` | `::test_costos_cierre` |
-| Valor residual | `capex.py` | `::test_valor_residual` |
+| Valor residual | **No aplica.** Ver la nota 3 | |
 | Capital de trabajo | `capital_trabajo.py` | `::test_working_capital` |
 
 Tolerancia N1: diferencia relativa hasta 0,1 % o absoluta hasta US$ 10 000 por linea y ano.
@@ -61,7 +61,7 @@ asi que el mapa de arriba se contrasta linea por linea contra ella.
 | Sustaining capital | CAPEX diferido y de sostenimiento | `capex.py` |
 | Closure costs | Costos de cierre | `capex.py` |
 | Change in working capital | Capital de trabajo | `capital_trabajo.py` |
-| Residual Value | Valor residual | `capex.py` |
+| Residual Value | **No aplica.** Ver la nota 3 | |
 | Total capital cost | Suma de los anteriores | `capex.py` |
 | CFO, CFI, CFF, Net Cash Flow | **Nivel N2**, no N1 | `flujos.py` |
 | NPV of Net Cash Flow, IRR | **Nivel N3**, no N1 | `indicadores.py` |
@@ -95,6 +95,17 @@ otra, el cash cost los excluye y el ingreso es neto. Contrastadas contra el mode
 una de las dos dara diferencia en dos lineas de N1 que se compensan en N2.
 
 Se resuelve observando que hace el modelo de referencia, no eligiendo. Pendiente de `R-02`.
+
+### Nota 3 — el valor residual no existe en el modelo
+
+Este mapa le asignaba una linea de contraste a `capex.py`, y `capex.py` nunca lo implemento. La
+busqueda del 02/09/2026 sobre el libro —`InputsCapex`, `Otros`, `FC NZ` y `Resumen`— no encontro
+ninguna fila que lo calcule.
+
+Es una linea que la hoja resumen del estandar `DM-STD-PE-27` pide y que el modelo de referencia no
+tiene. Manda el modelo: no se implementa, y la diferencia se reporta como discrepancia entre el
+estandar y el modelo, con las demas de
+[estandar-dm-std-pe-27.md](estandar-dm-std-pe-27.md).
 
 ### Nota 2 — lineas tributarias sin parametro registrado
 

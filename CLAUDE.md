@@ -180,9 +180,9 @@ despues, no deuda heredada.
 |---|---|
 | `verificar_convenciones.py` | Sin infracciones |
 | `ruff check .` | Limpio |
-| `ruff format --check .` | Limpio, 96 archivos |
-| `mypy packages apps/api/src` | Limpio en modo estricto, 61 archivos |
-| `pytest` | 331 de 331, de las que 31 son el contraste de fidelidad |
+| `ruff format --check .` | Limpio, 99 archivos |
+| `mypy packages apps/api/src` | Limpio en modo estricto, 63 archivos |
+| `pytest` | 352 de 352, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -346,6 +346,49 @@ completa y `estudios_deducibles` la parte que rebaja la base: la diferencia son
 los capitalizables, que el libro deprecia en vez de deducir. Su naturaleza
 contable no esta declarada en ninguna parte, asi que hoy salen de caja y no se
 deprecian; eso se cierra con la plantilla de CAPEX.
+
+### El capital se pide una vez y la etapa se deriva
+
+[capex.py](packages/ingest/src/minsur_ingest/capex.py) declara la estructura y
+`leer_capex()` la lee, con el mismo patron que opex. La plantilla pide **cinco
+conceptos por unidad**, la clasificacion contable, y nada mas.
+
+**La etapa no se pide porque el libro no la carga.** La auditoria de
+`InputsCapex` —[brechas-plantilla-capex.md](docs/modelo-economico/brechas-plantilla-capex.md)—
+encontro que en toda el area numerica de esa hoja no hay una sola constante
+tecleada, y que la etapa sale por formula de la clasificacion, con tres reglas
+que [clasificar_por_etapa](packages/engine/src/minsur_engine/capex.py) reproduce:
+el cierre es exactamente lo no depreciable, el capital anterior al primer ano con
+produccion es inicial, y el resto es sostenimiento. La cuarta etapa del libro no
+tiene formula y vale cero siempre.
+
+**Consecuencia sobre el `Check`:** con una sola clasificacion cargada, las dos
+salen de las mismas celdas y el cuadre se cumple por construccion. La
+verificacion de `CapitalDeUnidad` se conserva —el capital tambien se construye a
+mano en las pruebas— pero por la via de la plantilla ya no puede fallar, y decir
+lo contrario seria prometer una comprobacion que no existe.
+
+**Equipos de computo va aparte de maquinaria en la plantilla y se consolida al
+leer**, que es lo que hace la via tributaria del libro. Se piden separados porque
+asi llega el dato y porque la via financiera los trata distinto: el dia que
+Finanzas confirme una tasa propia, se le da sin volver a pedir los datos.
+
+### La relavera de deposito es una tercera clase de unidad
+
+`TIPOS_DE_UNIDAD` tiene `mina`, `refineria` y `deposito`. Un deposito recibe
+relave, no extrae mineral y no vende nada: **solo lleva capital y depreciacion**,
+y su costo operativo se carga en la linea `Relavera` de la mina a la que sirve.
+No confundirla con una relavera de reprocesamiento, que es una mina con
+`origen="relave"`.
+
+Dos efectos que conviene tener presentes:
+
+- **`UnidadProductiva.produce` es lo que decide quien lleva pestana de
+  produccion**, y hoy solo la mina. Los libros de opex y de capex llevan una por
+  unidad, los tres tipos incluidos.
+- **La puerta de la regla 013 solo se aplica a las unidades que producen.** Una
+  refineria o un deposito no producen nunca por diseno, de modo que la puerta les
+  anularia el escudo fiscal entero en vez de retrasarlo.
 
 ### El bloque de la refineria: todo resultado, y sin agrupar
 

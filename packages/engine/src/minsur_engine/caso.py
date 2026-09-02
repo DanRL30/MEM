@@ -29,14 +29,20 @@ from minsur_engine.horizonte import Horizonte, Serie
 from minsur_engine.parametros import ParametrosCorporativos
 from minsur_engine.tributos import EscalaProgresiva
 
-TIPOS_DE_UNIDAD = ("mina", "refineria")
-"""Solo hay dos: la que saca y trata mineral, y la que recibe concentrado.
+TIPOS_DE_UNIDAD = ("mina", "refineria", "deposito")
+"""La que saca y trata mineral, la que recibe concentrado, y la que solo recibe
+relave.
 
-El libro no tiene unidades de tipo preconcentración, concentradora ni relavera.
-La preconcentración y la concentradora son **etapas de la planta** de una mina, y
-la relavera es el **origen** de su mineral: B2 tiene su sub-bloque `Mina` con
-mineral extraído y ley igual que San Rafael, porque se extrae de un depósito de
-relaves ya cerrado y desde ahí sigue la cadena normal.
+El libro no tiene unidades de tipo preconcentración ni concentradora: las dos son
+**etapas de la planta** de una mina.
+
+**Una relavera puede ser cualquiera de dos cosas y conviene no confundirlas.** Si
+se reprocesa, es una mina y su relavera es el **origen** de su mineral: B2 tiene
+su sub-bloque `Mina` con mineral extraído y ley igual que San Rafael, porque se
+extrae de un depósito ya cerrado y desde ahí sigue la cadena normal. Si es de
+depósito, no extrae nada: recibe relave, y de ella solo hay capital y
+depreciación. Su costo operativo se carga en la línea `Relavera` de la mina a la
+que sirve, de modo que no tiene bloque de opex propio ni produce nada que vender.
 """
 
 ORIGENES = ("yacimiento", "relave")
@@ -193,6 +199,19 @@ class UnidadProductiva:
     def es_refineria(self) -> bool:
         return self.tipo == "refineria"
 
+    @property
+    def es_deposito(self) -> bool:
+        return self.tipo == "deposito"
+
+    @property
+    def produce(self) -> bool:
+        """Si la unidad extrae y trata mineral.
+
+        La refinería y el depósito no: la primera recibe concentrado y el
+        segundo relave. Ninguno lleva pestaña en el libro de producción.
+        """
+        return self.tipo == "mina"
+
 
 @dataclass(frozen=True)
 class MetalDelConcentrado:
@@ -259,6 +278,13 @@ class DatosComunes:
     predios: Serie = ()
     planilla_sobre_cash_cost: Serie = ()
     """Tasa con que el libro deriva la planilla del cash cost de cada unidad."""
+
+    ajuste_de_capex: Serie = ()
+    """Banda de precisión del estimado de capital, que afecta a todo el capex.
+
+    El libro la declara entre -35 % y +50 % y la aplica antes de depreciar.
+    Vacía significa que el capital entra tal como se cargó.
+    """
 
     intereses: Serie = ()
     otros_flujo: Serie = ()
@@ -344,4 +370,5 @@ class Caso:
 
     @property
     def unidades_mineras(self) -> tuple[UnidadProductiva, ...]:
-        return tuple(u for u in self.unidades if not u.es_refineria)
+        """Las que entregan concentrado. Ni la refinería ni un depósito lo hacen."""
+        return tuple(u for u in self.unidades if u.produce)
