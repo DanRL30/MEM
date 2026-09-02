@@ -13,6 +13,7 @@ importa para el contraste estructural:
     dos proyectos       una operacion en marcha y un proyecto que entra tarde
     agotamiento         minas cuyo capital se agota contra sus reservas
     polimetálico        dos minas que liquidan concentrado de cobre con plata
+    capital de trabajo  una mina con parada intermedia y cuentas que rotan
 
 Los casos certificados con datos reales son otra cosa: viven en el tenant de
 MINSUR, se referencian por manifiesto en `fixtures/certificados/` y sus pruebas
@@ -404,4 +405,83 @@ def caso_polimetalico() -> Caso:
             ),
         ),
         datos_comunes=DatosComunes(gastos_administrativos=horizonte.ceros()),
+    )
+
+
+# --- Capital de trabajo --------------------------------------------------------
+
+DIAS_POR_COBRAR = 36.0
+"""Un decimo del ano comercial: la cartera es el 10 % de la venta del ano."""
+
+DIAS_POR_PAGAR = 72.0
+"""Un quinto: la deuda es el 20 % de la bolsa de egresos del ano."""
+
+TASA_IGV = 0.18
+PORCENTAJE_DE_VENTAS = 0.50
+PORCENTAJE_DE_COMPRAS = 0.50
+OTRAS_POR_COBRAR = 5_000.0
+OTRAS_POR_PAGAR = 3_000.0
+
+
+def caso_de_capital_de_trabajo() -> Caso:
+    """Una mina que produce dos años, para uno y vuelve a producir.
+
+    La parada es lo que separa las dos banderas posibles: el libro liquida las
+    cuentas en el **ultimo ano con produccion**, y tomar la venta por bandera
+    las liquidaria en la parada y las reabriria despues.
+
+    Las cifras son redondas a proposito: 100 tmf a 10 000 dan una venta de un
+    millon, y con 36 dias sobre 360 la cartera es la decima parte.
+    """
+    horizonte = Horizonte(primer_ano=2027, anos=5)
+    # Dos anos de produccion, una parada y un reinicio: los tres casos que
+    # distingue la formula del libro caben en un solo horizonte.
+    tratado = [0.0, 1_000.0, 1_000.0, 0.0, 1_000.0]
+    naturaleza = {
+        "maquinaria": horizonte.serie([1_000_000.0, 0.0, 0.0, 0.0, 0.0], nombre="maquinaria")
+    }
+    unidad = UnidadProductiva(
+        nombre="Mina Intermitente",
+        tipo="mina",
+        produccion=ProduccionDeUnidad(
+            mineral_tratado=horizonte.serie(tratado, nombre="tratado"),
+            mineral_extraido=horizonte.serie(tratado, nombre="extraido"),
+            concentrado_producido=horizonte.ceros(),
+            metal_refinado_vendido=horizonte.serie(
+                [0.0, 100.0, 100.0, 0.0, 100.0], nombre="refinado"
+            ),
+        ),
+        costos={
+            "Mina": horizonte.serie([0.0, 200_000.0, 200_000.0, 0.0, 200_000.0], nombre="mina")
+        },
+        capital=CapitalDeUnidad(
+            unidad="Mina Intermitente",
+            por_etapa=clasificar_por_etapa(horizonte, naturaleza, anos_activos=(1, 2, 4)),
+            por_naturaleza=naturaleza,
+        ),
+    )
+    return Caso(
+        nombre="Sintetico: capital de trabajo",
+        horizonte=horizonte,
+        unidades=(unidad,),
+        terminos=TerminosComerciales(
+            precio_metal_refinado=horizonte.serie([10_000.0] * 5, nombre="precio"),
+            premio_metal_refinado=horizonte.ceros(),
+            precio_metal_en_concentrado=horizonte.ceros(),
+            factor_metal_pagable=horizonte.ceros(),
+        ),
+        datos_comunes=DatosComunes(
+            gastos_administrativos=horizonte.ceros(),
+            dias_por_cobrar=horizonte.serie([DIAS_POR_COBRAR] * 5, nombre="dias por cobrar"),
+            dias_por_pagar=horizonte.serie([DIAS_POR_PAGAR] * 5, nombre="dias por pagar"),
+            otras_cuentas_por_cobrar=horizonte.serie(
+                [OTRAS_POR_COBRAR] * 5, nombre="otras cuentas por cobrar"
+            ),
+            otras_cuentas_por_pagar=horizonte.serie(
+                [OTRAS_POR_PAGAR] * 5, nombre="otras cuentas por pagar"
+            ),
+            tasa_igv=TASA_IGV,
+            porcentaje_de_ventas_de_exportacion=PORCENTAJE_DE_VENTAS,
+            porcentaje_de_compras_locales=PORCENTAJE_DE_COMPRAS,
+        ),
     )

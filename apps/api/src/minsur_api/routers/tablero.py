@@ -128,6 +128,11 @@ async def estados_financieros(
             "Flujo de inversiones": list(resultado.flujo.flujo_de_inversiones),
             "Flujo economico": list(resultado.flujo.flujo_economico),
             "Variacion de capital de trabajo": list(resultado.variacion_capital_trabajo),
+            "Bolsa de egresos": list(resultado.bolsa_de_egresos),
+            "Cuentas por cobrar": list(resultado.cuentas_por_cobrar.saldos),
+            "Cuentas por pagar": list(resultado.cuentas_por_pagar.saldos),
+            "IGV credito acumulado": list(resultado.igv.credito_acumulado),
+            "IGV pago efectivo": list(resultado.igv.pago_efectivo),
         },
     )
 

@@ -62,8 +62,10 @@ ETAPAS_POR_DEFECTO = ("concentradora",)
 METALES = ("Sn", "Cu", "Ag")
 
 DATOS_COMUNES = [
-    ("Dias de working capital", "dias"),
-    ("Tratamiento del IGV en working capital", "si / no"),
+    # Los dias de rotacion viven en la plantilla de supuestos, uno por cuenta:
+    # el libro los lleva en dos filas distintas y aqui habia una sola celda que
+    # llenaba las dos con el mismo numero.
+    ("Cuentas comerciales en el capital de trabajo", "si / no"),
     ("Perdidas tributarias arrastradas", "US$"),
     ("Costos hundidos excluidos del flujo", "US$"),
     ("Inversion social", "US$/ano"),

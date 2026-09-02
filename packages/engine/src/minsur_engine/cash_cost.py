@@ -33,6 +33,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+DONACIONES = "Donaciones"
 GASTOS_ADMINISTRATIVOS = "Gastos administrativos"
 GESTION_SOCIAL = "Gestión Social"
 PREDIOS = "Predios"

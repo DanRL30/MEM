@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -258,6 +258,8 @@ class _Cabecera:
     horizonte: Horizonte | None
     unidades: list[_UnidadDeclarada]
     comunes: dict[str, float]
+    banderas: dict[str, bool] = field(default_factory=dict)
+    """Datos comunes que se declaran con `si` o `no` y no con un numero."""
 
 
 @dataclass
@@ -325,7 +327,7 @@ def leer_plantilla(ruta: Path, *, escenario: str | None = None) -> Lectura:
 
     unidades = _armar_unidades(cabecera, horizonte, produccion, incidencias)
     terminos = _armar_terminos(precios, horizonte, escenario or cabecera.escenario, incidencias)
-    comunes = _armar_datos_comunes(cabecera, horizonte)
+    comunes = _armar_datos_comunes(cabecera, horizonte, incidencias)
 
     if incidencias or not unidades:
         if not unidades and not incidencias:
@@ -696,6 +698,7 @@ def _leer_hoja_caso(hoja: Worksheet, incidencias: list[Incidencia]) -> _Cabecera
     etiquetas: dict[str, object] = {}
     unidades: list[_UnidadDeclarada] = []
     comunes: dict[str, float] = {}
+    banderas: dict[str, bool] = {}
     en_unidades = False
     en_comunes = False
 
@@ -725,7 +728,13 @@ def _leer_hoja_caso(hoja: Worksheet, incidencias: list[Incidencia]) -> _Cabecera
                 )
             )
         elif en_comunes:
-            comunes[texto] = _numero(c, hoja.title, fila[2].coordinate, incidencias) or 0.0
+            # Un dato comun se declara con un numero salvo el interruptor, que
+            # es `si` o `no`. Distinguirlos por el contenido y no por la fila
+            # evita que mover una fila convierta una bandera en un cero.
+            if isinstance(c, str) and c.strip():
+                banderas[texto] = _bandera(c, hoja.title, fila[2].coordinate, incidencias)
+            else:
+                comunes[texto] = _numero(c, hoja.title, fila[2].coordinate, incidencias) or 0.0
         else:
             etiquetas[texto] = b
 
@@ -737,6 +746,7 @@ def _leer_hoja_caso(hoja: Worksheet, incidencias: list[Incidencia]) -> _Cabecera
         horizonte=_armar_horizonte(etiquetas, hoja.title, incidencias),
         unidades=unidades,
         comunes=comunes,
+        banderas=banderas,
     )
 
 
@@ -896,12 +906,35 @@ def _armar_terminos(
     )
 
 
-def _armar_datos_comunes(cabecera: _Cabecera, horizonte: Horizonte) -> DatosComunes:
+CONCEPTOS_COMUNES = {
+    "gastos administrativos",
+    "inversion social",
+    "otros gastos operativos",
+    "servidumbres y usufructos",
+    "estudios",
+    "exploraciones no atribuibles a una unidad",
+    "perdidas tributarias arrastradas",
+    "cuentas comerciales en el capital de trabajo",
+}
+"""Conceptos de la hoja `Caso` que la ingesta sabe consumir.
+
+Lo que no este aqui y traiga valor se reporta. Los dias de rotacion salieron de
+esta hoja a la plantilla de supuestos, donde el libro los lleva en dos filas.
+"""
+
+
+def _armar_datos_comunes(
+    cabecera: _Cabecera, horizonte: Horizonte, incidencias: list[Incidencia]
+) -> DatosComunes:
     """Convierte los datos comunes en series del horizonte.
 
     La plantilla los recoge como un valor único por concepto, así que se
     reparten iguales sobre todos los años. Un caso que necesite variarlos año a
     año lo dirá cuando Finanzas revise la plantilla.
+
+    **Un concepto que la ingesta no sabe consumir se reporta si trae valor.**
+    Una celda vacía es legítima; una llena que nadie lee es el fallo sin síntoma
+    que ya se cerró en producción el 01/09/2026.
     """
     comunes = cabecera.comunes
 
@@ -909,7 +942,17 @@ def _armar_datos_comunes(cabecera: _Cabecera, horizonte: Horizonte) -> DatosComu
         valor = float(comunes.get(clave, 0.0) or 0.0)
         return tuple(valor for _ in range(horizonte.anos))
 
-    dias = float(comunes.get("dias de working capital", 0.0) or 0.0)
+    for concepto, valor in comunes.items():
+        if concepto not in CONCEPTOS_COMUNES and valor:
+            incidencias.append(
+                Incidencia(
+                    "Caso",
+                    concepto,
+                    "el dato comun trae valor y la plataforma todavia no lo consume. "
+                    "Cargarlo no tiene efecto en el calculo.",
+                )
+            )
+
     return DatosComunes(
         gastos_administrativos=constante("gastos administrativos"),
         gestion_social=constante("inversion social"),
@@ -917,12 +960,24 @@ def _armar_datos_comunes(cabecera: _Cabecera, horizonte: Horizonte) -> DatosComu
         estudios=constante("estudios"),
         exploraciones=constante("exploraciones no atribuibles a una unidad"),
         predios=constante("servidumbres y usufructos"),
-        dias_por_cobrar=tuple(dias for _ in range(horizonte.anos)),
-        dias_por_pagar=tuple(dias for _ in range(horizonte.anos)),
         saldo_inicial_de_perdidas=float(
             comunes.get("perdidas tributarias arrastradas", 0.0) or 0.0
         ),
+        cuentas_de_capital_trabajo_activas=cabecera.banderas.get(
+            "cuentas comerciales en el capital de trabajo", True
+        ),
     )
+
+
+def _bandera(valor: object, hoja: str, celda: str, incidencias: list[Incidencia]) -> bool:
+    """Lee un `si` o un `no` de la hoja `Caso`."""
+    texto = normalizar(str(valor))
+    if texto in ("si", "s", "verdadero", "1"):
+        return True
+    if texto in ("no", "n", "falso", "0"):
+        return False
+    incidencias.append(Incidencia(hoja, celda, f"se esperaba si o no y hay {valor!r}"))
+    return True
 
 
 # --- Celdas -------------------------------------------------------------------

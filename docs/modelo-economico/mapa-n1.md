@@ -21,7 +21,7 @@ modulo responsable, de modo que una discrepancia se localiza en un archivo.
 | CAPEX diferido y de sostenimiento | `capex.py` | `::test_capex_diferido` |
 | Costos de cierre | `capex.py` | `::test_costos_cierre` |
 | Valor residual | **No aplica.** Ver la nota 3 | |
-| Capital de trabajo | `capital_trabajo.py` | `::test_working_capital` |
+| Capital de trabajo | `capital_trabajo.py` | `test_n0_a_n3.py::TestN1::test_capital_de_trabajo` |
 
 Las dos filas de ventas citan las pruebas que existen. Las trece restantes apuntan a un
 `test_n1_bloques.py` que nunca se escribio: el contraste vive hoy en

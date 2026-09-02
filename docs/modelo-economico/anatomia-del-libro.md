@@ -60,6 +60,7 @@ calculo por ano; si mide 1 870, es almacen de casos.**
 | `Resumen` | 249 | 35 | 2 497 | 59 |
 | `Impuestos` | 109 | 43 | 3 098 | 21 |
 | `Ventas` | 218 | 44 | 1 614 | 20 |
+| `Otros` | 93 | 45 | 2 157 | 33 |
 | `FC NZ` | 55 | 43 | 1 178 | 22 |
 | `Control` | 47 | 27 | 71 | 9 |
 

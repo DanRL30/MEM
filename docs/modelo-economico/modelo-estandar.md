@@ -165,7 +165,7 @@ completa esta en [mapa-n1.md](mapa-n1.md); aqui va la correspondencia de arriba 
 | Depreciacion | `depreciacion.py` | **Separada por mina** (`D-04`) |
 | Tributos | `tributos.py` | Tramos, participacion, regalias y aportes |
 | Flujos | `flujos.py` | EBITDA, EBIT, utilidad neta, flujo economico |
-| Capital de trabajo | `capital_trabajo.py` | Dias y variacion |
+| Capital de trabajo | `capital_trabajo.py` | Dias, bolsa de egresos, variacion e IGV |
 | Indicadores | `indicadores.py` | NPV, TIR, payback, capital intensity |
 
 El motor sigue siendo puro: recibe un caso validado y devuelve series. Nada de esto lee Excel; de

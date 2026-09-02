@@ -206,6 +206,74 @@ class TestIdaYVuelta:
         assert corrida.discrepancias[0].recalculado == pytest.approx(45.0)
 
 
+class TestDatosComunesDelCaso:
+    """La hoja `Caso` recoge lo que no es de ninguna unidad."""
+
+    def _escribir_comun(self, ruta: Path, etiqueta: str, valor: str | float) -> None:
+        libro = load_workbook(ruta)
+        hoja = libro["Caso"]
+        for fila in hoja.iter_rows(min_row=1, max_col=3):
+            if fila[0].value and canonizar(str(fila[0].value)) == canonizar(etiqueta):
+                hoja.cell(row=fila[0].row, column=3, value=valor)
+                break
+        else:
+            raise AssertionError(f"no existe la fila {etiqueta!r} en la hoja Caso")
+        libro.save(ruta)
+
+    def test_el_interruptor_de_cuentas_comerciales_llega_al_caso(
+        self, plantilla_llena: Path
+    ) -> None:
+        # `Control!$G$21` del libro. Hasta ahora el campo existia, el motor lo
+        # implementaba y ninguna plantilla podia escribirlo.
+        self._escribir_comun(plantilla_llena, "Cuentas comerciales en el capital de trabajo", "no")
+        lectura = leer_plantilla(plantilla_llena)
+        assert lectura.caso is not None, [str(i) for i in lectura.incidencias]
+        assert lectura.caso.datos_comunes.cuentas_de_capital_trabajo_activas is False
+
+    def test_el_interruptor_sin_llenar_deja_las_cuentas_encendidas(
+        self, plantilla_llena: Path
+    ) -> None:
+        lectura = leer_plantilla(plantilla_llena)
+        assert lectura.caso is not None
+        assert lectura.caso.datos_comunes.cuentas_de_capital_trabajo_activas is True
+
+    def test_una_bandera_que_no_es_si_ni_no_se_reporta(self, plantilla_llena: Path) -> None:
+        self._escribir_comun(
+            plantilla_llena, "Cuentas comerciales en el capital de trabajo", "quizas"
+        )
+        lectura = leer_plantilla(plantilla_llena)
+        assert any("si o no" in i.mensaje for i in lectura.incidencias)
+
+    def test_un_dato_comun_con_valor_que_nadie_consume_se_reporta(
+        self, plantilla_llena: Path
+    ) -> None:
+        # El fallo sin sintoma: se llena, se lee sin errores y no interviene.
+        # Hoy le pasa a los costos hundidos, declarados en cuatro documentos y
+        # ausentes del codigo.
+        self._escribir_comun(plantilla_llena, "Costos hundidos excluidos del flujo", 1_000.0)
+        lectura = leer_plantilla(plantilla_llena)
+        assert any("todavia no lo consume" in i.mensaje for i in lectura.incidencias)
+
+    def test_un_dato_comun_sin_consumidor_y_vacio_no_molesta(self, plantilla_llena: Path) -> None:
+        # Una celda vacia es legitima: la plantilla es la misma para todos.
+        lectura = leer_plantilla(plantilla_llena)
+        assert not [i for i in lectura.incidencias if "todavia no lo consume" in i.mensaje]
+
+    def test_los_dias_de_rotacion_ya_no_salen_de_esta_hoja(self, plantilla_llena: Path) -> None:
+        # El libro los lleva en dos filas distintas y aqui habia una sola celda
+        # que llenaba las dos con el mismo numero. Viven en supuestos.
+        libro = load_workbook(plantilla_llena)
+        etiquetas = {
+            canonizar(str(fila[0].value))
+            for fila in libro["Caso"].iter_rows(min_row=1, max_col=1)
+            if fila[0].value
+        }
+        assert canonizar("Dias de working capital") not in etiquetas
+        lectura = leer_plantilla(plantilla_llena)
+        assert lectura.caso is not None
+        assert lectura.caso.datos_comunes.dias_por_cobrar == ()
+
+
 class TestConversionDeEscalas:
     def test_la_ley_de_plata_no_se_lee_como_porcentaje(self, plantilla_llena: Path) -> None:
         # Viene en onzas troy por tonelada. Tratarla como porcentaje la

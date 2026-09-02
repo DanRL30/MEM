@@ -112,6 +112,11 @@ def polimetalico() -> Corrida:
     return calcular(sinteticos.caso_polimetalico(), sinteticos.MAESTROS)
 
 
+@pytest.fixture(scope="module")
+def con_capital_de_trabajo() -> Corrida:
+    return calcular(sinteticos.caso_de_capital_de_trabajo(), sinteticos.MAESTROS)
+
+
 # Cifras del concentrado, calculadas a mano desde las constantes del caso. El
 # cobre paga la menor de sus dos deducciones -0,30 x 0,90 frente a 0,30 - 0,01-
 # y la plata pasa de gramos por tonelada a onzas troy.
@@ -306,6 +311,94 @@ class TestN1:
         cargos += 1_000.0 * sinteticos.MERMA * CONTENIDO_AG_ALFA * sinteticos.TARIFA_RC_AG
         cargos += 500.0 * sinteticos.MERMA * CONTENIDO_AG_BETA * sinteticos.TARIFA_RC_AG
         assert coincide(con_merma.ventas[1] - sin_merma.ventas[1], cargos)
+
+    def test_capital_de_trabajo(self, con_capital_de_trabajo: Corrida) -> None:
+        """Los saldos rotan sobre la venta y sobre la bolsa de egresos."""
+        corrida = con_capital_de_trabajo
+        # 1 000 000 de venta con 36 dias sobre 360: la decima parte.
+        contrastar(
+            corrida.cuentas_por_cobrar.saldos,
+            (0.0, 100_000.0, 100_000.0, 0.0, 100_000.0),
+            "saldo de cuentas por cobrar",
+        )
+        # La deuda rota sobre la bolsa, que en el primer ano es el capital
+        # entero: es la diferencia con la base de solo costo operativo.
+        contrastar(
+            corrida.cuentas_por_pagar.saldos,
+            tuple(bolsa * sinteticos.DIAS_POR_PAGAR / 360.0 for bolsa in corrida.bolsa_de_egresos),
+            "saldo de cuentas por pagar",
+        )
+        assert corrida.bolsa_de_egresos[0] == pytest.approx(1_000_000.0)
+
+    def test_la_bolsa_de_egresos_no_vuelve_al_flujo(self, con_capital_de_trabajo: Corrida) -> None:
+        # Sus componentes ya llegan cada uno por su linea: si volviera, el
+        # capital se contaria dos veces.
+        corrida = con_capital_de_trabajo
+        contrastar(
+            corrida.flujo.flujo_de_inversiones,
+            tuple(-c for c in corrida.capex),
+            "flujo de inversiones",
+        )
+
+    def test_las_cuentas_se_liquidan_en_el_ultimo_ano_con_produccion(
+        self, con_capital_de_trabajo: Corrida
+    ) -> None:
+        # Regla 053: la bandera es el ano con produccion, no la venta. Con la
+        # bandera de venta, la parada del tercer ejercicio pasaria por fin de
+        # vida util y liquidaria las cuentas un ano antes.
+        cobrar = con_capital_de_trabajo.cuentas_por_cobrar.variaciones
+        # La cartera se abre en el segundo ejercicio, se cobra al cerrar la
+        # racha y **la parada no mueve nada**: el libro multiplica la fila por
+        # la bandera del ano, y sin eso el saldo se recuperaria dos veces.
+        assert cobrar[1] == pytest.approx(-100_000.0)
+        assert cobrar[2] == pytest.approx(100_000.0)
+        assert cobrar[3] == pytest.approx(0.0)
+
+    def test_el_ciclo_cierra_salvo_lo_que_abre_antes_de_producir(
+        self, con_capital_de_trabajo: Corrida
+    ) -> None:
+        """Un ciclo que se abre y se cierra no crea ni destruye caja.
+
+        Es la comprobacion que delata una bandera equivocada sin tener el libro
+        delante: con la bandera de venta, la cartera no cierra.
+        """
+        corrida = con_capital_de_trabajo
+        assert coincide(sum(corrida.cuentas_por_cobrar.variaciones), 0.0)
+
+        # La deuda deja un residuo, y es exactamente el saldo que abrio el
+        # capital del primer ejercicio, cuando la unidad todavia no producia:
+        # el libro multiplica la fila por la bandera del ano, de modo que esa
+        # apertura no entra al flujo y su reduccion posterior si. Es la regla
+        # 056, reproducida y reportada.
+        pagar = corrida.cuentas_por_pagar
+        assert coincide(sum(pagar.variaciones), -pagar.saldos[0])
+        assert pagar.saldos[0] > 0.0
+
+    def test_el_igv_se_calcula_y_no_mueve_el_flujo(self, con_capital_de_trabajo: Corrida) -> None:
+        # Regla 014, sobre la corrida entera: el bloque tiene cifras y su
+        # variacion llega al flujo multiplicada por cero.
+        corrida = con_capital_de_trabajo
+        assert any(x != 0.0 for x in corrida.igv.igv_de_compras)
+        assert any(x != 0.0 for x in corrida.igv.credito_acumulado)
+        contrastar(
+            corrida.igv.variacion_para_el_flujo,
+            corrida.caso.horizonte.ceros(),
+            "variacion de IGV en el flujo",
+        )
+
+    def test_las_otras_cuentas_entran_al_capital_de_trabajo(
+        self, con_capital_de_trabajo: Corrida
+    ) -> None:
+        # Son saldos y el libro los suma junto a las variaciones (regla 050).
+        corrida = con_capital_de_trabajo
+        otras = sinteticos.OTRAS_POR_COBRAR + sinteticos.OTRAS_POR_PAGAR
+        esperada = tuple(
+            corrida.cuentas_por_cobrar.variaciones[i]
+            + corrida.cuentas_por_pagar.variaciones[i]
+            + otras
+            for i in range(corrida.caso.horizonte.anos)
+        )
+        contrastar(corrida.variacion_capital_trabajo, esperada, "variacion de capital de trabajo")
 
     def test_cash_cost(self, simple: Corrida) -> None:
         contrastar(simple.cash_cost, (0.0, 200_000.0, 200_000.0), "cash cost")

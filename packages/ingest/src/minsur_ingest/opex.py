@@ -28,6 +28,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 
 from minsur_engine.cash_cost import (
+    DONACIONES,
     ESTUDIOS_CAPITALIZABLES,
     ESTUDIOS_DE_GASTO,
     EXPLORACIONES,
@@ -129,6 +130,9 @@ FILAS_DE_GASTOS = (
     FilaDeOpex(ESTUDIOS_DE_GASTO, MEDIDA),
     FilaDeOpex(ESTUDIOS_CAPITALIZABLES, MEDIDA),
     FilaDeOpex(EXPLORACIONES, MEDIDA),
+    # `Otros!29`. El libro la lleva en su bloque de otros gastos y no estaba en
+    # el catalogo: va al final para no desplazar lo que la plantilla ya emitia.
+    FilaDeOpex(DONACIONES, MEDIDA),
 )
 
 FILAS_DE_OPEX = FILAS_DE_CASH_COST + FILAS_DE_LA_COLA + FILAS_DE_GASTOS

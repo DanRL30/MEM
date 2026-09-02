@@ -1,24 +1,15 @@
-"""Pruebas del flujo, del capital de trabajo y de los indicadores.
+"""Pruebas del flujo y de los indicadores.
 
 Los indicadores son lo que el contraste N3 verifica con tolerancias estrechas,
 así que aquí se comprueban las convenciones antes que los valores: dónde cae la
-participación de trabajadores, con cuántos días se divide el año comercial y
-desde qué exponente descuenta el factor.
+participación de trabajadores y desde qué exponente descuenta el factor. El
+capital de trabajo tiene su propio módulo, `test_capital_trabajo.py`.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from minsur_engine.capital_trabajo import (
-    DIAS_DEL_ANO_COMERCIAL,
-    ErrorCapitalTrabajo,
-    credito_y_pago_de_igv,
-    igv,
-    saldo_por_dias,
-    variacion_de_capital_trabajo,
-    variacion_de_cuenta,
-)
 from minsur_engine.flujos import (
     ComponentesDeInversion,
     ComponentesOperativos,
@@ -80,68 +71,6 @@ class TestFlujo:
     def test_un_horizonte_desalineado_es_error(self, horizonte: Horizonte) -> None:
         with pytest.raises(ErrorFlujos, match="4 anos"):
             flujo_del_caso(horizonte, [ComponentesOperativos(ventas=1.0, cash_cost=0.0)], [])
-
-
-class TestCapitalDeTrabajo:
-    def test_el_ano_comercial_es_de_360_dias(self) -> None:
-        assert DIAS_DEL_ANO_COMERCIAL == 360.0
-        saldos = saldo_por_dias((3_600.0,), (40.0,))
-        assert saldos[0] == pytest.approx(400.0)
-
-    def test_la_cartera_se_recupera_en_el_ultimo_ano_productivo(self) -> None:
-        saldos = (100.0, 150.0, 150.0)
-        produce = (True, True, False)
-        variaciones = variacion_de_cuenta(saldos, produce, es_por_cobrar=True)
-        assert variaciones[0] == pytest.approx(-100.0)
-        assert variaciones[1] == pytest.approx(-50.0 + 150.0)
-        assert variaciones[2] == pytest.approx(0.0)
-
-    def test_cobrar_y_pagar_entran_con_signos_opuestos(self) -> None:
-        saldos = (100.0, 100.0)
-        produce = (True, True)
-        cobrar = variacion_de_cuenta(saldos, produce, es_por_cobrar=True)
-        pagar = variacion_de_cuenta(saldos, produce, es_por_cobrar=False)
-        assert cobrar[0] == pytest.approx(-pagar[0])
-
-    def test_el_interruptor_apaga_las_cuentas_comerciales(self, horizonte: Horizonte) -> None:
-        # Reproduce Control!$G$21 del libro.
-        argumentos = {
-            "por_cobrar": horizonte.serie([-10.0] * 4, nombre="cxc"),
-            "por_pagar": horizonte.serie([5.0] * 4, nombre="cxp"),
-        }
-        encendido = variacion_de_capital_trabajo(horizonte, cuentas_activas=True, **argumentos)
-        apagado = variacion_de_capital_trabajo(horizonte, cuentas_activas=False, **argumentos)
-        assert encendido[0] == pytest.approx(-5.0)
-        assert apagado[0] == pytest.approx(0.0)
-
-    def test_el_igv_se_calcula_y_no_entra_en_el_flujo(self, horizonte: Horizonte) -> None:
-        # Regla 014: el libro lo multiplica por cero al llevarlo al flujo.
-        ventas = horizonte.serie([1_000.0] * 4, nombre="ventas")
-        assert igv(ventas, 0.18)[0] == pytest.approx(180.0)
-        sin_igv = variacion_de_capital_trabajo(
-            horizonte,
-            por_cobrar=horizonte.ceros(),
-            por_pagar=horizonte.ceros(),
-        )
-        assert sin_igv == horizonte.ceros()
-
-    def test_el_credito_fiscal_se_acumula_y_se_consume(self) -> None:
-        # Ano 1: el IGV de compras supera al de ventas, se desembolsan 50 y
-        # queda ese credito acumulado. Ano 2: el neto es 80, se consume el
-        # credito y se paga la diferencia, 30. El pago no llega a cero porque
-        # el credito no alcanza a cubrir todo el saldo del ejercicio.
-        credito, pagos = credito_y_pago_de_igv((10.0, 100.0), (60.0, 20.0))
-        assert credito == pytest.approx((50.0, 0.0))
-        assert pagos == pytest.approx((-50.0, -30.0))
-
-    def test_un_credito_mayor_que_el_saldo_evita_el_pago(self) -> None:
-        credito, pagos = credito_y_pago_de_igv((10.0, 30.0), (60.0, 20.0))
-        assert pagos == pytest.approx((-50.0, 0.0))
-        assert credito[1] == pytest.approx(40.0)
-
-    def test_dias_negativos_son_error(self) -> None:
-        with pytest.raises(ErrorCapitalTrabajo, match="negativos"):
-            saldo_por_dias((100.0,), (-1.0,))
 
 
 class TestIndicadores:

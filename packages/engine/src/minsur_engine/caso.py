@@ -377,6 +377,44 @@ class DatosComunes:
     cuentas_de_capital_trabajo_activas: bool = True
     """Reproduce el interruptor `Control!$G$21` del libro."""
 
+    # --- Hoja `Otros`: lo que el libro teclea dentro de la propia hoja --------
+    gasto_de_ventas_lom: Serie = ()
+    """`Otros!16`. Gasto de venta del metal refinado de las unidades en marcha.
+
+    El libro lo trae de otro libro y calcula el de los proyectos con una tarifa
+    por tonelada. No se puede enlazar un libro ajeno y calcularlo cambiaría la
+    cifra de las unidades en marcha, así que se pide como dato. Es la regla 054.
+    """
+
+    fletes_lom: Serie = ()
+    """`Otros!23`. Flete del concentrado de las unidades en marcha, mismo caso."""
+
+    otros_egresos: Serie = ()
+    """`Otros!49`. Egreso que entra a la bolsa y no a ninguna línea del flujo.
+
+    Afecta a las cuentas por pagar y al IGV de compras a través de la bolsa de
+    egresos, y a nada más: el libro no lo lleva a ninguna línea de caja.
+    """
+
+    otras_cuentas_por_cobrar: Serie = ()
+    """`Otros!82`. Cuenta por cobrar no comercial."""
+
+    otras_cuentas_por_pagar: Serie = ()
+    """`Otros!83`. Cuenta por pagar no comercial.
+
+    Las dos van al capital de trabajo con el signo con que el libro las escribe:
+    son saldos y se suman junto a dos variaciones, que es la regla 050.
+    """
+
+    tasa_igv: float = 0.0
+    """`Otros!61` y `!62`. Tasa que el libro incrusta en la fórmula (regla 046)."""
+
+    porcentaje_de_ventas_de_exportacion: float = 0.0
+    """`Otros!87`. Fracción de la venta que forma la base del IGV de ventas."""
+
+    porcentaje_de_compras_locales: float = 0.0
+    """`Otros!88`. Fracción de la bolsa que forma la base del IGV de compras."""
+
     saldo_inicial_de_perdidas: float = 0.0
     capacidad_para_intensidad: float = 0.0
     """Denominador de la intensidad de capital. Cero significa que no se calcula."""
@@ -391,7 +429,6 @@ class DatosMaestros:
     tasas_financieras: TasasDeDepreciacion
     escala_regalia: EscalaProgresiva
     escala_iem: EscalaProgresiva
-    tasa_igv: float = 0.18
 
     @property
     def version(self) -> str:

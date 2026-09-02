@@ -327,6 +327,45 @@ class TestAplicarAlCaso:
         assert caso.terminos.concentrado is not None
         assert caso.terminos.concentrado.metales[0].ley_pagable == ()
 
+    def test_ningun_supuesto_del_capital_de_trabajo_se_lee_y_se_tira(
+        self, comite: Path, supuestos: Path
+    ) -> None:
+        """Las diez filas que salen de las constantes tecleadas de `Otros`."""
+        del_caso = leer_supuestos(supuestos).supuestos
+        assert del_caso is not None
+        caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
+        comunes = caso.datos_comunes
+        leidos = del_caso.comunes
+
+        assert comunes.gasto_de_ventas_lom == leidos["gasto_de_ventas_lom"]
+        assert comunes.fletes_lom == leidos["fletes_lom"]
+        assert comunes.otros_egresos == leidos["otros_egresos"]
+        assert comunes.otras_cuentas_por_cobrar == leidos["otras_cuentas_por_cobrar"]
+        assert comunes.otras_cuentas_por_pagar == leidos["otras_cuentas_por_pagar"]
+
+    def test_los_dias_y_las_tasas_se_escriben_una_vez_y_rigen_el_horizonte(
+        self, comite: Path, supuestos: Path
+    ) -> None:
+        # Son filas constantes: el libro las teclea en el primer ano y las copia
+        # hacia la derecha. La plantilla les deja una sola celda (regla 047).
+        del_caso = leer_supuestos(supuestos).supuestos
+        assert del_caso is not None
+        caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
+        comunes = caso.datos_comunes
+        leidos = del_caso.comunes
+
+        assert comunes.dias_por_cobrar == (leidos["dias_por_cobrar"][0],) * 3
+        assert comunes.dias_por_pagar == (leidos["dias_por_pagar"][0],) * 3
+        # Los dias de cobrar y de pagar dejan de ser el mismo numero duplicado.
+        assert comunes.dias_por_cobrar != comunes.dias_por_pagar
+        assert comunes.tasa_igv == pytest.approx(leidos["tasa_igv"][0])
+        assert comunes.porcentaje_de_ventas_de_exportacion == pytest.approx(
+            leidos["porcentaje_de_ventas_de_exportacion"][0]
+        )
+        assert comunes.porcentaje_de_compras_locales == pytest.approx(
+            leidos["porcentaje_de_compras_locales"][0]
+        )
+
     def test_los_reguladores_del_caso_ganan_a_la_tasa_de_referencia(
         self, comite: Path, supuestos: Path
     ) -> None:

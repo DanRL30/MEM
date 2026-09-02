@@ -119,6 +119,31 @@ FILAS_DE_SUPUESTOS = (
     # El libro los lleva ano a ano y decrecientes, no como una tasa fija.
     FilaDeSupuesto("Contribucion a OEFA", "%", "oefa"),
     FilaDeSupuesto("Contribucion a OSINERGMIN", "%", "osinergmin"),
+    # El libro trae estas dos de otro libro, para las unidades en marcha, y
+    # calcula las de los proyectos con una tarifa por tonelada. No se puede
+    # enlazar un libro ajeno: se piden como dato. Es la regla 054.
+    FilaDeSupuesto("Gasto de Ventas y Fletes de Unidades en Marcha", SECCION),
+    FilaDeSupuesto("Gasto de Ventas Sn Refinado LOM", "$", "gasto_de_ventas_lom"),
+    FilaDeSupuesto("Fletes Concentrado LOM", "$", "fletes_lom"),
+    # Lo que el libro teclea dentro de la hoja `Otros`. Las cinco constantes se
+    # escriben una vez y rigen todo el horizonte, igual que las tasas de
+    # depreciacion: es la regla 047.
+    FilaDeSupuesto("Capital de Trabajo", SECCION),
+    FilaDeSupuesto("Otros Egresos", "$", "otros_egresos"),
+    FilaDeSupuesto("Otras Cuentas por Cobrar", "$", "otras_cuentas_por_cobrar"),
+    FilaDeSupuesto("Otras Cuentas por Pagar", "$", "otras_cuentas_por_pagar"),
+    FilaDeSupuesto("Dias de Cuentas por Cobrar", "dias", "dias_por_cobrar", constante=True),
+    FilaDeSupuesto("Dias de Cuentas por Pagar", "dias", "dias_por_pagar", constante=True),
+    FilaDeSupuesto("Tasa de IGV", "%", "tasa_igv", constante=True),
+    FilaDeSupuesto(
+        "Porcentaje de Ventas de Exportacion",
+        "%",
+        "porcentaje_de_ventas_de_exportacion",
+        constante=True,
+    ),
+    FilaDeSupuesto(
+        "Porcentaje de Compras Locales", "%", "porcentaje_de_compras_locales", constante=True
+    ),
 )
 
 # --- Supuestos de cada unidad -------------------------------------------------
@@ -270,6 +295,36 @@ def aplicar(caso: Caso, supuestos: SupuestosDelCaso, comite: ComiteDePrecios | N
             osinergmin=comunes.get("osinergmin", ()),
             oefa=comunes.get("oefa", ()),
             tasas_declaradas=_tasas_declaradas(comunes),
+            gasto_de_ventas_lom=comunes.get(
+                "gasto_de_ventas_lom", caso.datos_comunes.gasto_de_ventas_lom
+            ),
+            fletes_lom=comunes.get("fletes_lom", caso.datos_comunes.fletes_lom),
+            otros_egresos=comunes.get("otros_egresos", caso.datos_comunes.otros_egresos),
+            otras_cuentas_por_cobrar=comunes.get(
+                "otras_cuentas_por_cobrar", caso.datos_comunes.otras_cuentas_por_cobrar
+            ),
+            otras_cuentas_por_pagar=comunes.get(
+                "otras_cuentas_por_pagar", caso.datos_comunes.otras_cuentas_por_pagar
+            ),
+            dias_por_cobrar=_repetida(
+                comunes.get("dias_por_cobrar", ()),
+                caso.horizonte,
+                caso.datos_comunes.dias_por_cobrar,
+            ),
+            dias_por_pagar=_repetida(
+                comunes.get("dias_por_pagar", ()),
+                caso.horizonte,
+                caso.datos_comunes.dias_por_pagar,
+            ),
+            tasa_igv=_escalar(comunes.get("tasa_igv", ()), caso.datos_comunes.tasa_igv),
+            porcentaje_de_ventas_de_exportacion=_escalar(
+                comunes.get("porcentaje_de_ventas_de_exportacion", ()),
+                caso.datos_comunes.porcentaje_de_ventas_de_exportacion,
+            ),
+            porcentaje_de_compras_locales=_escalar(
+                comunes.get("porcentaje_de_compras_locales", ()),
+                caso.datos_comunes.porcentaje_de_compras_locales,
+            ),
         ),
     )
 
@@ -404,6 +459,24 @@ def _tasas_declaradas(comunes: dict[str, Serie]) -> dict[str, float]:
         if valor is not None:
             declaradas[componente] = valor
     return declaradas
+
+
+def _repetida(serie: Serie, horizonte: Horizonte, respaldo: Serie) -> Serie:
+    """Difunde al horizonte un valor que se escribe una vez.
+
+    Los dias de rotacion son un solo numero en el libro y `saldo_por_dias`
+    consume una serie. Sin declarar, se conserva lo que el caso ya tuviera.
+    """
+    valor = _constante(serie)
+    if valor is None:
+        return respaldo
+    return tuple(valor for _ in range(horizonte.anos))
+
+
+def _escalar(serie: Serie, respaldo: float) -> float:
+    """Valor unico de una fila constante, o lo que el caso ya tuviera."""
+    valor = _constante(serie)
+    return respaldo if valor is None else valor
 
 
 def _constante(serie: Serie) -> float | None:

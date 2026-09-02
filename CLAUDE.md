@@ -610,6 +610,29 @@ motor contra el libro y la fija Finanzas (`R-31`); esta compara el dato del
 usuario contra el recalculo del propio sistema. El 0,5 % de
 `TOLERANCIA_POR_DEFECTO` es propuesta de INVA y esta consultada.
 
+### El capital de trabajo rota sobre la bolsa, y el IGV llega en cero
+
+La hoja `Otros` del libro es la que arma el capital de trabajo, y tiene tres cosas que no se
+deducen del codigo si no se leyeron sus formulas.
+
+**La deuda rota sobre la bolsa de egresos, no sobre el costo operativo.**
+[_bolsa_de_egresos](packages/engine/src/minsur_engine/corrida.py) suma los once conceptos de las
+filas 43 a 55, **capital incluido**. Con el saldo en `base x dias / 360`, dejar el capex fuera mueve
+la variacion por encima de la tolerancia de N1 justo en el ano de mayor desembolso. La bolsa no
+vuelve al flujo: cada componente ya llega por su linea.
+
+**La cuenta no se mueve en un ano sin produccion.** El libro multiplica la fila entera por la
+bandera `Ano con produccion`, de modo que hay tres comportamientos: un ano productivo seguido de
+otro mueve la diferencia de saldos, el ultimo de una racha suma ademas el saldo entero -la cartera
+se cobra y las deudas se pagan- y una parada no mueve nada. Sin el tercero, una parada intermedia
+recupera el saldo dos veces. Es la regla `053`, y `test_el_ciclo_cierra_salvo_lo_que_abre_antes_de_producir`
+la fija sin necesidad de tener el libro delante.
+
+**El IGV se calcula entero y llega al flujo multiplicado por cero.** No es codigo muerto ni una
+omision: el bloque tiene cifras, sale en los estados financieros y su variacion entra al flujo
+multiplicada por `PESO_DEL_IGV_EN_EL_FLUJO`, que vale cero porque el libro escribe ese cero. Es la
+regla `014`, sin confirmar por Finanzas. El dia que la confirmen, cambia esa linea y nada mas.
+
 ### Lo que ya esta construido: el dominio
 
 Es la parte densa del repositorio y la que conviene leer antes de tocar nada.

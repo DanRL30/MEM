@@ -28,7 +28,7 @@ que es lo que el motor necesita.
 | 010 | `Ventas`, filas 61 a 66 | Las penalidades del concentrado se calculan y se suman al total de cargos, pero el valor neto que alimenta la venta no las incluye | Puede ser deliberado —penalidad liquidada aparte— o un arrastre. Se reproduce | | | `ventas.py` |
 | 012 | `Depreciacion`, filas 132 y siguientes | `IF(base - acumulado > base * tasa, base * tasa, base - acumulado)` | Depreciación lineal sobre el valor original, con la última cuota ajustada al saldo pendiente | Derivada del libro | 01/09/2026 | `depreciacion.py` |
 | 013 | `Depreciacion`, fila 168 | `IF(SUM(produccion hasta el ano) = 0, 0, ...)` | La depreciación no corre en los años previos al primero con producción acumulada | Derivada del libro | 01/09/2026 | `depreciacion.py` |
-| 014 | `Otros`, filas 58 y 66 | La variación de IGV se calcula entera y se lleva al flujo multiplicada por cero: `-(credito - credito anterior) * 0` | El IGV no se considera en el capital de trabajo, como anota la hoja oculta `Inputs`. El bloque queda calculado y desconectado | | | `capital_trabajo.py` |
+| 014 | `Otros`, filas 58 y 66 | La variación de IGV se calcula entera y se lleva al flujo multiplicada por cero: `-(credito - credito anterior) * 0` | El IGV no se considera en el capital de trabajo, como anota la hoja oculta `Inputs`. El bloque **se calcula, se informa y llega al flujo multiplicado por cero**: el cero vive en `PESO_DEL_IGV_EN_EL_FLUJO` y es lo unico que cambia el dia que Finanzas lo confirme | | | `capital_trabajo.py` |
 | 015 | `FC escenarios`, filas 44 a 46 | El NPV suma desde la primera columna del horizonte y la TIR arranca una columna después | Asimetría entre dos indicadores de la misma serie. En `FC NZ` ambos cubren el mismo rango | | | `indicadores.py` |
 | 011 | `Ventas`, filas 55 a 60 | El contenido pagable se valoriza sobre las toneladas vendidas y los cargos se cobran sobre las netas de merma | Asimetría deliberada de la liquidación comercial | | | `ventas.py` |
 | 016 | `InputsProd`, filas 104 a 106 | La fila se rotula `Recuperación Sn NZ + SRP`, pero en la fórmula del refinado San Rafael Potencial usa la recuperación de `SR + B2`. Solo Nazareth usa la segunda | La etiqueta está mal: en `Supuestos` la misma fila se llama `Recuperación Nazareth`. **Resuelta el 01/09/2026 sin reproducir el agrupamiento**: la plataforma calcula por componente, ver abajo | Project Manager | 01/09/2026 | `refineria.py` |
@@ -61,6 +61,17 @@ que es lo que el motor necesita.
 | 043 | `Ventas`, filas 23 y 24 | El precio unitario del concentrado es `IFERROR(valor neto / toneladas, 0)` y la venta lo vuelve a multiplicar por esas toneladas | El rodeo se cancela y el resultado es el valor neto. La unica diferencia observable seria un embarque nulo, y ahi el `IFERROR` devuelve cero, que es lo mismo que dejar el termino fuera | Derivada del libro | 02/09/2026 | `ventas.py` |
 | 044 | `Ventas`, fila 61 | La fila de penalidades copia `Supuestos!H66` —la tarifa de la plata, en dolares por tonelada— sin multiplicarla por el embarque, y la de cobre (`Supuestos!H65`) no se referencia en ninguna parte | Arrastre: una tarifa colocada en una columna de totales. Su efecto esta acotado por la regla `010`, que deja las penalidades fuera de la venta. **La plataforma las lleva por metal y multiplicadas por lo embarcado**, que es lo que la tarifa dice cobrar | | | `ventas.py` |
 | 045 | `Supuestos!H58`, refina la `023` | La ley pagable de la plata aplica `ley x 100 - deduccion minima` sobre una ley que viene en onzas troy por tonelada, mientras su deduccion va en gramos por tonelada | Mezcla de unidades: el factor entre onzas troy y gramos es 31,1035, no 100. Corregirlo seria corregir el modelo y reproducirlo seria propagar un error dimensional. **La fila se carga como dato, se usa tal cual y no se corrobora** hasta la respuesta | | | |
+| 046 | `Otros!61` y `!62` | La tasa de IGV esta escrita dentro de la formula y no se declara en ninguna celda del libro | Constante incrustada, de la familia de las reglas 018, 021 y 022. **Pasa a ser dato de la plantilla de supuestos** | | | `capital_trabajo.py` |
+| 047 | `Otros`, filas 64, 65, 66, 71, 78, 87 y 88 | Siete filas llevan constante tecleada en el primer ano y una copia de esa celda en los treinta y cinco restantes | No son series: son un valor unico que rige todo el horizonte. La plantilla les deja **una sola celda**, como ya hace con la capacidad de la refineria (regla 025) y las tasas de depreciacion | Derivada del libro | 02/09/2026 | `supuestos.py` |
+| 048 | `Otros!40` | Rotulada `xxx`, tecleada, cero en las 36 columnas de ano | **Tercera ranura reservada** del libro, tras `InputsCapex!10` (regla 032) y `Ventas!26` (regla 042). No se pide y no se reproduce | Derivada del libro | 02/09/2026 | |
+| 049 | `Otros`, filas 32, 49, 82 y 83 | Cuatro filas son constante tecleada en las 36 columnas: `Otros`, `Otros Egresos`, `CxC otros` y `CxP otros` | Son dato del caso y no calculo. Cada una llega solo a su bloque; en particular **`Otros Egresos` afecta a la bolsa de egresos —y con ella a las cuentas por pagar y al IGV de compras— y a ninguna linea de caja** | Derivada del libro | 02/09/2026 | `supuestos.py` |
+| 050 | `Otros!84` | Las filas 82 y 83 son **saldos** y se suman en la misma formula junto a dos **variaciones**, las filas 73 y 80 | O es un ajuste puntual deliberado o es un arrastre. Se reproduce tal cual, con el signo con que el libro las escribe | | | `capital_trabajo.py` |
+| 051 | `Otros!59` frente a la 87 | La base del IGV de ventas es `Ventas x % Ventas de Exportacion`, mientras la fila del bloque se rotula `IGV Ventas Locales` | El rotulo y el uso no concuerdan: la exportacion no esta gravada. Puede ser una fila de devolucion al exportador o un cruce de rotulos. Se reproduce el calculo y se reporta el rotulo | | | `capital_trabajo.py` |
+| 052 | `Otros`, filas 76 y 79 frente a 43-55 | `Total Adiciones` es la `Bolsa Egresos` completa: opex, administrativos, fletes, gasto de ventas, donaciones, servidumbre, estudios, planilla, **capex**, exploraciones y otros egresos | La base de las cuentas por pagar no es el costo operativo. La plataforma adopta la base del libro: dejar fuera el capital mueve la variacion por encima de la tolerancia de N1 en el ano de mayor desembolso | Derivada del libro | 02/09/2026 | `corrida.py` |
+| 053 | `Otros`, filas 73 y 80 frente a la 90 | La variacion de cada cuenta se decide con `Ano con produccion` y **la fila entera va multiplicada por la bandera del ejercicio** | Tres comportamientos: un ano productivo seguido de otro mueve la diferencia de saldos, el ultimo de una racha suma ademas el saldo entero, y un ano sin produccion no mueve nada. Sin el tercero, una parada intermedia recupera el saldo dos veces | Derivada del libro | 02/09/2026 | `capital_trabajo.py` |
+| 054 | `Otros!16` y `!23` | `Gasto de Ventas Sn Refinado LOM` y `Fletes Concentrado LOM` vienen de una hoja `Detalle` de otro libro; 72 formulas de la hoja son enlaces externos | El libro importa las lineas de las unidades en marcha y calcula las de los proyectos con una tarifa por tonelada. No se puede enlazar un libro ajeno y calcularlas cambiaria la cifra de las unidades en marcha: **se piden como dato** | Project Manager | 02/09/2026 | `supuestos.py` |
+| 055 | `Otros!30` frente a la 93 | `Servidumbre` esta en el bloque de gastos operativos y `Compra de Predios` en el de flujo de caja: son dos lineas separadas que la plataforma fusiona en una sola de inversion | Moverla cambia la base imponible, asi que **no se cambia** hasta la respuesta. `Donaciones`, del mismo bloque, no existia en el catalogo de OPEX y se agrega | | | `opex.py` |
+| 056 | `Otros`, filas 73 y 80 | Un saldo que abre en un ejercicio **sin produccion** no entra al flujo, porque la fila se multiplica por la bandera, y su reduccion posterior si entra | Consecuencia de la regla 053 sobre el capital del primer ejercicio: la deuda que abre el capex antes de producir nunca se registra como origen de caja. Se reproduce y se reporta | | | `capital_trabajo.py` |
 
 ## Detalle de las que no caben en una fila
 
@@ -186,7 +197,9 @@ mismo dia como deliberada, de modo que paso a tipo 2. La 015 es la única donde 
 hojas del libro se contradicen entre sí: sigue a `FC NZ`, que es la hoja del caso. Seis quedaron confirmadas por Finanzas el 01/09/2026; siguen abiertas la 003 (unidades de
 medida), la 004 (tramos tributarios), la 007 (valores guardados sin recalcular), la 027 (fraccion
 deducible de la gestion social), la 033 (el rango del ajuste de capex), la 044 (la penalidad sin
-multiplicar) y la 045 (la ley pagable de la plata). La 028 queda contestada por
+multiplicar), la 045 (la ley pagable de la plata), la 050 (saldos sumados con variaciones), la 051
+(el rotulo del IGV de ventas), la 055 (la servidumbre en dos bloques) y la 056 (el saldo que abre
+antes de producir). La 028 queda contestada por
 la 037, y la 028, la 034, la 036 y la 037 se resolvieron el 02/09/2026 por decision del Project
 Manager: **se hace lo que hace el libro, sin fusionar los componentes**. Ninguna de las cuatro sigue
 consultada.
@@ -199,6 +212,13 @@ vivir. Son la 036 -el computo se deprecia como maquinaria tambien en la via fina
 quedaba cerrado, y es de tipo 2: la via financiera cierra la puerta ano a ano y no acumulando. Las dos esperan el acta que las registre
 como desviaciones acordadas; hasta entonces, la linea que difiera del modelo por su causa se
 sustenta en este registro.
+
+**Once reglas mas salieron de leer la hoja `Otros` fila a fila el 02/09/2026**, y estan en
+[brechas-plantilla-otros.md](brechas-plantilla-otros.md). Siete son derivables de la formula y se
+implementan citandolas —la tasa incrustada, las semillas de primer ano, la ranura reservada, las
+cuatro filas de dato, la bolsa de egresos como base de las cuentas por pagar, la bandera de ano con
+produccion y las dos filas de otro libro—. Las otras cuatro, la `050`, la `051`, la `055` y la
+`056`, se reproducen y se consultan.
 
 **Cuatro reglas mas salieron de leer la hoja `Ventas` fila a fila el 02/09/2026**, y estan en
 [brechas-plantilla-ventas.md](brechas-plantilla-ventas.md). La `042` y la `043` son de tipo 2 y

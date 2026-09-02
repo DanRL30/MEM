@@ -248,9 +248,40 @@ clasificacion entre costo operativo y deduccion del ingreso es la nota 1 de
 
 ### 4.5 Datos comunes al caso
 
-Horizonte y primer ano · dias de working capital · tratamiento del IGV en working capital ·
-perdidas tributarias arrastradas · costos hundidos · inversion social · gastos administrativos ·
-otros gastos operativos · servidumbres y usufructos · estudios · exploraciones.
+Se reparten entre dos plantillas. En la hoja `Caso` del libro de inputs, lo que identifica el caso y
+sus gastos no atribuibles a una unidad:
+
+| Concepto | Unidad | Campo del motor |
+|---|---|---|
+| Horizonte y primer ano | anos | `Horizonte` |
+| Cuentas comerciales en el capital de trabajo | `si / no` | `cuentas_de_capital_trabajo_activas` |
+| Perdidas tributarias arrastradas | `US$` | `saldo_inicial_de_perdidas` |
+| Inversion social | `US$/ano` | `gestion_social` |
+| Gastos administrativos | `US$/ano` | `gastos_administrativos` |
+| Otros gastos operativos | `US$/ano` | `otros_gastos`, y es la fila 32 de `Otros` |
+| Servidumbres y usufructos | `US$/ano` | `predios` |
+| Estudios | `US$/ano` | `estudios` |
+| Exploraciones no atribuibles a una unidad | `US$/ano` | `exploraciones` |
+| Costos hundidos excluidos del flujo | `US$` | **ninguno todavia**: se reporta si se llena |
+
+Y en la plantilla de supuestos, lo que el libro teclea dentro de la hoja `Otros`:
+
+| Concepto | Unidad | Dato o calculo | Campo del motor |
+|---|---|---|---|
+| Gasto de Ventas Sn Refinado LOM | `$` | dato de otro libro (regla 054) | `gasto_de_ventas_lom` |
+| Fletes Concentrado LOM | `$` | dato de otro libro (regla 054) | `fletes_lom` |
+| Otros Egresos | `$` | dato | `otros_egresos` |
+| Otras Cuentas por Cobrar | `$` | dato | `otras_cuentas_por_cobrar` |
+| Otras Cuentas por Pagar | `$` | dato | `otras_cuentas_por_pagar` |
+| Dias de Cuentas por Cobrar | `dias` | dato, una sola celda | `dias_por_cobrar` |
+| Dias de Cuentas por Pagar | `dias` | dato, una sola celda | `dias_por_pagar` |
+| Tasa de IGV | `%` | dato, una sola celda (regla 046) | `tasa_igv` |
+| Porcentaje de Ventas de Exportacion | `%` | dato, una sola celda | `porcentaje_de_ventas_de_exportacion` |
+| Porcentaje de Compras Locales | `%` | dato, una sola celda | `porcentaje_de_compras_locales` |
+
+Las cinco ultimas se escriben una vez y rigen todo el horizonte, que es como las lleva el libro: la
+regla 047. La lectura fila a fila de la hoja esta en
+[brechas-plantilla-otros.md](brechas-plantilla-otros.md).
 
 Los siete parametros corporativos — tasa de descuento, participacion de trabajadores, impuesto a la
 renta, regalia sobre ventas, Osinergmin, OEFA y fondo de jubilacion minera — **no son inputs del
