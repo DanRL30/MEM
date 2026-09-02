@@ -98,6 +98,11 @@ def combinado() -> Corrida:
     return calcular(sinteticos.dos_proyectos(), sinteticos.MAESTROS)
 
 
+@pytest.fixture(scope="module")
+def con_agotamiento() -> Corrida:
+    return calcular(sinteticos.caso_con_agotamiento(), sinteticos.MAESTROS)
+
+
 class TestLaReglaDeTolerancia:
     """La regla contractual se verifica aquí, ya que no gobierna lo demás."""
 
@@ -151,6 +156,14 @@ class TestN0:
         assert activas["Operacion"] == (0, 1, 2, 3, 4)
         assert activas["Proyecto X"] == (2, 3, 4)
         assert combinado.depreciacion_tributaria_por_mina["Proyecto X"][:2] == (0.0, 0.0)
+
+    def test_declarar_las_reservas_las_convierte_en_dato(self, con_agotamiento: Corrida) -> None:
+        # Una unidad en marcha las trae de su plan de vida de mina; un proyecto
+        # todavia no las tiene y salen de lo que su propio plan extrae.
+        larga, proyecto = con_agotamiento.caso.unidades
+        assert larga.reservas == 4_000.0
+        assert proyecto.reservas is None
+        assert sum(proyecto.produccion.mineral_extraido) == 1_000.0
 
 
 # --- N1 · bloques intermedios --------------------------------------------------
@@ -226,6 +239,62 @@ class TestN1:
             por_mina["Proyecto X"], (0.0, 0.0, 300_000.0, 0.0, 0.0), "depreciacion Proyecto X"
         )
 
+    def test_la_via_financiera_agota_el_capital_contra_las_reservas(
+        self, con_agotamiento: Corrida
+    ) -> None:
+        # Edificaciones de 1 000 000 contra un saldo de 4 000, 3 000 y 2 000 t:
+        # se agota un cuarto del saldo en el segundo ejercicio -250 000- y un
+        # tercio de los 750 000 que quedan en el tercero, otros 250 000. La
+        # maquinaria no se agota: sigue lineal al 50 %, igual que en la otra via.
+        componentes = con_agotamiento.depreciacion_financiera_por_componente["Mina Larga"]
+        contrastar(componentes["edificaciones"], (0.0, 250_000.0, 250_000.0, 0.0), "agotamiento")
+        contrastar(componentes["maquinaria"], (0.0, 200_000.0, 0.0, 0.0), "maquinaria financiera")
+
+    def test_la_via_tributaria_reparte_el_mismo_capital_lineal(
+        self, con_agotamiento: Corrida
+    ) -> None:
+        # Las mismas edificaciones, al 5 % anual desde el primer ano con
+        # produccion. El metodo, no la tasa, es lo que separa a las dos vias.
+        componentes = con_agotamiento.depreciacion_tributaria_por_componente["Mina Larga"]
+        contrastar(
+            componentes["edificaciones"],
+            (0.0, 50_000.0, 50_000.0, 50_000.0),
+            "edificaciones tributaria",
+        )
+        contrastar(componentes["maquinaria"], (0.0, 200_000.0, 0.0, 0.0), "maquinaria tributaria")
+
+    def test_un_ano_sin_produccion_pierde_la_cuota_financiera(
+        self, con_agotamiento: Corrida
+    ) -> None:
+        # Regla 041: la tributaria acumula y desde el primer ano con produccion
+        # deprecia siempre; la financiera cierra ano a ano con la bandera del
+        # libro. El cuarto ejercicio no produce, y ahi las dos se separan.
+        contrastar(
+            con_agotamiento.depreciacion_tributaria_por_mina["Mina Larga"],
+            (0.0, 250_000.0, 50_000.0, 50_000.0),
+            "depreciacion tributaria",
+        )
+        contrastar(
+            con_agotamiento.depreciacion_financiera_por_mina["Mina Larga"],
+            (0.0, 450_000.0, 250_000.0, 0.0),
+            "depreciacion financiera",
+        )
+
+    def test_el_agotamiento_se_detiene_al_acabarse_las_reservas(
+        self, con_agotamiento: Corrida
+    ) -> None:
+        # Sin reservas declaradas son las 1 000 t que extrae el plan: se agota
+        # la mitad del saldo en el tercer ejercicio y el 100 % en el cuarto, de
+        # modo que el activo queda en cero justo cuando se acaba el yacimiento.
+        financiera = con_agotamiento.depreciacion_financiera_por_mina["Proyecto Y"]
+        contrastar(financiera, (0.0, 0.0, 300_000.0, 300_000.0), "agotamiento Proyecto Y")
+        assert coincide(sum(financiera), 600_000.0), "el agotamiento no reparte todo el capital"
+        contrastar(
+            con_agotamiento.depreciacion_tributaria_por_mina["Proyecto Y"],
+            (0.0, 0.0, 60_000.0, 60_000.0),
+            "depreciacion tributaria Proyecto Y",
+        )
+
 
 # --- N2 · flujos ---------------------------------------------------------------
 
@@ -260,6 +329,21 @@ class TestN2:
 
     def test_una_inversion_nunca_entra_a_caja(self, combinado: Corrida) -> None:
         assert all(v <= 0.0 for v in combinado.flujo.flujo_de_inversiones)
+
+    def test_el_agotamiento_llega_al_flujo(self, con_agotamiento: Corrida) -> None:
+        # La depreciacion financiera no es una linea de caja, pero manda en la
+        # base operativa que determina la regalia y el fondo de jubilacion: si
+        # el agotamiento no llegara hasta aqui, el flujo no lo delataria.
+        contrastar(
+            con_agotamiento.flujo.flujo_de_inversiones,
+            (-1_400_000.0, -600_000.0, 0.0, 0.0),
+            "flujo de inversiones",
+        )
+        contrastar(
+            con_agotamiento.flujo.flujo_economico,
+            (-1_400_000.0, 507_949.75, 1_313_064.875, 293_846.375),
+            "flujo economico",
+        )
 
 
 # --- N3 · indicadores ----------------------------------------------------------
@@ -303,6 +387,12 @@ class TestN3:
     ) -> None:
         assert simple.indicadores.capital_intensity is None
         assert combinado.indicadores.capital_intensity == pytest.approx(600_000.0 / 800.0)
+
+    def test_npv_del_caso_con_agotamiento(self, con_agotamiento: Corrida) -> None:
+        esperado = -1_400_000.0 + 507_949.75 / 1.1 + 1_313_064.875 / 1.21 + 293_846.375 / 1.331
+        assert coincide(con_agotamiento.indicadores.npv, esperado), (
+            f"NPV: se obtuvo {con_agotamiento.indicadores.npv:,.2f} y se esperaba {esperado:,.2f}"
+        )
 
     def test_un_caso_sin_desembolso_no_define_tir(self, con_refineria: Corrida) -> None:
         # La refinería no declara capital: su flujo no cambia de signo y la TIR

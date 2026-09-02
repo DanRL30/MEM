@@ -11,6 +11,7 @@ importa para el contraste estructural:
     unidad simple       una mina que vende metal refinado
     refinería            minas que alimentan una refineria con tope de capacidad
     dos proyectos       una operacion en marcha y un proyecto que entra tarde
+    agotamiento         minas cuyo capital se agota contra sus reservas
 
 Los casos certificados con datos reales son otra cosa: viven en el tenant de
 MINSUR, se referencian por manifiesto en `fixtures/certificados/` y sus pruebas
@@ -211,4 +212,81 @@ def dos_proyectos() -> Caso:
             gastos_administrativos=horizonte.serie([50_000.0] * 5, nombre="admin"),
             capacidad_para_intensidad=800.0,
         ),
+    )
+
+
+def caso_con_agotamiento() -> Caso:
+    """Dos minas cuyo capital se agota al ritmo al que se vacía el yacimiento.
+
+    Es el arquetipo que separa las dos vías de la depreciación, que no se
+    distinguen por la tasa sino por el método: la tributaria reparte lineal y la
+    financiera agota las instalaciones y las edificaciones contra las reservas.
+
+    Las dos unidades cubren los dos orígenes de la reserva. `Mina Larga` la
+    declara —es una unidad en marcha, que la trae de su plan de vida de mina— y
+    para el último ejercicio sin haber agotado su capital, que es donde las dos
+    vías se separan del todo: la tributaria sigue depreciando y la financiera
+    pierde la cuota del año de parada. `Proyecto Y` la deja vacía, de modo que
+    sale de lo que su propio plan extrae, y termina agotando exactamente lo que
+    invirtió.
+    """
+    horizonte = Horizonte(primer_ano=2027, anos=4)
+
+    # 2 000 t extraidas contra 4 000 declaradas: el saldo cierra en 4 000,
+    # 3 000, 2 000 y 2 000, y las tasas de agotamiento salen 0, 1/4, 1/3 y 0.
+    naturaleza_larga = {
+        "maquinaria": horizonte.serie([400_000.0, 0.0, 0.0, 0.0], nombre="maquinaria"),
+        "edificaciones": horizonte.serie([1_000_000.0, 0.0, 0.0, 0.0], nombre="edificaciones"),
+    }
+    larga = UnidadProductiva(
+        nombre="Mina Larga",
+        tipo="mina",
+        produccion=ProduccionDeUnidad(
+            mineral_tratado=horizonte.serie([0.0, 1_000.0, 1_000.0, 0.0], nombre="tratado"),
+            mineral_extraido=horizonte.serie([0.0, 1_000.0, 1_000.0, 0.0], nombre="extraido"),
+            concentrado_producido=horizonte.ceros(),
+            metal_refinado_vendido=horizonte.serie([0.0, 200.0, 200.0, 0.0], nombre="refinado"),
+        ),
+        costos={"Mina": horizonte.serie([0.0, 400_000.0, 400_000.0, 0.0], nombre="mina")},
+        capital=CapitalDeUnidad(
+            unidad="Mina Larga",
+            por_etapa=clasificar_por_etapa(horizonte, naturaleza_larga, anos_activos=(1, 2)),
+            por_naturaleza=naturaleza_larga,
+        ),
+        reservas=4_000.0,
+    )
+
+    # Sin reservas declaradas son las 1 000 t que extrae el plan, y la tasa del
+    # ultimo ejercicio llega al 100 %: el activo se agota justo cuando ellas.
+    naturaleza_proyecto = {
+        "instalaciones": horizonte.serie([0.0, 600_000.0, 0.0, 0.0], nombre="instalaciones"),
+    }
+    proyecto = UnidadProductiva(
+        nombre="Proyecto Y",
+        tipo="mina",
+        produccion=ProduccionDeUnidad(
+            mineral_tratado=horizonte.serie([0.0, 0.0, 500.0, 500.0], nombre="tratado"),
+            mineral_extraido=horizonte.serie([0.0, 0.0, 500.0, 500.0], nombre="extraido"),
+            concentrado_producido=horizonte.ceros(),
+            metal_refinado_vendido=horizonte.serie([0.0, 0.0, 50.0, 50.0], nombre="refinado"),
+        ),
+        costos={"Mina": horizonte.serie([0.0, 0.0, 100_000.0, 100_000.0], nombre="mina")},
+        capital=CapitalDeUnidad(
+            unidad="Proyecto Y",
+            por_etapa=clasificar_por_etapa(horizonte, naturaleza_proyecto, anos_activos=(2, 3)),
+            por_naturaleza=naturaleza_proyecto,
+        ),
+    )
+
+    return Caso(
+        nombre="Sintetico: agotamiento contra reservas",
+        horizonte=horizonte,
+        unidades=(larga, proyecto),
+        terminos=TerminosComerciales(
+            precio_metal_refinado=horizonte.serie([10_000.0] * 4, nombre="precio"),
+            premio_metal_refinado=horizonte.ceros(),
+            precio_metal_en_concentrado=horizonte.ceros(),
+            factor_metal_pagable=horizonte.ceros(),
+        ),
+        datos_comunes=DatosComunes(gastos_administrativos=horizonte.ceros()),
     )
