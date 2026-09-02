@@ -31,7 +31,7 @@ que es lo que el motor necesita.
 | 014 | `Otros`, filas 58 y 66 | La variación de IGV se calcula entera y se lleva al flujo multiplicada por cero: `-(credito - credito anterior) * 0` | El IGV no se considera en el capital de trabajo, como anota la hoja oculta `Inputs`. El bloque queda calculado y desconectado | | | `capital_trabajo.py` |
 | 015 | `FC escenarios`, filas 44 a 46 | El NPV suma desde la primera columna del horizonte y la TIR arranca una columna después | Asimetría entre dos indicadores de la misma serie. En `FC NZ` ambos cubren el mismo rango | | | `indicadores.py` |
 | 011 | `Ventas`, filas 55 a 60 | El contenido pagable se valoriza sobre las toneladas vendidas y los cargos se cobran sobre las netas de merma | Asimetría deliberada de la liquidación comercial | | | `ventas.py` |
-| 016 | `InputsProd`, filas 104 a 106 | La fila se rotula `Recuperación Sn NZ + SRP`, pero en la fórmula del refinado San Rafael Potencial usa la recuperación de `SR + B2`. Solo Nazareth usa la segunda | La etiqueta está mal: en `Supuestos` la misma fila se llama `Recuperación Nazareth`. **Resuelta el 01/09/2026 sin reproducir el agrupamiento**: la plataforma calcula por componente, ver abajo | Project Manager | 01/09/2026 | `complejo.py` |
+| 016 | `InputsProd`, filas 104 a 106 | La fila se rotula `Recuperación Sn NZ + SRP`, pero en la fórmula del refinado San Rafael Potencial usa la recuperación de `SR + B2`. Solo Nazareth usa la segunda | La etiqueta está mal: en `Supuestos` la misma fila se llama `Recuperación Nazareth`. **Resuelta el 01/09/2026 sin reproducir el agrupamiento**: la plataforma calcula por componente, ver abajo | Project Manager | 01/09/2026 | `refineria.py` |
 | 017 | `InputsProd`, fila 106 | Santo Domingo entra al refinado como `(alimentado − excedente)`: **el recorte por capacidad se le resta entero a esa unidad**, no se prorratea | Puede ser un orden de despacho deliberado —la última unidad en entrar absorbe el recorte— o un arrastre | | | |
 | 018 | `InputsProd`, filas 100 y 109 frente a `Supuestos!H120` | La capacidad de 90 000 está escrita dentro de la fórmula aunque `Supuestos` declara `Capacidad Máxima de Pisco` con ese mismo valor. La fórmula no lee esa celda | Dato duplicado en dos sitios que pueden divergir. Refina la regla `002` | | | `produccion.py` |
 | 019 | `InputsProd`, fila 111 | La venta spot del excedente vale `excedente × ley`, sin factor de recuperación, pese a llamarse `Producción Sn Refinado`. La fila 106 sí multiplica por la recuperación | O es metal contenido y la etiqueta engaña, o falta la recuperación | | | |
@@ -40,7 +40,7 @@ que es lo que el motor necesita.
 | 022 | `Supuestos!H63` | El cargo de refinacion de la plata es `ley pagable x 0,6 / 31,1035` | Sesenta centavos por onza troy, tambien incrustado. Ademas **no es un dato: se deriva de la ley pagable**, que a su vez sale de la produccion | | | |
 | 023 | `Supuestos!H57` y `H58` | La ley pagable es `max(0, min(ley x 100 - deduccion minima, ley x factor pagable))` | Se calcula desde la ley del concentrado, la deduccion minima y el factor pagable. La de plata repite la formula del cobre, con un `x 100` que solo tiene sentido sobre un porcentaje mientras la plata va en onzas por tonelada | | | |
 | 024 | `Supuestos!H123` y `H124` | OEFA va 0,07 %, 0,07 %, 0,06 % y despues constante; OSINERGMIN 0,12 %, 0,11 %, 0,10 % | **Son series por ano y decrecientes, no tasas fijas.** MINSUR confirmo el 01/09/2026 que es deliberado: los supuestos pueden variar los primeros ejercicios porque hay mejor informacion sobre ellos. Los valores del servicio (OEFA 0,10 %, Osinergmin 0,14 %) son la tasa de referencia, y el caso la sobrescribe | MINSUR | 01/09/2026 | `corrida.py` |
-| 025 | `Supuestos!H120` | La capacidad maxima del complejo es un solo valor, no una serie por ano | Refina la regla `002`: el libro la declara una vez y la repite incrustada en las formulas de `InputsProd` | | | `complejo.py` |
+| 025 | `Supuestos!H120` | La capacidad maxima de la refineria es un solo valor, no una serie por ano | Refina la regla `002`: el libro la declara una vez y la repite incrustada en las formulas de `InputsProd` | | | `refineria.py` |
 | 026 | `InputsOpex`, filas 131, 142, 155 y 166 | `Planilla = total del cash cost de la unidad x Supuestos!H111` | La planilla no es un dato: se deriva del costo. La plataforma la calcula y no la pide | Derivada del libro | 02/09/2026 | `cash_cost.py` |
 | 027 | `InputsOpex`, filas 134, 146, 158 y 170 | `Gestion Social Deducible` es una copia de `Gestion Social`, afectada por `x 0,85` en dos escenarios y por nada en el resto | La parte deducible es una fraccion declarada por unidad y por escenario. Sin declarar, el gasto es deducible entero | | | `cash_cost.py` |
 | 028 | `InputsOpex`, fila 132, leida por `Depreciacion` | San Rafael y San Rafael Potencial traen una fila `Estudios` que alimenta la depreciacion; Nazareth y Santo Domingo la parten en `Estudios Pre Factibilidad (Gasto)` y `Estudios Factibilidad (Capitalizable)` | Un `Estudios` sin calificar es capitalizable. **La eleccion cambia la base imponible**, no solo el vocabulario | | | `opex.py` |
@@ -169,11 +169,11 @@ deducible de la gestion social) y la 028 (los estudios sin calificar).
 
 Ver la bitácora de discrepancias abiertas en `bitacora-discrepancias.md`.
 
-## La regla de oro del complejo: nada se agrupa
+## La regla de oro de la refineria: nada se agrupa
 
 El libro agrupa las recuperaciones de la fundición: lleva una `Recuperación Sn
 SR + B2` y otra `Recuperación Sn NZ + SRP`, y con ellas calcula un único
-`Producción Sn Refinado` para todo el complejo. La plataforma **no reproduce ese
+`Producción Sn Refinado` para toda la refineria. La plataforma **no reproduce ese
 agrupamiento**. Es la excepción decidida por el Project Manager el 01/09/2026, y
 tiene dos motivos concretos:
 
@@ -183,14 +183,14 @@ regla `016` muestra además que los grupos del libro ni siquiera coinciden con s
 propias etiquetas: San Rafael Potencial figura en `NZ + SRP` y usa la
 recuperación de `SR + B2`.
 
-**Un total agregado no se puede atribuir.** Si el refinado del complejo difiere
+**Un total agregado no se puede atribuir.** Si el refinado de la refineria difiere
 del modelo, con el cálculo agrupado solo se sabe que algo no cuadra. Calculando
 componente a componente, la diferencia señala la unidad.
 
 El efecto es medible y no es un matiz: con 600 t al 40 % recuperando 90 % y 400 t
 al 30 % recuperando 70 %, el cálculo independiente da 300 tmf y el agrupado sobre
 la recuperación media da 288. Está fijado en
-`packages/engine/tests/test_complejo.py::TestReglaDeOro`.
+`packages/engine/tests/test_refineria.py::TestReglaDeOro`.
 
 Reproducir el agrupamiento sigue siendo posible sin tocar el motor: basta con dar
 el mismo valor de recuperación a las unidades de un grupo.

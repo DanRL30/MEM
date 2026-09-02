@@ -81,12 +81,12 @@ async def tablero(
         ],
         curva_produccion=[
             {"ano": ano, "valor": valor}
-            for ano, valor in zip(anos, resultado.complejo.concentrado_alimentado, strict=True)
+            for ano, valor in zip(anos, resultado.refineria.concentrado_alimentado, strict=True)
         ],
         curva_costo_unitario=[
             {"ano": ano, "valor": cash_cost_unitario(costo, tratado)}
             for ano, costo, tratado in zip(
-                anos, resultado.cash_cost, resultado.complejo.concentrado_alimentado, strict=True
+                anos, resultado.cash_cost, resultado.refineria.concentrado_alimentado, strict=True
             )
         ],
         capex_por_etapa=[

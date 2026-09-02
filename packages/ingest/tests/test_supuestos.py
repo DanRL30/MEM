@@ -168,18 +168,18 @@ class TestSupuestosDelCaso:
     def test_los_porcentajes_se_convierten(self, supuestos: Path) -> None:
         de_x = leer_supuestos(supuestos).supuestos
         assert de_x is not None
-        assert de_x.por_unidad["Proyecto X"]["recuperacion_en_el_complejo"] == pytest.approx(
+        assert de_x.por_unidad["Proyecto X"]["recuperacion_en_la_refineria"] == pytest.approx(
             (0.95, 0.95, 0.95)
         )
 
-    def test_la_recuperacion_del_complejo_va_por_unidad(self, supuestos: Path) -> None:
+    def test_la_recuperacion_en_la_refineria_va_por_unidad(self, supuestos: Path) -> None:
         # Regla de oro: el libro la agrupa en `SR + B2` y `NZ + SRP`, y aqui
         # cada unidad tiene la suya.
         por_unidad = leer_supuestos(supuestos).supuestos
         assert por_unidad is not None
         assert (
-            por_unidad.por_unidad["Proyecto X"]["recuperacion_en_el_complejo"]
-            != (por_unidad.por_unidad["Proyecto Y"]["recuperacion_en_el_complejo"])
+            por_unidad.por_unidad["Proyecto X"]["recuperacion_en_la_refineria"]
+            != (por_unidad.por_unidad["Proyecto Y"]["recuperacion_en_la_refineria"])
         )
 
     def test_una_estructura_alterada_se_reporta(self, supuestos: Path) -> None:
@@ -221,7 +221,7 @@ class TestAplicarAlCaso:
                 concentrado_de_cu=horizonte.serie((0.0, 200.0, 200.0), nombre="cu"),
             ),
         )
-        complejo = UnidadProductiva(
+        refinería = UnidadProductiva(
             nombre="Fundicion",
             tipo="fundicion",
             produccion=ProduccionDeUnidad(mineral_tratado=ceros),
@@ -229,7 +229,7 @@ class TestAplicarAlCaso:
         return Caso(
             nombre="Caso de prueba",
             horizonte=horizonte,
-            unidades=(mina, complejo),
+            unidades=(mina, refinería),
             terminos=TerminosComerciales(
                 precio_metal_refinado=ceros,
                 premio_metal_refinado=ceros,
@@ -252,17 +252,17 @@ class TestAplicarAlCaso:
         assert [m.nombre for m in caso.terminos.concentrado.metales] == ["Cu", "Ag"]
         assert caso.terminos.concentrado.metales[1].en_onzas_troy is True
 
-    def test_la_recuperacion_cuelga_del_complejo_y_por_origen(
+    def test_la_recuperacion_cuelga_de_la_refineria_y_por_origen(
         self, comite: Path, supuestos: Path
     ) -> None:
-        # Regla de oro: es el complejo quien refina, y guarda una recuperacion
+        # Regla de oro: es la refinería quien refina, y guarda una recuperacion
         # por unidad de origen en vez de una comun a todas.
         del_caso = leer_supuestos(supuestos).supuestos
         assert del_caso is not None
         caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
         fundicion = caso.fundicion
         assert fundicion is not None
-        assert fundicion.recuperacion_del_complejo["Mina Alfa"]["Sn"] == pytest.approx(
+        assert fundicion.recuperacion_en_la_refineria["Mina Alfa"]["Sn"] == pytest.approx(
             (0.95, 0.95, 0.95)
         )
 

@@ -5,7 +5,7 @@ unidad sin planta de preconcentración deja esa fila en cero y la plataforma no
 la muestra. Es lo que permite cargar un proyecto que hoy no existe en el libro.
 
 El bloque de la hoja `InputsOpex` es **todo dato**. Lo que el libro calcula ahí
-—los totales, el costo por tonelada, los subtotales del complejo y la producción
+—los totales, el costo por tonelada, los subtotales de la refinería y la producción
 que trae de `InputsProd`— no se pide: la plataforma lo calcula. Por eso esta
 plantilla no lleva filas corroborables y no hay recálculo que contrastar contra
 lo cargado, a diferencia de la de producción.
@@ -277,7 +277,7 @@ def _tomar_la_cola(
 def aplicar(caso: Caso, bloques: Sequence[OpexDeUnidad]) -> Caso:
     """Vuelca el opex leído sobre las unidades del caso, en orden.
 
-    **El complejo entra en la cuenta**, a diferencia del libro de producción,
+    **La refinería entra en la cuenta**, a diferencia del libro de producción,
     que lo excluye porque sus toneladas son resultado. Aquí su costo es un dato
     como el de cualquier otra unidad, de modo que el libro de opex trae una
     pestaña más que el de producción.
@@ -285,7 +285,7 @@ def aplicar(caso: Caso, bloques: Sequence[OpexDeUnidad]) -> Caso:
     if len(bloques) != len(caso.unidades):
         raise ErrorDeAsociacion(
             f"El libro de opex trae {len(bloques)} pestana(s) y el caso declara "
-            f"{len(caso.unidades)} unidad(es), incluido el complejo. Asociarlas por orden exige "
+            f"{len(caso.unidades)} unidad(es), incluida la refinería. Asociarlas por orden exige "
             "que sean tantas como unidades: sobra o falta un proyecto."
         )
     return replace(

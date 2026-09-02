@@ -276,7 +276,7 @@ lleva hoja `Caso`**, y el horizonte se deduce contando la fila de anos: nada fij
 el numero de ejercicios de antemano, de modo que un proyecto de vida larga no
 exige tocar el lector.
 
-**El complejo no tiene pestana.** Sus filas son resultado del concentrado que le
+**La refineria no tiene pestana.** Sus filas son resultado del concentrado que le
 entregan las minas —la lectura de las formulas del libro lo confirmo fila por
 fila— y sus dos entradas reales, la capacidad y la recuperacion, son supuestos
 que en el libro viven en la hoja `Supuestos`.
@@ -286,7 +286,7 @@ con concepto desconocido se descartaba con un `continue`: el usuario la llenaba,
 el caso se leia sin errores y su dato no se usaba. Es el peor fallo posible en una
 frontera, porque no deja sintoma.
 
-### El opex tiene su libro, y ahi el complejo si lleva pestana
+### El opex tiene su libro, y ahi la refineria si lleva pestana
 
 [opex.py](packages/ingest/src/minsur_ingest/opex.py) declara la estructura y
 [leer_opex()](packages/ingest/src/minsur_ingest/plantilla.py) la lee, con el
@@ -347,9 +347,9 @@ los capitalizables, que el libro deprecia en vez de deducir. Su naturaleza
 contable no esta declarada en ninguna parte, asi que hoy salen de caja y no se
 deprecian; eso se cierra con la plantilla de CAPEX.
 
-### El bloque del complejo: todo resultado, y sin agrupar
+### El bloque de la refineria: todo resultado, y sin agrupar
 
-[complejo.py](packages/engine/src/minsur_engine/complejo.py) rehace el bloque
+[refineria.py](packages/engine/src/minsur_engine/refineria.py) rehace el bloque
 entero desde lo que producen las minas: lo alimentado por cada origen y su ley,
 el consolidado acotado por la capacidad, la ley promedio ponderada, el refinado,
 el excedente y su venta spot, y el `Check` del libro. **Ninguna de esas filas es
@@ -362,12 +362,12 @@ agrupa —`Recuperación Sn SR + B2` y `NZ + SRP`— y la plataforma no lo repro
 por decision del 01/09/2026: un proyecto nuevo no cabe en ningun grupo sin decidir
 a cual se parece, y una diferencia en un total agregado no se puede atribuir a una
 unidad. El efecto es medible, no un matiz, y esta fijado en
-`test_complejo.py::TestReglaDeOro`. Dar el mismo valor a las unidades de un grupo
+`test_refineria.py::TestReglaDeOro`. Dar el mismo valor a las unidades de un grupo
 reproduce el comportamiento del libro sin tocar el motor.
 
-**Cuando el complejo se satura, el recorte se reparte por merito**: va a spot
+**Cuando la refineria se satura, el recorte se reparte por merito**: va a spot
 primero el concentrado de menor ley, y **con leyes iguales decide el margen por
-tonelada** —lo que gana el complejo por refinar una tonelada en vez de venderla—,
+tonelada** —lo que gana la refineria por refinar una tonelada en vez de venderla—,
 que con igual contenido es la diferencia de recuperaciones. El libro se lo resta entero a la ultima unidad en entrar, y eso no se
 generaliza a un proyecto nuevo. Es la desviacion `D-05`, y arrastra una segunda
 consecuencia de coherencia: **el excedente se valoriza a la ley de lo que
@@ -390,7 +390,7 @@ rotuladas `xxx`.
 
 La plantilla de supuestos lleva una pestana `Comunes` y una por proyecto, en
 orden. Lo que es de cada unidad es su depreciacion —tributaria y financiera, como
-pide `D-04`— y su recuperacion en el complejo, **una por unidad y no por los
+pide `D-04`— y su recuperacion en la refineria, **una por unidad y no por los
 grupos del libro**, que es la regla de oro.
 
 Tres unidades de medida nuevas que conviene no perder de vista: la plata se

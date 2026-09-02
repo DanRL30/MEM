@@ -79,7 +79,7 @@ UNIDADES_PROVISIONALES = ("SR", "B2", "NZ", "SRP", "SD")
 """Abreviaturas que ofrece el selector mientras no llegue el catalogo de MINSUR.
 
 Son las cinco unidades mineras del modelo vigente: San Rafael, B2, Nazareth, San
-Rafael Potencial y Santo Domingo. **No incluye Pisco**, porque el complejo no se
+Rafael Potencial y Santo Domingo. **No incluye Pisco**, porque la refinería no se
 carga: sus filas son resultado del concentrado que le entregan las minas.
 
 Es una lista provisional y no una regla del motor. El catalogo definitivo lo
@@ -107,7 +107,7 @@ def armar_produccion(
     """
     if not filas:
         # Sin filas no hay nada que leer, y no es un error de estructura: es lo
-        # que ocurre con el complejo, que no tiene pestana porque sus filas son
+        # que ocurre con la refinería, que no tiene pestana porque sus filas son
         # resultado de lo que producen las minas.
         return _armada({}, horizonte)
 

@@ -248,15 +248,15 @@ class TestElDatoDelUsuarioEsElQueManda:
     def _corrida(self, **cambios: tuple[float, ...]) -> Corrida:
         return calcular(_caso(_unidad(**cambios)), MAESTROS)
 
-    def test_el_complejo_recibe_lo_que_la_mina_declara_aunque_no_cuadre(self) -> None:
-        # El concentrado cargado es el doble del que sale de la cadena. El
-        # complejo debe recibir el cargado, y la corrida debe avisar.
+    def test_la_refineria_recibe_lo_que_la_mina_declara_aunque_no_cuadre(self) -> None:
+        # El concentrado cargado es el doble del que sale de la cadena. La
+        # refineria debe recibir el cargado, y la corrida debe avisar.
         alterado = self._corrida(concentrado_producido=_par(CONCENTRADO * 2))
-        assert alterado.complejo.concentrado_entregado[0] == pytest.approx(CONCENTRADO * 2)
+        assert alterado.refineria.concentrado_entregado[0] == pytest.approx(CONCENTRADO * 2)
         assert "Produccion Concentrado" in {d.concepto for d in alterado.discrepancias}
 
         coherente = self._corrida()
-        assert coherente.complejo.concentrado_entregado[0] == pytest.approx(CONCENTRADO)
+        assert coherente.refineria.concentrado_entregado[0] == pytest.approx(CONCENTRADO)
         assert coherente.discrepancias == ()
 
     def test_el_cash_cost_usa_el_tonelaje_cargado(self) -> None:
@@ -279,8 +279,8 @@ class TestElDatoDelUsuarioEsElQueManda:
 
         assert con_aviso.ventas == sin_aviso.ventas
         assert con_aviso.cash_cost == sin_aviso.cash_cost
-        assert con_aviso.complejo.concentrado_entregado == (
-            sin_aviso.complejo.concentrado_entregado
+        assert con_aviso.refineria.concentrado_entregado == (
+            sin_aviso.refineria.concentrado_entregado
         )
         assert con_aviso.flujo.flujo_economico == sin_aviso.flujo.flujo_economico
         assert con_aviso.indicadores.npv == sin_aviso.indicadores.npv

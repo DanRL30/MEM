@@ -1,4 +1,4 @@
-"""Pruebas del bloque del complejo.
+"""Pruebas del bloque de la refinería.
 
 La que más importa es la de la regla de oro: **nada se agrupa**. Cada unidad
 entra con su propia recuperación y su aporte al refinado se calcula por separado.
@@ -14,8 +14,8 @@ from dataclasses import replace
 
 import pytest
 
-from minsur_engine.complejo import Componente, calcular, margen_de_refinar
 from minsur_engine.horizonte import Horizonte
+from minsur_engine.refineria import Componente, calcular, margen_de_refinar
 
 HORIZONTE = Horizonte(primer_ano=2027, anos=2)
 
@@ -71,7 +71,7 @@ class TestReglaDeOro:
         assert bloque.refinado_sin_restriccion[0] != pytest.approx(agrupado)
 
     def test_una_unidad_sin_recuperacion_no_contamina_a_las_demas(self) -> None:
-        # Si el complejo no declara la recuperacion de una unidad, esa aporta
+        # Si la refinería no declara la recuperacion de una unidad, esa aporta
         # cero y las otras conservan la suya. Repartir una recuperacion media
         # entre todas ocultaria el dato que falta.
         bloque = calcular(
@@ -120,7 +120,7 @@ class TestLoQueEntra:
 
 
 class TestRepartoPorMerito:
-    """Cuando el complejo se satura, quien se queda fuera cambia el resultado."""
+    """Cuando la refinería se satura, quien se queda fuera cambia el resultado."""
 
     def test_va_a_spot_primero_el_concentrado_de_menor_ley(self) -> None:
         # Se refina el mejor concentrado y se vende el peor. Beta esta al 30 %

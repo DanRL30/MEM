@@ -12,8 +12,8 @@ unidades de medida. Tres diferencias, todas deliberadas:
 - **El comité de precios no tiene ocho ranuras.** El libro reserva ocho juegos y
   elige uno con un selector; la plataforma versiona, que es lo mismo sin el
   límite ni las ranuras rotuladas `xxx`.
-- **La recuperación del complejo va por unidad**, no por los grupos `SR + B2` y
-  `NZ + SRP` del libro. Es la regla de oro del complejo.
+- **La recuperación de la refinería va por unidad**, no por los grupos `SR + B2` y
+  `NZ + SRP` del libro. Es la regla de oro de la refinería.
 - **La depreciación va por unidad**, que es lo que pide la desviación `D-04`.
 """
 
@@ -88,7 +88,7 @@ FILAS_DE_SUPUESTOS = (
     FilaDeSupuesto("Gasto de Ventas Sn Refinado", "$/tmf", "gasto_de_ventas_sn_refinado"),
     FilaDeSupuesto("Gasto de Ventas Conc. Sn", "$/t conc", "gasto_de_ventas_conc_sn"),
     FilaDeSupuesto("Gasto de Ventas Conc. Cu", "$/t conc", "gasto_de_ventas_conc_cu"),
-    FilaDeSupuesto("Capacidad Maxima del Complejo", "t", "capacidad_del_complejo"),
+    FilaDeSupuesto("Capacidad Maxima de la Refineria", "t", "capacidad_de_la_refineria"),
     FilaDeSupuesto("Gasto Exploraciones", "$", "exploraciones"),
     FilaDeSupuesto("Gastos Financieros Netos", "$", "gastos_financieros"),
     FilaDeSupuesto("Otros Flujo Operativo", "$", "otros_flujo_operativo"),
@@ -106,8 +106,8 @@ FILAS_POR_UNIDAD = (
     FilaDeSupuesto("Depreciacion", SECCION),
     FilaDeSupuesto("Depreciacion Tributaria", "k$", "depreciacion_tributaria"),
     FilaDeSupuesto("Depreciacion Financiera", "k$", "depreciacion_financiera"),
-    FilaDeSupuesto("Complejo", SECCION),
-    FilaDeSupuesto("Recuperacion de Sn en el complejo", "%", "recuperacion_en_el_complejo"),
+    FilaDeSupuesto("Refineria", SECCION),
+    FilaDeSupuesto("Recuperacion de Sn en la refineria", "%", "recuperacion_en_la_refineria"),
     FilaDeSupuesto("Gastos", SECCION),
     # El libro escribe la fila deducible como copia de la gestion social y en
     # dos escenarios la afecta por una fraccion. Sin declarar, es entera.
@@ -264,9 +264,9 @@ def _terminos_del_concentrado(
 def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProductiva, ...]:
     """Reparte por orden los supuestos de cada unidad.
 
-    Dos cosas no van donde parece. La **capacidad** es del complejo y no de una
-    mina, y la **recuperación** de cada origen tambien: cuelga del complejo,
-    indexada por la unidad que entrega, porque es el complejo quien refina. Que
+    Dos cosas no van donde parece. La **capacidad** es de la refinería y no de una
+    mina, y la **recuperación** de cada origen tambien: cuelga de la refinería,
+    indexada por la unidad que entrega, porque es la refinería quien refina. Que
     haya una por origen y no una comun es la regla de oro.
     """
     de_cada_pestana = list(supuestos.por_unidad.values())
@@ -279,15 +279,15 @@ def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProdu
         propios = de_cada_pestana[mineras] if mineras < len(de_cada_pestana) else {}
         mineras += 1
         propios_de[unidad.nombre] = propios
-        serie = propios.get("recuperacion_en_el_complejo", ())
+        serie = propios.get("recuperacion_en_la_refineria", ())
         if serie:
             recuperaciones[unidad.nombre] = {"Sn": serie}
 
-    capacidad = supuestos.comunes.get("capacidad_del_complejo", ())
+    capacidad = supuestos.comunes.get("capacidad_de_la_refineria", ())
     return tuple(
         replace(
             unidad,
-            recuperacion_del_complejo=recuperaciones,
+            recuperacion_en_la_refineria=recuperaciones,
             produccion=replace(unidad.produccion, capacidad_de_tratamiento=capacidad),
         )
         if unidad.es_fundicion

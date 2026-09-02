@@ -103,7 +103,7 @@ Queda por precisar: como se reparte entre las dos minas la base depreciable que 
 - **Origen:** decision del Project Manager, 01/09/2026, sobre el hallazgo de la regla `017`.
 - **Tratamiento propuesto:** `RECALCULADA`
 
-Cuando las minas entregan mas concentrado del que el complejo puede tratar, una parte no se refina
+Cuando las minas entregan mas concentrado del que la refineria puede tratar, una parte no se refina
 y se vende como concentrado. **Quien se queda fuera cambia el resultado**, porque cada unidad
 entrega concentrado de distinta ley y se refina con distinta recuperacion.
 
@@ -143,7 +143,7 @@ de la misma ley sale el que menos deja refinar, que con igual contenido es el de
 El nombre queda como ultimo desempate y no decide nada: solo evita que dos corridas del mismo caso
 repartan distinto.
 
-El margen es lo que gana el complejo por refinar una tonelada en vez de venderla: refinarla rinde
+El margen es lo que gana la refineria por refinar una tonelada en vez de venderla: refinarla rinde
 `ley x recuperacion` toneladas de metal al precio mas el premio, y venderla rinde `ley` toneladas de
 contenido, de las que se paga la fraccion pagable.
 
@@ -153,11 +153,11 @@ altera el orden; solo importa si difiere por origen, que es justo lo que esa hoj
 
 **A spot solo se va cuando se supera la capacidad, nunca antes.** Decidido por el Project Manager el
 01/09/2026, y conviene dejar dicho por que se pregunto: con los precios del caso algunos origenes dan
-**margen negativo**, es decir que refinarlos deja menos que venderlos aunque el complejo no este
+**margen negativo**, es decir que refinarlos deja menos que venderlos aunque la refineria no este
 saturado. Aun asi no se venden. El margen decide **a quien le toca ceder, no si hay que ceder**.
 
 Es una regla facil de romper sin querer, porque parece una mejora obvia. La fija
-`test_complejo.py::TestRepartoPorMerito::test_un_margen_negativo_no_manda_nada_a_spot_sin_saturacion`.
+`test_refineria.py::TestRepartoPorMerito::test_un_margen_negativo_no_manda_nada_a_spot_sin_saturacion`.
 
 Que haya origenes con margen negativo sigue siendo un hallazgo que vale la pena llevar a Finanzas,
 pero como informacion de gestion y no como regla de calculo.

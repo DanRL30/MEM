@@ -65,7 +65,7 @@ class ProduccionDeUnidad:
     """`Mineral Tratado Total (Cash Cost)`. Base del cash cost unitario."""
 
     concentrado_producido: Serie = ()
-    """`Producción Concentrado`. Lo que la unidad entrega al complejo."""
+    """`Producción Concentrado`. Lo que la unidad entrega a la refinería."""
 
     # --- Mina ---
     mineral_extraido: Serie = ()
@@ -91,11 +91,11 @@ class ProduccionDeUnidad:
     ley_ag: Serie = ()
     """Ley de plata en onzas troy por tonelada, no en porcentaje."""
 
-    # --- Solo en la unidad del complejo ---
+    # --- Solo en la unidad de la refinería ---
     metal_refinado_vendido: Serie = ()
     metal_en_concentrado_vendido: Serie = ()
     capacidad_de_tratamiento: Serie = ()
-    """Tope que acota lo alimentado al complejo. Es un supuesto, no producción."""
+    """Tope que acota lo alimentado a la refinería. Es un supuesto, no producción."""
 
 
 def campos_con_dato(produccion: ProduccionDeUnidad) -> frozenset[str]:
@@ -157,10 +157,10 @@ class UnidadProductiva:
     alias: tuple[str, ...] = ()
     """Abreviaturas con que el libro nombra la unidad: `SR`, `SRP`, `NZ`."""
 
-    recuperacion_del_complejo: Mapping[str, Mapping[str, Serie]] = field(default_factory=dict)
-    """Solo en la unidad del complejo: su recuperación por origen y por metal.
+    recuperacion_en_la_refineria: Mapping[str, Mapping[str, Serie]] = field(default_factory=dict)
+    """Solo en la unidad de la refinería: su recuperación por origen y por metal.
 
-    No hay una sola para todo el complejo: el libro distingue la de un grupo de
+    No hay una sola para toda la refinería: el libro distingue la de un grupo de
     unidades de la de otro y las toma de la hoja `Supuestos`. **Es un supuesto,
     no una fila de producción**, y por eso no cuelga de `ProduccionDeUnidad`:
     vive aquí hasta que exista la plantilla de supuestos.
@@ -327,7 +327,7 @@ class Caso:
         if sum(1 for u in self.unidades if u.es_fundicion) > 1:
             raise ErrorCaso(
                 f"El caso {self.nombre!r} declara mas de una fundicion. El tope de capacidad se "
-                "aplica sobre el concentrado del complejo y no sabria a cual acotar."
+                "aplica sobre el concentrado de la refinería y no sabria a cual acotar."
             )
         conocidas = set(nombres)
         for unidad in self.unidades:

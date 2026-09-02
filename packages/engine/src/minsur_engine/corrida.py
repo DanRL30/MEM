@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from minsur_engine import capital_trabajo, complejo, tributos
+from minsur_engine import capital_trabajo, refineria, tributos
 from minsur_engine.capex import capex_de_etapa, capex_de_sostenimiento, capex_total
 from minsur_engine.cash_cost import (
     ESTUDIOS_CAPITALIZABLES,
@@ -43,7 +43,6 @@ from minsur_engine.cash_cost import (
     planilla,
 )
 from minsur_engine.caso import Caso, DatosMaestros, UnidadProductiva, campos_con_dato
-from minsur_engine.complejo import BloqueDelComplejo
 from minsur_engine.corroboracion import Discrepancia, corroborar
 from minsur_engine.depreciacion import depreciacion_por_mina, total_depreciado
 from minsur_engine.flujos import (
@@ -62,6 +61,7 @@ from minsur_engine.indicadores import (
     tir,
 )
 from minsur_engine.parametros import ParametrosCorporativos
+from minsur_engine.refineria import BloqueDeLaRefineria
 from minsur_engine.ventas import (
     LiquidacionConcentrado,
     MetalPagable,
@@ -134,14 +134,14 @@ class Corrida:
     version_datos_maestros: str
     ventas: Serie
     cash_cost: Serie
-    complejo: BloqueDelComplejo
-    """El bloque del complejo, entero y calculado componente a componente."""
+    refineria: BloqueDeLaRefineria
+    """El bloque de la refinería, entero y calculado componente a componente."""
 
     cash_cost_por_unidad: dict[str, Serie]
     """Costo operativo de cada unidad, sin agrupar.
 
     El libro consolida y la plataforma no: una diferencia contra el modelo tiene
-    que poder atribuirse a un origen. Es la misma regla de oro del complejo.
+    que poder atribuirse a un origen. Es la misma regla de oro de la refinería.
     """
 
     gastos_por_unidad: dict[str, dict[str, Serie]]
@@ -203,7 +203,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     horizonte = caso.horizonte
     parametros = maestros.parametros
 
-    bloque = _bloque_del_complejo(caso)
+    bloque = _bloque_de_la_refineria(caso)
     resultado_de_ventas = _ventas(caso, bloque)
     ventas = resultado_de_ventas.total
     resultado_de_costos = _cash_cost(caso)
@@ -316,7 +316,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         cash_cost=cash_cost,
         cash_cost_por_unidad=resultado_de_costos.por_unidad,
         gastos_por_unidad=gastos.por_unidad,
-        complejo=bloque,
+        refineria=bloque,
         concentrado_liquidado_por_unidad=resultado_de_ventas.concentrado_liquidado_por_unidad,
         campos_con_dato_por_unidad={u.nombre: campos_con_dato(u.produccion) for u in caso.unidades},
         mineral_tratado_por_unidad=produccion_por_unidad,
@@ -335,8 +335,8 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
 # --- Bloques ------------------------------------------------------------------
 
 
-def _bloque_del_complejo(caso: Caso) -> BloqueDelComplejo:
-    """Rehace el bloque del complejo desde lo que producen las minas.
+def _bloque_de_la_refineria(caso: Caso) -> BloqueDeLaRefineria:
+    """Rehace el bloque de la refinería desde lo que producen las minas.
 
     Cada unidad entra con su propia recuperacion y su aporte al refinado se
     calcula por separado: la regla de oro es que nada se agrupe. El libro lleva
@@ -345,15 +345,15 @@ def _bloque_del_complejo(caso: Caso) -> BloqueDelComplejo:
     puede atribuir a una unidad.
     """
     fundicion = caso.fundicion
-    recuperaciones = fundicion.recuperacion_del_complejo if fundicion is not None else {}
+    recuperaciones = fundicion.recuperacion_en_la_refineria if fundicion is not None else {}
     terminos = caso.terminos
     componentes = [
-        complejo.Componente(
+        refineria.Componente(
             unidad=u.nombre,
             concentrado=u.produccion.concentrado_producido,
             ley=u.produccion.ley_del_concentrado,
             recuperacion=recuperaciones.get(u.nombre, {}).get("Sn", ()),
-            margen=complejo.margen_de_refinar(
+            margen=refineria.margen_de_refinar(
                 caso.horizonte,
                 u.produccion.ley_del_concentrado,
                 recuperaciones.get(u.nombre, {}).get("Sn", ()),
@@ -366,7 +366,7 @@ def _bloque_del_complejo(caso: Caso) -> BloqueDelComplejo:
         for u in caso.unidades_mineras
     ]
     capacidad = fundicion.produccion.capacidad_de_tratamiento if fundicion is not None else ()
-    return complejo.calcular(caso.horizonte, componentes, capacidad)
+    return refineria.calcular(caso.horizonte, componentes, capacidad)
 
 
 def _anos_activos(caso: Caso) -> dict[str, tuple[int, ...]]:
@@ -378,8 +378,8 @@ def _anos_activos(caso: Caso) -> dict[str, tuple[int, ...]]:
     }
 
 
-def _refinado_del_complejo(caso: Caso) -> Serie:
-    """Metal refinado que produce el complejo, por año.
+def _refinado_de_la_refineria(caso: Caso) -> Serie:
+    """Metal refinado que produce la refinería, por año.
 
     **No es un dato: es resultado.** La lectura de las fórmulas del libro lo
     confirmó fila por fila. Lo que alimenta a la fundición es el concentrado de
@@ -388,7 +388,7 @@ def _refinado_del_complejo(caso: Caso) -> Serie:
 
     Se calcula sobre lo alimentado **sin acotar por la capacidad**, que es la
     línea que el libro llama `Producción Sn Refinado (Sin Restricción Pisco)`.
-    Cómo se reparte el recorte cuando el complejo se satura es la regla `017`,
+    Cómo se reparte el recorte cuando la refinería se satura es la regla `017`,
     reportada y sin confirmar: en el libro se le resta entero a la última unidad
     en entrar, y generalizarlo sin respuesta sería inventarlo.
     """
@@ -397,7 +397,7 @@ def _refinado_del_complejo(caso: Caso) -> Serie:
     if fundicion is None:
         return horizonte.ceros()
 
-    recuperaciones = fundicion.recuperacion_del_complejo
+    recuperaciones = fundicion.recuperacion_en_la_refineria
     refinado = [0.0] * horizonte.anos
     for unidad in caso.unidades_mineras:
         por_metal = recuperaciones.get(unidad.nombre, {})
@@ -414,7 +414,7 @@ def _refinado_del_complejo(caso: Caso) -> Serie:
     return tuple(refinado)
 
 
-def _ventas(caso: Caso, bloque: BloqueDelComplejo) -> _Ventas:
+def _ventas(caso: Caso, bloque: BloqueDeLaRefineria) -> _Ventas:
     """Los tres caminos de ingreso que distingue el libro.
 
     El estaño refinado se vende a precio más premio; el estaño en concentrado, a
@@ -422,11 +422,11 @@ def _ventas(caso: Caso, bloque: BloqueDelComplejo) -> _Ventas:
     embarque a embarque, valorizando su contenido pagable y descontando maquila
     y refinación.
 
-    El excedente del complejo no se descarta: es concentrado que no llegó a
+    El excedente de la refinería no se descarta: es concentrado que no llegó a
     refinarse y se vende como tal, por el camino del metal en concentrado.
 
     La liquidación se guarda **por unidad**, no solo su suma: es la regla de oro
-    del complejo aplicada aquí, y sin ella una diferencia en la venta no se
+    de la refinería aplicada aquí, y sin ella una diferencia en la venta no se
     puede atribuir a un origen.
     """
     horizonte = caso.horizonte
@@ -442,7 +442,7 @@ def _ventas(caso: Caso, bloque: BloqueDelComplejo) -> _Ventas:
     total = [0.0] * horizonte.anos
     liquidado: dict[str, Serie] = {}
     for unidad in caso.unidades:
-        # El complejo no declara su refinado: se calculo desde las minas. Una
+        # La refinería no declara su refinado: se calculo desde las minas. Una
         # unidad que vende directo si lo declara, porque no pasa por fundicion.
         volumen_refinado = (
             bloque.refinado

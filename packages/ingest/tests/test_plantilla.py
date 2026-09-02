@@ -119,7 +119,7 @@ def _llenar_cadena(hoja: object, anos: int = 3) -> None:
 
 @pytest.fixture
 def plantilla_llena(tmp_path: Path) -> Path:
-    """Un libro completo de una mina y un complejo, con la cadena llena."""
+    """Un libro completo de una mina y una refinería, con la cadena llena."""
     generador = _generador()
     ruta = tmp_path / "caso.xlsx"
     unidades = generador._encadenar(  # type: ignore[attr-defined]
@@ -177,7 +177,7 @@ class TestIdaYVuelta:
         assert p.recuperacion == (0.0, 0.90, 0.90)
         assert p.concentrado_producido == (0.0, 45.0, 45.0)
 
-    def test_el_complejo_no_necesita_pestana(self, plantilla_llena: Path) -> None:
+    def test_la_refineria_no_necesita_pestana(self, plantilla_llena: Path) -> None:
         # Sus filas son resultado de lo que producen las minas: pedirlas como
         # dato invitaria a que contradijeran a su origen.
         caso = leer_o_fallar(plantilla_llena)
@@ -378,7 +378,7 @@ class TestAsociacionPorOrden:
         with pytest.raises(ErrorDeAsociacion, match="sobra o falta"):
             asociar_por_orden(["Proyecto X"], ["SR", "B2"])
 
-    def test_el_selector_provisional_no_incluye_el_complejo(self) -> None:
+    def test_el_selector_provisional_no_incluye_la_refineria(self) -> None:
         # Pisco no se carga: se calcula a partir de lo que le entregan las minas.
         assert UNIDADES_PROVISIONALES == ("SR", "B2", "NZ", "SRP", "SD")
 

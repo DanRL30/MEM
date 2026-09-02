@@ -12,7 +12,7 @@ una media simple y una ponderada difieren muy por encima de la tolerancia de
 N1. La ley del concentrado se pondera por la producción de concentrado y no por
 el mineral tratado, que es una excepción fácil de pasar por alto.
 
-**El complejo tiene un cuello de botella.** Todas las unidades entregan
+**La refinería tiene un cuello de botella.** Todas las unidades entregan
 concentrado a la fundición, y la fundición tiene una capacidad máxima. El libro
 la escribía como el número 90 000 dentro de la fórmula; Finanzas confirmó el
 01/09/2026 que es capacidad de planta y que el usuario debe poder cambiarla, de

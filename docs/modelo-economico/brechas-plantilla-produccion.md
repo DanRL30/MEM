@@ -47,7 +47,7 @@ y desde ahi sigue la cadena normal. Su planta es de una sola etapa, y la fila qu
 tipo de unidad hermano de `mina`, y como etapa que emite una fila `Mineral tratado de relaves` que
 el libro no tiene.
 
-**Pisco no es un proyecto, es el bloque del complejo.** No tiene sub-bloques porque no extrae ni
+**Pisco no es un proyecto, es el bloque de la refineria.** No tiene sub-bloques porque no extrae ni
 trata mineral: recibe concentrado. Sus filas son calculo interno sobre las minas y relaveras que
 le entregan.
 
@@ -127,7 +127,7 @@ datos, no la tabla de traduccion:
 | Fila | Etiqueta | Que falta |
 |---|---|---|
 | 90-99 | `Concentrado Alimentado <unidad>` y su ley | Un par por unidad de origen. La plantilla tiene una sola fila generica |
-| 103 | `Ley Promedio de Alimentación` | La ley agregada del complejo |
+| 103 | `Ley Promedio de Alimentación` | La ley agregada de la refineria |
 | 104-105 | `Recuperación Sn SR + B2`, `Recuperación Sn NZ + SRP` | **Dos recuperaciones por grupo de origen**, no una sola |
 | 106 | `Producción Sn Refinado (Sin Restricción Pisco)` | El refinado antes de aplicar el tope de capacidad |
 | 110-111 | `Ley Promedio de Alimentación` y `Producción Sn Refinado` del bloque `Venta Sn Spot` | **El excedente se refina y se vende**, no se descarta |
@@ -220,7 +220,7 @@ mandaba `Tratamiento de Relaves B2` —una linea de `InputsOpex`— a un concept
 
 Sigue abierto, y **por depender de una respuesta de Finanzas no se implementa**:
 
-- **Que criterio agrupa las recuperaciones del complejo.** La plantilla pide una por unidad de
+- **Que criterio agrupa las recuperaciones de la refineria.** La plantilla pide una por unidad de
   origen, que es mas general y reproduce el libro dando el mismo valor a las de un grupo. El motor
   guarda el dato y todavia no lo usa para calcular el refinado.
 - **Si el concentrado excedente se refina y se vende spot**, y con que recuperacion. El bloque
@@ -239,12 +239,12 @@ Corregido el 01/09/2026 sobre el rediseno, a peticion del Project Manager:
 - **Las pestanas se asocian por orden, no por nombre.** La primera es la primera unidad del caso.
   El nombre de la pestana es una pista para quien carga; el nombre final lo elige en un selector,
   que por ahora ofrece `SR`, `B2`, `NZ`, `SRP` y `SD`. Es lo que acordo el avance 02 del
-  28/08/2026, y **no incluye Pisco**: el complejo no se carga, se calcula a partir del concentrado
+  28/08/2026, y **no incluye Pisco**: la refineria no se carga, se calcula a partir del concentrado
   que le entregan las minas.
 - **El horizonte se deduce de la fila de anos.** Nada fija el numero de ejercicios de antemano, de
   modo que un proyecto de vida larga no exige tocar el lector. Una fila con saltos se reporta,
   porque un salto desplaza todas las series a partir de ahi sin dejar rastro en el resultado.
-- **`Concentrado entregado al complejo` solo aparece en unidades polimetalicas.** Con un solo metal
+- **`Concentrado entregado a la refineria` solo aparece en unidades polimetalicas.** Con un solo metal
   la respuesta es su propio concentrado, y preguntarla seria pedir el mismo dato dos veces.
 
 ## 10. La estructura estandar, y las ocho reglas que se corroboran

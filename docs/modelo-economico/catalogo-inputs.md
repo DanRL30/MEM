@@ -114,7 +114,7 @@ unidades — el concentrado de las minas alimenta a la fundicion y el sobrante s
 una unidad no se describe sola. Y las unidades de fundicion anaden toneladas alimentadas mas
 escoria, metal contenido en el concentrado y produccion de metal refinado.
 
-**La capacidad maxima de tratamiento es un input, y es del complejo.** La lectura de las formulas
+**La capacidad maxima de tratamiento es un input, y es de la refineria.** La lectura de las formulas
 mostro que el tope de la regla 002 no acota una planta concentradora: acota la **fundicion**, sobre
 la suma del concentrado que le entregan las cinco unidades. Finanzas confirmo el 01/09/2026 que el
 usuario debe poder cambiarlo, asi que entra como serie por ano de la unidad de fundicion. Lo tratado

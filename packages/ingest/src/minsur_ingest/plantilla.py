@@ -293,7 +293,7 @@ def leer_plantilla(ruta: Path, *, escenario: str | None = None) -> Lectura:
     produccion: dict[str, list[_Fila]] = {}
     for declarada in cabecera.unidades:
         if declarada.tipo == "fundicion":
-            # El complejo no tiene pestana de produccion: sus filas son
+            # La refinería no tiene pestana de produccion: sus filas son
             # resultado de lo que producen las minas.
             continue
         if declarada.hoja not in libro.sheetnames:
@@ -390,7 +390,7 @@ def leer_opex(ruta: Path) -> LecturaDeOpex:
 
     Igual que el de producción, no identifica el caso: la pestaña n es la
     unidad n del caso que ya está abierto. **Trae una pestaña más que el libro
-    de producción**, porque el complejo tiene costo aunque su producción sea
+    de producción**, porque la refinería tiene costo aunque su producción sea
     resultado.
     """
     incidencias: list[Incidencia] = []
@@ -523,7 +523,7 @@ def leer_supuestos(ruta: Path) -> LecturaDeSupuestos:
     """Lee la plantilla de supuestos del caso.
 
     La pestana `Comunes` trae lo que es del caso; las demas, en orden, traen lo
-    que es de cada unidad: su depreciacion y su recuperacion en el complejo.
+    que es de cada unidad: su depreciacion y su recuperacion en la refinería.
     Igual que en produccion, la unidad se asigna por posicion y no por nombre.
     """
     incidencias: list[Incidencia] = []
@@ -711,7 +711,7 @@ def _leer_pestana_de_unidad(hoja: Worksheet, horizonte: Horizonte) -> list[_Fila
     A diferencia de `_leer_hoja_de_series`, aquí no se separa el metal ni se
     borran los nombres de unidad: en `concentrado alimentado desde San Rafael`
     el nombre es el dato, y quitarlo deja una etiqueta que no significa nada.
-    Las filas de sección —`Mina`, `Planta`, `Complejo`— son rótulos y se saltan.
+    Las filas de sección —`Mina`, `Planta`, `Refinería`— son rótulos y se saltan.
 
     **La etiqueta se conserva como está escrita**, sin normalizar. Quien lee una
     estructura fija compara normalizando, así que no lo necesita; y quien admite

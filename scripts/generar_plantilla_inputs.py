@@ -434,7 +434,7 @@ def hoja_supuestos_de_unidad(libro: Workbook, nombre: str, primer_ano: int, anos
 def hoja_opex_de_unidad(libro: Workbook, nombre: str, primer_ano: int, anos: int) -> None:
     """Una pestana de opex, con la misma estructura para todas las unidades.
 
-    El complejo tambien la lleva, a diferencia de produccion: sus toneladas son
+    La refinería tambien la lleva, a diferencia de produccion: sus toneladas son
     resultado, pero su costo es un dato como el de cualquier mina.
     """
     _hoja_de_filas(libro, nombre, f"Opex de {nombre}", FILAS_DE_OPEX, primer_ano, anos)
@@ -487,11 +487,11 @@ def _leeme_del_bloque(bloque: str) -> list[tuple[str, Font | None]]:
             ("Todo lo que se pide aqui es dato", CABECERA),
             ("Ninguna fila se recalcula ni se corrobora: el libro corporativo no", None),
             ("carga en este bloque ningun valor derivado. Los totales, el costo por", None),
-            ("tonelada y los subtotales del complejo los calcula la plataforma y no", None),
+            ("tonelada y los subtotales de la refinería los calcula la plataforma y no", None),
             ("se piden. Tampoco la planilla, que sale del cash cost de la unidad por", None),
             ("la tasa de los supuestos, ni la parte deducible de la gestion social.", None),
             ("", None),
-            ("Una pestana por unidad, y el complejo tambien lleva la suya", CABECERA),
+            ("Una pestana por unidad, y la refinería tambien lleva la suya", CABECERA),
             ("Su produccion es resultado de lo que le entregan las minas, pero su", None),
             ("costo es un dato como el de cualquiera. Por eso este libro trae una", None),
             ("pestana mas que el de produccion.", None),
@@ -527,7 +527,7 @@ def hoja_instrucciones(libro: Workbook, unidades: list[Unidad], bloque: str = "p
 
     Las tres plantillas comparten la asociacion por orden y la estructura fija,
     pero no lo demas: opex no tiene filas corroborables ni sub-bloques de mina y
-    planta, y ahi el complejo si lleva pestana. Una sola hoja para las tres
+    planta, y ahi la refinería si lleva pestana. Una sola hoja para las tres
     describia la de produccion y contradecia a las otras.
     """
     hoja = libro.create_sheet("Leeme")
@@ -591,7 +591,7 @@ def _encadenar(unidades: list[Unidad]) -> list[Unidad]:
     if len(fundiciones) > 1:
         raise ValueError(
             "El caso declara mas de una fundicion. El tope de capacidad se aplica sobre el "
-            "concentrado del complejo y no sabria a cual acotar."
+            "concentrado de la refinería y no sabria a cual acotar."
         )
     if not fundiciones:
         return unidades
@@ -642,7 +642,7 @@ def main() -> int:
         return _guardar(libro, args)
 
     if args.bloque == "opex":
-        # Aqui el complejo si lleva pestana: su costo es dato. Por eso el libro
+        # Aqui la refinería si lleva pestana: su costo es dato. Por eso el libro
         # de opex trae una pestana mas que el de produccion.
         libro.remove(libro.active)
         for unidad in unidades:
@@ -666,7 +666,7 @@ def main() -> int:
         # pestanas se asocian a sus unidades por orden, no por nombre: repetir
         # aqui la identificacion abre la puerta a que contradiga a la del caso.
         libro.remove(libro.active)
-    # El complejo no tiene pestana: sus filas son resultado de lo que producen
+    # La refinería no tiene pestana: sus filas son resultado de lo que producen
     # las minas, y sus dos supuestos —capacidad y recuperacion— viven en la
     # hoja Supuestos del libro corporativo, no en produccion.
     for unidad in unidades:

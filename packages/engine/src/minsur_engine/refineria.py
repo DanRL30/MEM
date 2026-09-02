@@ -1,7 +1,7 @@
-"""El bloque del complejo: todo resultado, y componente a componente.
+"""El bloque de la refinería: todo resultado, y componente a componente.
 
 Ninguna fila de este bloque es un dato. La lectura de las fórmulas del libro lo
-confirmó una por una: lo que alimenta al complejo es el concentrado de cada mina
+confirmó una por una: lo que alimenta a la refinería es el concentrado de cada mina
 y su ley, el consolidado es la suma acotada por la capacidad, la ley promedio es
 el ponderado por tonelaje, y el excedente es lo que pasa del tope. Pedir
 cualquiera de ellas como entrada invitaría a que contradijese a su origen.
@@ -13,8 +13,8 @@ agrupa —lleva una `Recuperación Sn SR + B2` y otra `NZ + SRP`— y ahí está
 problema: un proyecto nuevo no cabe en ningún grupo sin decidir a cuál se parece,
 y una diferencia en el total no se puede atribuir a una unidad.
 
-Las dos únicas entradas del bloque son supuestos, no producción: la capacidad del
-complejo y la recuperación de cada componente. En el libro viven en la hoja
+Las dos únicas entradas del bloque son supuestos, no producción: la capacidad de la
+refinería y la recuperación de cada componente. En el libro viven en la hoja
 `Supuestos`.
 """
 
@@ -34,14 +34,14 @@ from minsur_engine.produccion import (
 
 @dataclass(frozen=True)
 class Componente:
-    """Lo que una unidad entrega al complejo, con su propia recuperación."""
+    """Lo que una unidad entrega a la refinería, con su propia recuperación."""
 
     unidad: str
     concentrado: Serie
     ley: Serie
     recuperacion: Serie = ()
     margen: Serie = ()
-    """Lo que gana el complejo por refinar una tonelada de este concentrado.
+    """Lo que gana la refinería por refinar una tonelada de este concentrado.
 
     Desempata el reparto cuando dos unidades tienen la misma ley. Lo calcula
     `margen_de_refinar`; sin él, el desempate cae en el nombre, que ordena pero
@@ -50,7 +50,7 @@ class Componente:
 
 
 @dataclass(frozen=True)
-class AporteAlComplejo:
+class AporteALaRefineria:
     """El aporte de una unidad, calculado sin mezclarlo con el de las demás.
 
     Que el refinado de cada componente salga por separado es lo que permite
@@ -69,14 +69,14 @@ class AporteAlComplejo:
     """Lo que se refina de esta unidad, ya descontado lo que fue a spot."""
 
     refinado_sin_restriccion: Serie
-    """Lo que se refinaría si el complejo no tuviera tope."""
+    """Lo que se refinaría si la refinería no tuviera tope."""
 
 
 @dataclass(frozen=True)
-class BloqueDelComplejo:
+class BloqueDeLaRefineria:
     """El bloque completo, tal como lo escribe el libro."""
 
-    aportes: tuple[AporteAlComplejo, ...]
+    aportes: tuple[AporteALaRefineria, ...]
     concentrado_entregado: Serie
     """Suma de lo que entregan las minas, antes del tope."""
 
@@ -88,7 +88,7 @@ class BloqueDelComplejo:
     """Alimentado más escoria. En el libro la escoria no aporta nada."""
 
     refinado: Serie
-    """Lo que el complejo refina de verdad, con el tope aplicado."""
+    """Lo que la refinería refina de verdad, con el tope aplicado."""
 
     refinado_sin_restriccion: Serie
     """Lo que refinaría sin tope. Es la línea que el libro rotula así."""
@@ -108,8 +108,8 @@ def calcular(
     horizonte: Horizonte,
     componentes: Sequence[Componente],
     capacidad: Serie = (),
-) -> BloqueDelComplejo:
-    """Rehace el bloque del complejo a partir de lo que producen las minas.
+) -> BloqueDeLaRefineria:
+    """Rehace el bloque de la refinería a partir de lo que producen las minas.
 
     Sin capacidad declarada no hay cuello de botella: todo lo entregado se trata
     y el excedente es cero.
@@ -141,7 +141,7 @@ def calcular(
         for i in range(horizonte.anos)
     )
 
-    return BloqueDelComplejo(
+    return BloqueDeLaRefineria(
         aportes=aportes,
         concentrado_entregado=entregado,
         concentrado_alimentado=alimentado,
@@ -163,7 +163,7 @@ def _reparto_por_merito(
 ) -> dict[str, list[float]]:
     """Reparte el recorte mandando a spot primero el concentrado de menor ley.
 
-    Cuando las minas entregan más de lo que el complejo puede tratar, alguien se
+    Cuando las minas entregan más de lo que la refinería puede tratar, alguien se
     queda fuera, y quién se queda fuera cambia el resultado: cada unidad entrega
     concentrado de distinta ley y se refina con distinta recuperación.
 
@@ -210,12 +210,12 @@ def _reparto_por_merito(
 
 def _aporte(
     componente: Componente, a_spot: Sequence[float], horizonte: Horizonte
-) -> AporteAlComplejo:
+) -> AporteALaRefineria:
     """El refinado de una unidad, con su recuperación y solo la suya."""
     concentrado = _serie(componente.concentrado, horizonte)
     ley = _serie(componente.ley, horizonte)
     recuperacion = _serie(componente.recuperacion, horizonte)
-    return AporteAlComplejo(
+    return AporteALaRefineria(
         unidad=componente.unidad,
         concentrado=concentrado,
         ley=ley,
@@ -245,7 +245,7 @@ def margen_de_refinar(
     Refinarla rinde `ley x recuperacion` toneladas de metal, que se cobran al
     precio mas el premio. Venderla como concentrado rinde `ley` toneladas de
     contenido, de las que se paga la fraccion pagable. La diferencia es lo que
-    el complejo gana por tratarla, y es lo que decide a quien conviene refinar
+    la refinería gana por tratarla, y es lo que decide a quien conviene refinar
     cuando dos concentrados tienen la misma ley.
 
     **Falta el cargo de tratamiento**, que va por tonelada de concentrado y vive

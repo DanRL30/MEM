@@ -9,7 +9,7 @@ Los tres reproducen la **forma** de los arquetipos del libro, que es lo que
 importa para el contraste estructural:
 
     unidad simple       una mina que vende metal refinado
-    complejo            minas que alimentan una fundicion con tope de capacidad
+    refinería            minas que alimentan una fundicion con tope de capacidad
     dos proyectos       una operacion en marcha y un proyecto que entra tarde
 
 Los casos certificados con datos reales son otra cosa: viven en el tenant de
@@ -99,7 +99,7 @@ def unidad_simple() -> Caso:
     )
 
 
-def complejo_con_fundicion() -> Caso:
+def caso_con_refineria() -> Caso:
     """Dos minas que alimentan una fundición cuyo tope acota el tratamiento.
 
     Es el arquetipo de operación consolidada: el cuello de botella está en la
@@ -136,7 +136,7 @@ def complejo_con_fundicion() -> Caso:
     )
 
     return Caso(
-        nombre="Sintetico: complejo con fundicion",
+        nombre="Sintetico: refinería con fundicion",
         horizonte=horizonte,
         unidades=(
             mina("Mina Norte", [800.0, 900.0, 1_000.0, 1_000.0]),

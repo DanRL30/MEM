@@ -89,8 +89,8 @@ def simple() -> Corrida:
 
 
 @pytest.fixture(scope="module")
-def complejo() -> Corrida:
-    return calcular(sinteticos.complejo_con_fundicion(), sinteticos.MAESTROS)
+def con_refineria() -> Corrida:
+    return calcular(sinteticos.caso_con_refineria(), sinteticos.MAESTROS)
 
 
 @pytest.fixture(scope="module")
@@ -134,13 +134,13 @@ class TestN0:
         # Sin la version, la corrida no se puede reproducir a cinco anos.
         assert simple.version_datos_maestros == "CP-SINTETICO-01"
 
-    def test_el_horizonte_gobierna_todas_las_series(self, complejo: Corrida) -> None:
-        anos = complejo.caso.horizonte.anos
+    def test_el_horizonte_gobierna_todas_las_series(self, con_refineria: Corrida) -> None:
+        anos = con_refineria.caso.horizonte.anos
         for nombre, serie in (
-            ("ventas", complejo.ventas),
-            ("cash cost", complejo.cash_cost),
-            ("capex", complejo.capex),
-            ("flujo economico", complejo.flujo.flujo_economico),
+            ("ventas", con_refineria.ventas),
+            ("cash cost", con_refineria.cash_cost),
+            ("capex", con_refineria.capex),
+            ("flujo economico", con_refineria.flujo.flujo_economico),
         ):
             assert len(serie) == anos, f"{nombre} no esta alineada al horizonte"
 
@@ -193,25 +193,27 @@ class TestN1:
                 resultado.utilidad_operativa, base - resultado.fondo_jubilacion_minera
             ), f"el lazo del fondo no cierra en el ano {ano}"
 
-    def test_el_tope_de_la_fundicion_acota_el_tratamiento(self, complejo: Corrida) -> None:
+    def test_el_tope_de_la_fundicion_acota_el_tratamiento(self, con_refineria: Corrida) -> None:
         # Alimentado 1 200, 1 400, 1 600 y 1 700 contra una capacidad de 1 500.
         contrastar(
-            complejo.complejo.concentrado_entregado,
+            con_refineria.refineria.concentrado_entregado,
             (1_200.0, 1_400.0, 1_600.0, 1_700.0),
             "alimentado",
         )
         contrastar(
-            complejo.complejo.concentrado_alimentado,
+            con_refineria.refineria.concentrado_alimentado,
             (1_200.0, 1_400.0, 1_500.0, 1_500.0),
             "tratado",
         )
-        contrastar(complejo.complejo.concentrado_excedente, (0.0, 0.0, 100.0, 200.0), "excedente")
+        contrastar(
+            con_refineria.refineria.concentrado_excedente, (0.0, 0.0, 100.0, 200.0), "excedente"
+        )
 
-    def test_lo_tratado_mas_lo_excedente_es_lo_alimentado(self, complejo: Corrida) -> None:
-        for i, alimentado in enumerate(complejo.complejo.concentrado_entregado):
+    def test_lo_tratado_mas_lo_excedente_es_lo_alimentado(self, con_refineria: Corrida) -> None:
+        for i, alimentado in enumerate(con_refineria.refineria.concentrado_entregado):
             suma = (
-                complejo.complejo.concentrado_alimentado[i]
-                + complejo.complejo.concentrado_excedente[i]
+                con_refineria.refineria.concentrado_alimentado[i]
+                + con_refineria.refineria.concentrado_excedente[i]
             )
             assert coincide(suma, alimentado), f"descuadre en el ano {i}"
 
@@ -249,9 +251,11 @@ class TestN2:
             "flujo economico",
         )
 
-    def test_el_economico_es_la_suma_de_los_otros_dos(self, complejo: Corrida) -> None:
-        for i, economico in enumerate(complejo.flujo.flujo_economico):
-            suma = complejo.flujo.flujo_operativo[i] + complejo.flujo.flujo_de_inversiones[i]
+    def test_el_economico_es_la_suma_de_los_otros_dos(self, con_refineria: Corrida) -> None:
+        for i, economico in enumerate(con_refineria.flujo.flujo_economico):
+            suma = (
+                con_refineria.flujo.flujo_operativo[i] + con_refineria.flujo.flujo_de_inversiones[i]
+            )
             assert coincide(economico, suma), f"descuadre en el ano {i}"
 
     def test_una_inversion_nunca_entra_a_caja(self, combinado: Corrida) -> None:
@@ -300,7 +304,7 @@ class TestN3:
         assert simple.indicadores.capital_intensity is None
         assert combinado.indicadores.capital_intensity == pytest.approx(600_000.0 / 800.0)
 
-    def test_un_caso_sin_desembolso_no_define_tir(self, complejo: Corrida) -> None:
-        # El complejo no declara capital: su flujo no cambia de signo y la TIR
+    def test_un_caso_sin_desembolso_no_define_tir(self, con_refineria: Corrida) -> None:
+        # La refinería no declara capital: su flujo no cambia de signo y la TIR
         # no existe. Informarlo es mejor que devolver un numero.
-        assert complejo.indicadores.tir is None
+        assert con_refineria.indicadores.tir is None
