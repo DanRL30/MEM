@@ -175,7 +175,7 @@ despues, no deuda heredada.
 | `ruff check .` | Limpio |
 | `ruff format --check .` | Limpio, 91 archivos |
 | `mypy packages apps/api/src` | Limpio en modo estricto, 57 archivos |
-| `pytest` | 287 de 287, de las que 31 son el contraste de fidelidad |
+| `pytest` | 288 de 288, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 

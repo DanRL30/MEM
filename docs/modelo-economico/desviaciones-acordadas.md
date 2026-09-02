@@ -151,10 +151,16 @@ contenido, de las que se paga la fraccion pagable.
 sin plantilla todavia. Mientras sea el mismo para todos los origenes se cancela al comparar y no
 altera el orden; solo importa si difiere por origen, que es justo lo que esa hoja tiene que decir.
 
-Una observacion que el criterio deja a la vista y que conviene llevar a Finanzas: **con los precios
-del caso, algunos origenes dan margen negativo**, es decir que conviene venderlos antes que
-refinarlos aunque el complejo no este saturado. Hoy eso no se hace: el excedente aparece solo cuando
-se supera la capacidad. Reportado, no implementado.
+**A spot solo se va cuando se supera la capacidad, nunca antes.** Decidido por el Project Manager el
+01/09/2026, y conviene dejar dicho por que se pregunto: con los precios del caso algunos origenes dan
+**margen negativo**, es decir que refinarlos deja menos que venderlos aunque el complejo no este
+saturado. Aun asi no se venden. El margen decide **a quien le toca ceder, no si hay que ceder**.
+
+Es una regla facil de romper sin querer, porque parece una mejora obvia. La fija
+`test_complejo.py::TestRepartoPorMerito::test_un_margen_negativo_no_manda_nada_a_spot_sin_saturacion`.
+
+Que haya origenes con margen negativo sigue siendo un hallazgo que vale la pena llevar a Finanzas,
+pero como informacion de gestion y no como regla de calculo.
 
 ---
 

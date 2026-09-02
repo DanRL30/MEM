@@ -232,6 +232,22 @@ class TestRepartoPorMerito:
         por_unidad = {a.unidad: a.a_spot for a in bloque.aportes}
         assert por_unidad["Beta"] == pytest.approx((0.0, 100.0))
 
+    def test_un_margen_negativo_no_manda_nada_a_spot_sin_saturacion(self) -> None:
+        # Con estos precios, refinar deja menos que vender: el margen es
+        # negativo. Aun asi no sale nada a spot, porque **solo se vende cuando
+        # se supera la capacidad, nunca antes**. Decidido el 01/09/2026.
+        #
+        # El margen decide a quien le toca ceder, no si hay que ceder. Sin esta
+        # prueba, una optimizacion posterior podria mandar a spot lo que no
+        # conviene refinar y cambiar el flujo sin que nadie lo pidiera.
+        minas = [_con_margen("Alfa", 400.0, 0.20, 0.50), _con_margen("Beta", 300.0, 0.22, 0.55)]
+        assert all(m.margen[0] < 0.0 for m in minas)
+
+        bloque = calcular(HORIZONTE, minas, capacidad=(5_000.0, 5_000.0))
+        assert bloque.concentrado_excedente == (0.0, 0.0)
+        assert all(a.a_spot == (0.0, 0.0) for a in bloque.aportes)
+        assert bloque.refinado == bloque.refinado_sin_restriccion
+
     def test_sin_saturacion_nadie_cede_nada(self) -> None:
         bloque = calcular(
             HORIZONTE,
