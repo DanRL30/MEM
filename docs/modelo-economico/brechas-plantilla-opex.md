@@ -15,14 +15,18 @@ el codigo necesita.
 |---|---|
 | Filas con etiqueta en `InputsOpex` | 143 |
 | Filas de concepto de cash cost, sumadas las seis unidades | 54 |
-| Conceptos distintos de cash cost, ya traducidos | 21 |
+| Conceptos distintos de cash cost en el libro, ya traducidos | 21 |
 | Conceptos que emitia la plantilla anterior | 18 |
 | Conceptos del libro que la plantilla no sabia nombrar | 7 |
 | Conceptos de la plantilla ubicados en el bloque equivocado | 3 |
+| Conceptos que el catalogo recoge, tras la revision del 02/09/2026 | 14 |
 
 Los 7 sin nombrar no son 7 conceptos olvidados: cinco son de Santo Domingo y del complejo y dos son
 abreviaturas del libro sobre conceptos que la plantilla ya tenia. Esa distincion cambia el trabajo,
 igual que en produccion.
+
+Del libro al catalogo no hay correspondencia uno a uno, y tampoco la pretende: **siete conceptos se
+dejaron fuera a proposito** en la revision del 02/09/2026. Ver la seccion 9.
 
 ## 2. La forma real de la hoja
 
@@ -57,16 +61,18 @@ tabla de sinonimos las distingue: solo la posicion. Se cierra leyendo por secuen
 hace `minsur_ingest/opex.py`.
 
 **Clase 2 — sinonimos sobre conceptos que ya existen.** El libro abrevia: `LT`, `Pta Subproductos`,
-`Mantenimiento F&R`, `Peajes / Mantenimiento`. Se cierra en `sinonimos.py`.
+`Mantenimiento F&R`, `Peajes / Mantenimiento`. Se cierra en `sinonimos.py`, y solo para los que el
+catalogo conserva.
 
 **Clase 3 — alias de unidad dentro del concepto.** `Tratamiento de Relaves B2` y `Preconcentrado
 Blue Sky` llevan el nombre propio de una unidad pegado al concepto, y no se pueden generalizar
-quitando un sufijo. Se cierra tambien en `sinonimos.py`, con la entrada literal, y el catalogo se
-queda con el concepto generico: un proyecto nuevo no tiene una relavera llamada B2.
+quitando un sufijo. El primero se cierra en `sinonimos.py`, con la entrada literal, y el catalogo se
+queda con el concepto generico: un proyecto nuevo no tiene una relavera llamada B2. El segundo salio
+del catalogo en la revision del 02/09/2026.
 
-**Clase 4 — conceptos genuinamente ausentes.** `Servicios Mina`, `STA` y el bloque de gastos entero.
-Son los que exigen cambiar el modelo de datos, no la traduccion: los gastos no cabian en
-`UnidadProductiva`, que solo tenia `costos`.
+**Clase 4 — conceptos genuinamente ausentes.** `STA` y el bloque de gastos entero. Los gastos son
+los que exigieron cambiar el modelo de datos, no la traduccion: no cabian en `UnidadProductiva`, que
+solo tenia `costos`.
 
 ## 4. Lo que la plantilla emitia y el libro no tiene ahi
 
@@ -126,7 +132,32 @@ Cerrado el 02/09/2026: la estructura unica, la cola extensible del acuerdo 6, el
 con su reparto por destino, las dos filas derivadas y el desglose del cash cost por unidad.
 
 **No se implemento, por depender de una respuesta:** la depreciacion del estudio capitalizable
-(punto 4 de la seccion 6), y el costo del complejo derivado del costo por tonelada para las unidades
-sin bloque propio. Lo segundo es como el libro rellena lo que no carga; la plataforma carga el
-bloque del complejo entero, de modo que anadir la derivacion duplicaria el costo. Se decide con
-Finanzas junto con la plantilla, en la sesion del acuerdo 10.
+(punto 4 de la seccion 6) y el costo del complejo derivado del costo por tonelada. Lo segundo es
+como el libro rellena lo que no carga, y desde la revision del 02/09/2026 vuelve a estar sobre la
+mesa: el complejo ya no tiene en la plantilla sus cuatro lineas propias. Se decide con Finanzas
+junto con la plantilla, en la sesion del acuerdo 10.
+
+## 9. Los siete conceptos que quedan fuera a proposito
+
+Revision del 02/09/2026, decidida por el Project Manager sobre la primera version de la plantilla.
+No son omisiones: el libro los tiene y el catalogo no.
+
+| Concepto del libro | Por que sale |
+|---|---|
+| `Fundicion` | Linea propia del complejo |
+| `Refineria` | Linea propia del complejo |
+| `Pta Subproductos` | Linea propia del complejo |
+| `Mantenimiento F&R` | Linea propia del complejo |
+| `Servicios Mina` | Solo Santo Domingo lo distingue de `Mina` |
+| `Preconcentrado Blue Sky` | Lleva el nombre de un tercero, y solo Santo Domingo lo tiene |
+| `Planillas` | **No es un dato**: es la planilla, que se deriva del cash cost de la unidad |
+
+Las seis primeras siguen siendo cargables: van por la cola de conceptos propios, que existe
+precisamente para lo que una unidad tiene y el catalogo no recoge. La septima no vuelve por ningun
+camino, porque pedirla como dato es lo que la regla `026` prohibe.
+
+**El complejo queda con los conceptos genericos.** Su pestana sigue existiendo —su costo es dato,
+no resultado— pero lo que carga son mantenimiento, energia, apoyo y estudios, mas lo que su cola
+recoja. Si Finanzas prefiere derivar su costo del costo por tonelada, como hace el libro para las
+unidades sin bloque, la pestana deja de tener sentido y se retira; hasta entonces se mantiene, que
+es lo unico que no pierde informacion.

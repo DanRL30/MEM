@@ -39,13 +39,11 @@ SINONIMOS = {
     "lt": "linea de transmision",
     "servidumbre usufructos": "servidumbres y usufructos",
     "estudios y optimizaciones": "estudios y optimizaciones",
-    # Conceptos de `InputsOpex`. Los dos primeros llevan pegado el nombre propio
-    # de la unidad que los tiene, y por eso no se pueden generalizar quitando un
-    # sufijo: el catalogo usa el concepto y aqui se traduce el rotulo del libro.
+    # Conceptos de `InputsOpex`. El primero lleva pegado el nombre propio de la
+    # unidad que lo tiene, y por eso no se puede generalizar quitando un sufijo:
+    # el catalogo usa el concepto y aqui se traduce el rotulo del libro.
     "tratamiento de relaves b2": "relavera",
-    "preconcentrado blue sky": "preconcentrado de terceros",
     "peajes mantenimiento": "peajes y mantenimiento",
-    "mantenimiento f r": "mantenimiento de fundicion y refineria",
 }
 
 METALES_CONOCIDOS = ("Sn", "Cu", "Ag")

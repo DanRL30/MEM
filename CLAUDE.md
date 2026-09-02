@@ -295,9 +295,18 @@ secuencia y asociacion por orden. Tres cosas lo diferencian y conviene tenerlas
 presentes antes de tocarlo.
 
 **El complejo lleva pestana**, al reves que en produccion. Su produccion es
-resultado, pero su costo es dato: el libro le carga nueve conceptos. Por eso el
-libro de opex trae **una pestana mas** que el de produccion, y `aplicar()` recorre
-`caso.unidades` sin saltar la fundicion.
+resultado, pero su costo es dato. Por eso el libro de opex trae **una pestana
+mas** que el de produccion, y `aplicar()` recorre `caso.unidades` sin saltar la
+fundicion. Sus cuatro lineas propias —fundicion, refineria, planta de
+subproductos y su mantenimiento— salieron del catalogo el 02/09/2026 y hoy carga
+por los conceptos genericos y por su cola.
+
+**El catalogo no reproduce el libro concepto a concepto.** Siete de los suyos
+quedan fuera por decision del 02/09/2026, listados en la seccion 9 de
+[brechas-plantilla-opex.md](docs/modelo-economico/brechas-plantilla-opex.md).
+Seis se cargan por la cola si un caso los necesita; el septimo, `Planillas`, no
+vuelve por ningun camino, porque es la planilla derivada y pedirla como dato es
+lo que la regla `026` prohibe.
 
 **No hay corroborador y no lo habra.** La auditoria de `InputsOpex`
 —[brechas-plantilla-opex.md](docs/modelo-economico/brechas-plantilla-opex.md)—

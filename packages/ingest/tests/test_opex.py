@@ -107,7 +107,7 @@ def libro_de_opex(tmp_path: Path) -> Path:
     _escribir(mina, "Gestión Social", [0.0, 40.0, 40.0])
     _escribir(mina, "Estudios Pre Factibilidad (Gasto)", [30.0, 0.0, 0.0])
     _escribir(mina, "Estudios Factibilidad (Capitalizable)", [70.0, 0.0, 0.0])
-    _escribir(libro["Complejo"], "Fundición", [0.0, 100.0, 100.0])
+    _escribir(libro["Complejo"], "Mantenimiento", [0.0, 100.0, 100.0])
     libro.save(ruta)
     return ruta
 
@@ -181,7 +181,7 @@ class TestIdaYVuelta:
         # opex trae una pestana mas que el de produccion.
         complejo = _con_opex(libro_de_opex).unidades[1]
         assert complejo.es_fundicion
-        assert complejo.costos["Fundición"] == (0.0, 100_000.0, 100_000.0)
+        assert complejo.costos["Mantenimiento"] == (0.0, 100_000.0, 100_000.0)
 
     def test_el_caso_leido_calcula(self, libro_de_opex: Path) -> None:
         corrida = calcular(_con_opex(libro_de_opex), MAESTROS)
@@ -219,7 +219,7 @@ class TestLaCola:
         # anadido solo afecta al total.
         libro = load_workbook(libro_de_opex)
         hoja = libro["Mina Alfa"]
-        fila = _escribir(hoja, "Planillas", [0.0] * ANOS) + 2
+        fila = _escribir(hoja, "STA", [0.0] * ANOS) + 2
         hoja.cell(row=fila, column=1, value="Servidumbre de paso del ferrocarril")
         for i, valor in enumerate([0.0, 25.0, 25.0]):
             hoja.cell(row=fila, column=3 + i, value=valor)
@@ -238,7 +238,7 @@ class TestLaCola:
         # Tragarlos convertiria un gasto mal escrito en un costo con su nombre.
         libro = load_workbook(libro_de_opex)
         hoja = libro["Mina Alfa"]
-        primera = _escribir(hoja, "Planillas", [0.0] * ANOS) + 1
+        primera = _escribir(hoja, "STA", [0.0] * ANOS) + 1
         for salto in range(CONCEPTOS_LIBRES + 1):
             hoja.cell(row=primera + salto, column=1, value=f"Concepto propio {salto}")
             hoja.cell(row=primera + salto, column=2, value="$k")
@@ -253,7 +253,7 @@ class TestLaCola:
         # un costo que nadie puede atribuir y que desaparece del total.
         libro = load_workbook(libro_de_opex)
         hoja = libro["Mina Alfa"]
-        fila = _escribir(hoja, "Planillas", [0.0] * ANOS) + 2
+        fila = _escribir(hoja, "STA", [0.0] * ANOS) + 2
         hoja.cell(row=fila, column=3, value=90.0)
         libro.save(libro_de_opex)
 

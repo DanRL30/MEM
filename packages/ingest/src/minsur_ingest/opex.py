@@ -10,16 +10,16 @@ que trae de `InputsProd`— no se pide: la plataforma lo calcula. Por eso esta
 plantilla no lleva filas corroborables y no hay recálculo que contrastar contra
 lo cargado, a diferencia de la de producción.
 
-Dos filas del bloque de gastos tampoco se piden, porque el libro las deriva:
-`Planilla` sale del cash cost de la unidad por la tasa de los supuestos, y
+Tres conceptos que el libro escribe como filas tampoco se piden, porque los
+deriva: `Planilla` sale del cash cost de la unidad por la tasa de los supuestos,
 `Gestión Social Deducible` es la parte de la gestión social que admite la base
-imponible. Pedirlas invitaría a que contradijeran a su origen.
+imponible, y `Año con operación` es una bandera sobre el total. Pedirlas
+invitaría a que contradijeran a su origen.
 
-Las etiquetas y el orden son los del libro. Se apartan de él en dos casos, y
-solo en dos: donde el rótulo lleva el nombre propio de una unidad
-—`Tratamiento de Relaves B2`, `Preconcentrado Blue Sky`— y donde el libro
-abrevia —`LT`, `Pta Subproductos`—. Un proyecto nuevo no cabe en el primer caso
-y nadie reconoce el segundo; la tabla de sinónimos traduce ambos.
+Las etiquetas y el orden son los del libro, salvo donde el rótulo lleva el
+nombre propio de una unidad —`Tratamiento de Relaves B2`— o donde abrevia
+—`LT`—. Un proyecto nuevo no cabe en el primer caso y nadie reconoce el segundo;
+la tabla de sinónimos traduce ambos.
 """
 
 from __future__ import annotations
@@ -83,7 +83,6 @@ FILAS_DE_CASH_COST = (
     FilaDeOpex("Exploraciones", MEDIDA),
     FilaDeOpex("Geología", MEDIDA),
     FilaDeOpex("Mina", MEDIDA),
-    FilaDeOpex("Servicios Mina", MEDIDA),
     FilaDeOpex("Planta Preconcentración", MEDIDA),
     FilaDeOpex("Planta Concentradora", MEDIDA),
     FilaDeOpex("Mantenimiento", MEDIDA),
@@ -95,15 +94,19 @@ FILAS_DE_CASH_COST = (
     FilaDeOpex("Peajes y mantenimiento", MEDIDA),
     FilaDeOpex("Agua potable", MEDIDA),
     FilaDeOpex("STA", MEDIDA),
-    FilaDeOpex("Preconcentrado de terceros", MEDIDA),
-    # Las cinco del complejo. Lleva pestana como cualquier otra unidad: su
-    # produccion es resultado, pero su costo es dato.
-    FilaDeOpex("Fundición", MEDIDA),
-    FilaDeOpex("Refinería", MEDIDA),
-    FilaDeOpex("Planta de subproductos", MEDIDA),
-    FilaDeOpex("Mantenimiento de fundición y refinería", MEDIDA),
-    FilaDeOpex("Planillas", MEDIDA),
 )
+"""Los conceptos de costo que el usuario carga, uno por unidad.
+
+Siete conceptos del libro quedan fuera por decision del 02/09/2026. Cuatro son
+las lineas propias del complejo —fundicion, refineria, planta de subproductos y
+su mantenimiento—, dos son de Santo Domingo —servicios de mina y preconcentrado
+de terceros— y la septima es la planilla, que **no es un dato**: se deriva del
+cash cost de la unidad por la tasa de los supuestos, igual que la parte
+deducible de la gestion social se deriva de esta.
+
+Lo que una unidad tenga y no este aqui entra por la cola de conceptos propios,
+que para eso existe.
+"""
 
 FILAS_DE_LA_COLA = (
     FilaDeOpex("Otros conceptos", SECCION),
