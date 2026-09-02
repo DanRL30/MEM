@@ -45,7 +45,29 @@ git config core.hooksPath .githooks
 
 ## 2. Comandos
 
+Los bloques de esta seccion invocan `uv` directamente. Si el shell no lo resuelve
+-el caso habitual en Windows, con `uv.exe` fuera del PATH-, `python -m uv
+<subcomando>` es equivalente linea por linea, como explica la seccion 1.
+
 ### Python
+
+La API en local, que es contra quien apunta el proxy de la interfaz:
+
+```bash
+uv run uvicorn minsur_api.main:app --reload --port 8000
+```
+
+[main.py](apps/api/src/minsur_api/main.py) arma la aplicacion en `crear_app()` y
+expone `app` a nivel de modulo, de modo que uvicorn la toma sin `--factory`. El
+puerto no es arbitrario: [vite.config.ts](apps/web/vite.config.ts) redirige `/api`
+a `http://localhost:8000` salvo que `VITE_API_ORIGIN` diga otra cosa, asi que
+`pnpm dev` contra otro puerto sirve la interfaz y no encuentra backend. No hace
+falta configurar nada mas para arrancar: las variables de
+[config.py](apps/api/src/minsur_api/config.py) tienen valor por defecto y sus
+nombres estan en `.env.example`. Lo que falte se nota al usar la funcion que lo
+necesita, no al levantar el proceso.
+
+Las pruebas:
 
 ```bash
 uv run pytest
