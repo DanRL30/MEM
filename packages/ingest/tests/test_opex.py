@@ -321,6 +321,15 @@ class TestGastosDerivados:
         # De la base imponible solo se descuentan los 30.
         assert corrida.tributos_por_ano[0].utilidad_imponible == pytest.approx(-30_000.0)
 
+    def test_el_estudio_capitalizable_se_deprecia(self, libro_de_opex: Path) -> None:
+        # Capitalizar es diferir, no perder: sale de caja el primer ano y rebaja
+        # la base a lo largo de la vida del activo. El libro lo deprecia al 5 %,
+        # y la puerta de la regla 013 lo retrasa hasta el primer ano con
+        # produccion, que aqui es el segundo.
+        corrida = calcular(_con_opex(libro_de_opex), MAESTROS)
+        componentes = corrida.depreciacion_tributaria_por_componente["Mina Alfa"]
+        assert componentes["Estudios capitalizables"][1] == pytest.approx(3_500.0)
+
 
 class TestIncidencias:
     def test_una_estructura_alterada_se_reporta_y_no_se_adivina(self, libro_de_opex: Path) -> None:

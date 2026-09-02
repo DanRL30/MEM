@@ -20,6 +20,7 @@ from minsur_engine.capex import (
     capex_total,
 )
 from minsur_engine.depreciacion import (
+    ESTUDIOS,
     PROYECCION_SAP,
     Agotamiento,
     ErrorDepreciacion,
@@ -156,15 +157,19 @@ class TestDepreciacion:
         assert con_gate[:2] == (0.0, 0.0)
         assert con_gate[2] == pytest.approx(sin_gate[2])
 
-    def test_lo_no_depreciable_no_genera_depreciacion(self, horizonte: Horizonte) -> None:
+    def test_lo_no_depreciable_se_deduce_entero_en_su_ano(self, horizonte: Horizonte) -> None:
+        # El nombre viene del libro y engana: no es que no se deprecie, es que
+        # no se reparte. Es el escudo del capital de cierre, con tasa uno.
         unidad = CapitalDeUnidad(
             unidad="San Rafael",
             por_etapa={"inicial": horizonte.serie([100.0] + [0.0] * 7, nombre="inicial")},
             por_naturaleza={
-                "no_depreciable": horizonte.serie([100.0] + [0.0] * 7, nombre="terreno")
+                "no_depreciable": horizonte.serie([100.0] + [0.0] * 7, nombre="cierre")
             },
         )
-        assert depreciacion_de_unidad(horizonte, unidad, TASAS) == horizonte.ceros()
+        cuotas = depreciacion_de_unidad(horizonte, unidad, TASAS)
+        assert cuotas[0] == pytest.approx(100.0)
+        assert not any(cuotas[1:])
 
     def test_una_tasa_en_porcentaje_se_rechaza(self) -> None:
         with pytest.raises(ErrorDepreciacion, match="fraccion"):
@@ -299,3 +304,28 @@ class TestAgotamiento:
         )
         assert detalle[PROYECCION_SAP] == proyeccion
         assert PROYECCION_SAP not in capital(horizonte).por_naturaleza
+
+
+class TestLoQueDepreciaSinSerCapital:
+    """Dos filas se deprecian sin salir de `InputsCapex`, y el libro las trata igual."""
+
+    def test_el_estudio_capitalizable_se_deprecia(self, horizonte: Horizonte) -> None:
+        # Llega por los gastos, no por el capital: es un gasto capitalizable.
+        # El libro lo deprecia al 5 %, la misma tasa que las edificaciones.
+        estudio = horizonte.serie([100.0] + [0.0] * 7, nombre="estudio")
+        detalle = depreciacion_por_componente(horizonte, None, TASAS, estudios=estudio)
+        assert detalle[ESTUDIOS][0] == pytest.approx(5.0)
+        assert detalle[ESTUDIOS][1] == pytest.approx(5.0)
+
+    def test_una_unidad_sin_capital_deprecia_igual(self, horizonte: Horizonte) -> None:
+        # Recorrer solo los capitales dejaba fuera a la unidad que capitaliza un
+        # estudio y no invierte, sin que nada lo acusara.
+        estudio = horizonte.serie([100.0] + [0.0] * 7, nombre="estudio")
+        detalle = depreciacion_por_mina(horizonte, [], TASAS, estudios={"Nazareth": estudio})
+        assert set(detalle) == {"Nazareth"}
+        assert detalle["Nazareth"][ESTUDIOS][0] == pytest.approx(5.0)
+
+    def test_la_proyeccion_sola_tambien_cuenta(self, horizonte: Horizonte) -> None:
+        proyeccion = horizonte.serie([37.0] * horizonte.anos, nombre="sap")
+        detalle = depreciacion_por_mina(horizonte, [], TASAS, proyecciones={"B2": proyeccion})
+        assert detalle["B2"][PROYECCION_SAP] == proyeccion

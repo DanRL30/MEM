@@ -73,6 +73,13 @@ cómputo caen de este lado aunque la vía tributaria los sume con la maquinaria.
 PROYECCION_SAP = "Proyeccion SAP"
 """Clave de la depreciación ya contabilizada, que no viene de este caso."""
 
+ESTUDIOS = "Estudios capitalizables"
+"""Clave del estudio de factibilidad, que se deprecia sin ser capital del bloque.
+
+El libro lo lee de la hoja de opex y lo deprecia en las dos vías. Aquí llega por
+el mismo camino: es un gasto capitalizable, no una fila de `InputsCapex`.
+"""
+
 
 class ErrorDepreciacion(ValueError):
     """Las tasas o las bases de depreciación no son consistentes."""
@@ -82,21 +89,32 @@ class ErrorDepreciacion(ValueError):
 class TasasDeDepreciacion:
     """Tasa anual por componente contable, en tanto por uno.
 
-    `no_depreciable` no aparece: su tasa es cero mientras Finanzas no confirme la
-    regla `034`, que observa que el libro lo deduce entero en su año.
+    **`no_depreciable` se deduce entero en su año**, con tasa uno. El nombre viene
+    del libro y engaña: no es que no se deprecie, es que no se reparte. Es el
+    escudo del capital de cierre, y la regla `034`.
 
-    `equipos_de_computo` es opcional y sin declarar usa la de maquinaria, que es
-    lo que el libro hace de hecho al fusionarlos bajo un mismo código. Declararla
-    es lo único que hace falta el día que MINSUR le dé tasa propia.
+    `equipos_de_computo` y `estudios` son opcionales y sin declarar usan la de
+    maquinaria y la de edificaciones, que es la tasa que el libro les aplica de
+    hecho. Declararlas es lo único que hace falta el día que MINSUR les dé una
+    propia; **el componente ya está separado y no hay que deshacer ninguna suma**.
     """
 
     maquinaria: float
     instalaciones: float
     edificaciones: float
     equipos_de_computo: float | None = None
+    estudios: float | None = None
+    no_depreciable: float = 1.0
 
     def __post_init__(self) -> None:
-        for nombre in ("maquinaria", "instalaciones", "edificaciones", "equipos_de_computo"):
+        for nombre in (
+            "maquinaria",
+            "instalaciones",
+            "edificaciones",
+            "equipos_de_computo",
+            "estudios",
+            "no_depreciable",
+        ):
             tasa = getattr(self, nombre)
             if tasa is None:
                 continue
@@ -107,14 +125,17 @@ class TasasDeDepreciacion:
                 )
 
     def de(self, componente: str) -> float:
-        if componente == "no_depreciable":
-            return 0.0
         if componente not in NATURALEZAS:
             raise ErrorDepreciacion(f"Naturaleza {componente!r} desconocida.")
         if componente == "equipos_de_computo" and self.equipos_de_computo is None:
             return self.maquinaria
         tasa: float = getattr(self, componente)
         return tasa
+
+    @property
+    def de_estudios(self) -> float:
+        """Tasa del estudio capitalizable. Sin declarar, la de edificaciones."""
+        return self.edificaciones if self.estudios is None else self.estudios
 
 
 @dataclass(frozen=True)
@@ -231,32 +252,41 @@ def agotar(horizonte: Horizonte, inversiones: Serie, tasas: Serie) -> Serie:
 
 def depreciacion_por_componente(
     horizonte: Horizonte,
-    capital: CapitalDeUnidad,
+    capital: CapitalDeUnidad | None,
     tasas: TasasDeDepreciacion,
     *,
     produccion: Serie | None = None,
     agotamiento: Agotamiento | None = None,
     proyeccion: Serie = (),
+    estudios: Serie = (),
 ) -> dict[str, Serie]:
     """Depreciación de cada componente contable de una unidad.
 
     Sin `agotamiento` todos los componentes se deprecian lineal, que es la vía
     tributaria. Con él, los tres de `COMPONENTES_POR_AGOTAMIENTO` se agotan
     contra las reservas y la maquinaria sigue lineal, que es la financiera.
+
+    Lo no depreciable se deduce entero en su año en las dos, y el estudio
+    capitalizable se deprecia lineal en las dos: el libro no los distingue por
+    vía.
     """
     ritmo = tasas_de_agotamiento(horizonte, agotamiento) if agotamiento is not None else ()
     detalle: dict[str, Serie] = {}
-    for componente in NATURALEZAS:
-        inversiones = capital.naturaleza(componente, horizonte)
-        if not any(inversiones):
-            continue
-        if agotamiento is not None and componente in COMPONENTES_POR_AGOTAMIENTO:
-            detalle[componente] = agotar(horizonte, inversiones, ritmo)
-            continue
-        tasa = tasas.de(componente)
-        if tasa == 0.0:
-            continue
-        detalle[componente] = depreciar(horizonte, inversiones, tasa)
+    if capital is not None:
+        for componente in NATURALEZAS:
+            inversiones = capital.naturaleza(componente, horizonte)
+            if not any(inversiones):
+                continue
+            if agotamiento is not None and componente in COMPONENTES_POR_AGOTAMIENTO:
+                detalle[componente] = agotar(horizonte, inversiones, ritmo)
+                continue
+            tasa = tasas.de(componente)
+            if tasa == 0.0:
+                continue
+            detalle[componente] = depreciar(horizonte, inversiones, tasa)
+
+    if any(estudios):
+        detalle[ESTUDIOS] = depreciar(horizonte, _alineada(horizonte, estudios), tasas.de_estudios)
 
     if any(proyeccion):
         detalle[PROYECCION_SAP] = _alineada(horizonte, proyeccion)
@@ -271,12 +301,13 @@ def depreciacion_por_componente(
 
 def depreciacion_de_unidad(
     horizonte: Horizonte,
-    capital: CapitalDeUnidad,
+    capital: CapitalDeUnidad | None,
     tasas: TasasDeDepreciacion,
     *,
     produccion: Serie | None = None,
     agotamiento: Agotamiento | None = None,
     proyeccion: Serie = (),
+    estudios: Serie = (),
 ) -> Serie:
     """Depreciación de una unidad, sumando sus componentes."""
     detalle = depreciacion_por_componente(
@@ -286,6 +317,7 @@ def depreciacion_de_unidad(
         produccion=produccion,
         agotamiento=agotamiento,
         proyeccion=proyeccion,
+        estudios=estudios,
     )
     return sumar(horizonte, detalle)
 
@@ -298,6 +330,7 @@ def depreciacion_por_mina(
     produccion: Mapping[str, Serie] | None = None,
     agotamientos: Mapping[str, Agotamiento] | None = None,
     proyecciones: Mapping[str, Serie] | None = None,
+    estudios: Mapping[str, Serie] | None = None,
 ) -> dict[str, dict[str, Serie]]:
     """Depreciación separada por unidad y por componente, que es lo que exige `D-04`.
 
@@ -310,16 +343,28 @@ def depreciacion_por_mina(
     series = produccion or {}
     agota = agotamientos or {}
     proyectada = proyecciones or {}
+    capitalizados = estudios or {}
+    por_nombre = {capital.unidad: capital for capital in capitales}
+    # Una unidad puede depreciar sin haber invertido: le basta con un estudio
+    # capitalizable o con la proyeccion de lo ya contabilizado. Recorrer solo los
+    # capitales dejaria esa depreciacion fuera sin que nada lo acusara.
+    nombres = list(por_nombre) + [
+        nombre
+        for nombre in (*capitalizados, *proyectada)
+        if nombre not in por_nombre
+        and (any(capitalizados.get(nombre, ())) or any(proyectada.get(nombre, ())))
+    ]
     return {
-        capital.unidad: depreciacion_por_componente(
+        nombre: depreciacion_por_componente(
             horizonte,
-            capital,
+            por_nombre.get(nombre),
             tasas,
-            produccion=series.get(capital.unidad),
-            agotamiento=agota.get(capital.unidad),
-            proyeccion=proyectada.get(capital.unidad, ()),
+            produccion=series.get(nombre),
+            agotamiento=agota.get(nombre),
+            proyeccion=proyectada.get(nombre, ()),
+            estudios=capitalizados.get(nombre, ()),
         )
-        for capital in capitales
+        for nombre in dict.fromkeys(nombres)
     }
 
 

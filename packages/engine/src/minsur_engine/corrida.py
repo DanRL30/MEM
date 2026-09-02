@@ -240,12 +240,19 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     # una relavera de deposito no lo hacen nunca por diseno, de modo que la
     # puerta les anularia el escudo fiscal entero en vez de retrasarlo.
     con_produccion = {u.nombre: produccion_por_unidad[u.nombre] for u in caso.unidades if u.produce}
+    # El estudio capitalizable no es una fila del capital: llega por los gastos y
+    # el libro lo deprecia igual, en las dos vias.
+    capitalizados = {
+        nombre: cargados.get(ESTUDIOS_CAPITALIZABLES, ())
+        for nombre, cargados in gastos.por_unidad.items()
+    }
     detalle_tributario = depreciacion_por_mina(
         horizonte,
         capital,
         maestros.tasas_tributarias,
         produccion=con_produccion,
         proyecciones={u.nombre: u.proyeccion_tributaria for u in caso.unidades},
+        estudios=capitalizados,
     )
     # La via financiera agota contra las reservas en vez de depreciar lineal, y
     # por eso lleva el agotamiento que la tributaria no necesita.
@@ -256,6 +263,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         produccion=con_produccion,
         agotamientos={u.nombre: _agotamiento(u, horizonte) for u in caso.unidades},
         proyecciones={u.nombre: u.proyeccion_financiera for u in caso.unidades},
+        estudios=capitalizados,
     )
     depreciacion_tributaria = por_unidad(horizonte, detalle_tributario)
     depreciacion_financiera = por_unidad(horizonte, detalle_financiero)

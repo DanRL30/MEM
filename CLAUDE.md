@@ -182,7 +182,7 @@ despues, no deuda heredada.
 | `ruff check .` | Limpio |
 | `ruff format --check .` | Limpio, 99 archivos |
 | `mypy packages apps/api/src` | Limpio en modo estricto, 63 archivos |
-| `pytest` | 362 de 362, de las que 31 son el contraste de fidelidad |
+| `pytest` | 366 de 366, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -385,12 +385,20 @@ mostro que no.
 | Equipos de computo | Lineal | **Agotamiento** |
 | Instalaciones y equipos diversos | Lineal | **Agotamiento** |
 | Edificaciones y construcciones | Lineal | **Agotamiento** |
-| No depreciable | Su tasa | Su tasa |
+| No depreciable | **Entero en su ano** | **Entero en su ano** |
+| Estudios capitalizables | Lineal al 5 % | Lineal al 5 % |
 
 **Agotamiento** es el metodo de unidades de produccion: cada ano se deprecia la
 fraccion del saldo que representa lo extraido sobre las reservas que quedaban.
 No hay cronograma por ano de inversion, hay **un solo saldo** que recibe las
 inversiones y se agota al ritmo al que se vacia el yacimiento.
+
+**`No depreciable` engana con el nombre**: no es que no se deprecie, es que no
+se reparte. Es el escudo del capital de cierre y entra entero en su ejercicio.
+
+**El estudio capitalizable no sale del capital**: llega por los gastos de la
+plantilla de opex y el libro lo deprecia igual, en las dos vias. Una unidad
+puede depreciar sin haber invertido, con solo capitalizar un estudio.
 
 **Cada componente se deprecia y se informa por separado**, aunque el libro
 fusione los equipos de computo con la maquinaria bajo un mismo codigo. Un

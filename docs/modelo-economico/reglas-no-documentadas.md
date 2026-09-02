@@ -49,10 +49,10 @@ que es lo que el motor necesita.
 | 031 | `InputsCapex`, filas 7 a 11 frente a 15 a 69 | La etapa no se carga: `Cierre Mina` es el codigo `NOD` de todas las unidades, `Capex Inicial` es la unidad en sus primeros anos productivos y el resto es `Sostenimiento` | La clasificacion contable es el unico dato del capital y la etapa sale de ella | Derivada del libro | 02/09/2026 | `capex.py` |
 | 032 | `InputsCapex`, fila 10 | La cuarta etapa esta rotulada `xxx`, no tiene formula en ninguna columna de ano y vale cero siempre. `Depreciacion` la arrastra rotulada `Otros` | Ranura reservada y nunca usada, como las ocho del comite de precios | Derivada del libro | 02/09/2026 | `capex.py` |
 | 033 | `Depreciacion`, filas 7 a 10 | Cada fila de capex entra a la depreciacion multiplicada por `(1 + Supuestos!H114)`, con rango declarado `-35, +50` y valor cero hoy | Banda de precision del estimado que afecta al capital entero, no solo a la depreciacion | | | `corrida.py` |
-| 034 | `Depreciacion`, escudo de cierre | `No Depreciable` entra con tasa 1, es decir se deduce entero en su ano | El motor lo trata como tasa cero por definicion. **Mueve la base imponible del ano de cierre y no se implementa hasta que Finanzas confirme** | | | |
+| 034 | `Depreciacion`, escudo de cierre | `No Depreciable` entra con tasa 1, es decir se deduce entero en su ano | El nombre engana: no es que no se deprecie, es que no se reparte. Es el escudo del capital de cierre | Project Manager | 02/09/2026 | `depreciacion.py` |
 | 035 | `Depreciacion`, filas 781 y siguientes | La via financiera no deprecia lineal todo el capital: la maquinaria si, y las instalaciones, las edificaciones y los equipos de computo se agotan con tasa `MIN(extraido / reservas, 100 %)` sobre un saldo unico | Metodo de unidades de produccion, y solo para tres de los cinco componentes | Derivada del libro | 02/09/2026 | `depreciacion.py` |
-| 036 | `Depreciacion` frente a `InputsCapex` | `Equipos de Cómputo` se fusiona con maquinaria en la via tributaria, por su codigo, y se excluye de maquinaria en la financiera | El mismo importe con dos naturalezas segun el motor que lo mire | | | |
-| 037 | `Depreciacion`, columna de tasas | La tasa declarada para `Estudios` es 0,05 | **Cierra la consulta que abrio la regla `028`**: el estudio capitalizable se deprecia como una edificacion | | | |
+| 036 | `Depreciacion` frente a `InputsCapex` | `Equipos de Cómputo` se fusiona con maquinaria en la via tributaria, por su codigo, y se excluye de maquinaria en la financiera | El mismo importe con dos naturalezas segun el motor que lo mire. **La plataforma reproduce los dos tratamientos sin fusionar el componente**: lineal a la tasa de maquinaria en la tributaria, agotado en la financiera, y separado en las dos | Project Manager | 02/09/2026 | `depreciacion.py` |
+| 037 | `Depreciacion`, columna de tasas | La tasa declarada para `Estudios` es 0,05 | **Cierra la consulta que abrio la regla `028`**: el estudio capitalizable se deprecia como una edificacion, en las dos vias, y llega por los gastos y no por el capital | Project Manager | 02/09/2026 | `depreciacion.py` |
 | 038 | `Depreciacion`, filas de reservas 872, 935, 1121, 1260 y 1399 | Dos unidades leen sus reservas de un libro externo y tres las derivan de la produccion, sumando toda la fila del horizonte. Nazareth suma el mineral **tratado** y las otras dos el **extraido** | Las reservas de una unidad en operacion son dato de su plan de vida de mina; las de un proyecto salen de su propio plan. La plataforma lo resuelve dejando que se declaren: **declararlas las convierte en dato y dejarlas vacias en calculo** | Project Manager | 02/09/2026 | `corrida.py` |
 | 039 | `Depreciacion`, fila 941 | La tasa de agotamiento de una de las seis unidades no lleva el tope `MIN(..., 100 %)` que llevan las otras cinco | Omision del libro. Sin el tope, una extraccion mayor que el saldo deprecia mas capital del que queda. **La plataforma aplica el tope en las seis**, por decision del Project Manager; pendiente de acuerdo escrito para registrarse como desviacion | Project Manager | 02/09/2026 | `depreciacion.py` |
 | 040 | `Supuestos`, filas 69 a 79 | Dos bloques de `Proyeccion SAP`, uno por via, con un valor por unidad en `k$` | Depreciacion ya contabilizada de los activos que existen antes del primer ano del caso. La via tributaria la consume agregada y la financiera por unidad; la plataforma la lleva por unidad en las dos, que es lo que pide `D-04` | Derivada del libro | 02/09/2026 | `depreciacion.py` |
@@ -172,15 +172,18 @@ que salieron el 01/09/2026 de leer el bloque de Pisco y la hoja de supuestos —
 que son de tipo 3: se reproducen y se reportan. Las dos que salieron el 02/09/2026 de leer
 `InputsOpex` —029 y 030— tambien son de tipo 3, y ninguna de las dos alimenta el flujo: viven en
 columnas y filas de presentacion. De las siete que salieron el 02/09/2026 de leer `InputsCapex`, la
-031, la 032 y la 033 son de tipo 2 y estan implementadas; la 034 y la 036 son
-inconsistencias del modelo que se reportan, y la 037 cierra una consulta abierta. La 035, la 038 y
+031, la 032 y la 033 son de tipo 2 y estan implementadas; la 036 es una
+inconsistencia del modelo que se reproduce sin fusionar el componente, y la 037 cierra la consulta
+que abrio la 028. La 035, la 038 y
 la 040 salieron de leer la hoja de depreciacion el mismo dia y estan implementadas; la 039 es una
 omision del libro que la plataforma **no reproduce**, por decision expresa. La 024 nacio como tipo 3 y MINSUR la confirmo el
 mismo dia como deliberada, de modo que paso a tipo 2. La 015 es la única donde el motor **no** reproduce el libro, porque las dos
 hojas del libro se contradicen entre sí: sigue a `FC NZ`, que es la hoja del caso. Seis quedaron confirmadas por Finanzas el 01/09/2026; siguen abiertas la 003 (unidades de
 medida), la 004 (tramos tributarios), la 007 (valores guardados sin recalcular), la 027 (fraccion
-deducible de la gestion social), la 033 (el rango del ajuste de capex) y la 034 (la deduccion entera
-de lo no depreciable). La 028 queda contestada por la 037.
+deducible de la gestion social) y la 033 (el rango del ajuste de capex). La 028 queda contestada por
+la 037, y la 034, la 036 y la 037 se implementaron el 02/09/2026 por decision del Project Manager:
+**se hace lo que hace el libro, sin fusionar los componentes**. Las tres siguen pendientes de
+confirmacion escrita de Finanzas.
 
 Ver la bitácora de discrepancias abiertas en `bitacora-discrepancias.md`.
 
