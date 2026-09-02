@@ -35,6 +35,7 @@ from minsur_engine.capex import CapitalDeUnidad
 from minsur_engine.caso import (
     Caso,
     DatosComunes,
+    ProduccionDeUnidad,
     TerminosComerciales,
     UnidadProductiva,
 )
@@ -52,7 +53,11 @@ una constante. `Leeme` se ignora.
 
 PRIMERA_FILA_DE_DATOS = 5
 PRIMERA_COLUMNA_DE_ANOS = 3
+FILA_DE_ANOS = 3
 LIMITE_DE_NOMBRE_DE_HOJA = 31
+
+HOJAS_SIN_DATOS = ("leeme", "caso")
+"""Pestanas del libro de produccion que no son un proyecto."""
 
 ETAPAS_DE_CAPEX = {
     "capex inicial": "inicial",
@@ -104,6 +109,33 @@ class Lectura:
     @property
     def valida(self) -> bool:
         return self.caso is not None
+
+
+@dataclass(frozen=True)
+class BloqueDeProduccion:
+    """Una pestaña del libro de producción, sin unidad asignada todavía.
+
+    `orden` es lo que la plataforma usa para asociarla: la primera pestaña es la
+    primera unidad del caso. `hoja` viaja como pista para quien elige, no como
+    identidad.
+    """
+
+    orden: int
+    hoja: str
+    produccion: ProduccionDeUnidad
+
+
+@dataclass(frozen=True)
+class LecturaDeProduccion:
+    """Resultado de leer el libro de producción."""
+
+    bloques: tuple[BloqueDeProduccion, ...]
+    horizonte: Horizonte | None
+    incidencias: tuple[Incidencia, ...]
+
+    @property
+    def valida(self) -> bool:
+        return bool(self.bloques) and not self.incidencias
 
 
 @dataclass(frozen=True)
@@ -226,6 +258,93 @@ def leer_plantilla(ruta: Path, *, escenario: str | None = None) -> Lectura:
         return Lectura(None, (Incidencia("Caso", "-", str(error)),))
 
     return Lectura(caso, ())
+
+
+def leer_produccion(ruta: Path) -> LecturaDeProduccion:
+    """Lee el libro de produccion: una pestaña por proyecto, en orden.
+
+    **No identifica el caso ni las unidades.** El archivo se sube desde un caso
+    que la plataforma ya tiene abierto, y cada pestaña se asocia a una unidad
+    por su posicion, que es lo que acordo el avance 02 del 28/08/2026. El nombre
+    de la pestaña viaja como pista para quien elige en el selector, nunca como
+    identidad: dos fuentes de identidad acaban contradiciendose.
+
+    El horizonte se deduce de la fila de años de la primera pestaña, de modo que
+    un proyecto de vida larga no exige tocar nada.
+    """
+    incidencias: list[Incidencia] = []
+    if not ruta.exists():
+        return LecturaDeProduccion((), None, (Incidencia("(archivo)", str(ruta), "no existe"),))
+
+    libro = load_workbook(ruta, data_only=True, read_only=True)
+    hojas = [h for h in libro.sheetnames if normalizar(h) not in HOJAS_SIN_DATOS]
+    if not hojas:
+        libro.close()
+        return LecturaDeProduccion(
+            (),
+            None,
+            (Incidencia("(libro)", "-", "el libro no trae ninguna pestana de proyecto"),),
+        )
+
+    horizonte = _horizonte_de_la_cabecera(libro[hojas[0]], incidencias)
+    if horizonte is None:
+        libro.close()
+        return LecturaDeProduccion((), None, tuple(incidencias))
+
+    bloques: list[BloqueDeProduccion] = []
+    for orden, nombre in enumerate(hojas, start=1):
+        filas = [
+            (fila.concepto, _serie(fila, horizonte, incidencias))
+            for fila in _leer_pestana_de_unidad(libro[nombre], horizonte)
+        ]
+        bloques.append(
+            BloqueDeProduccion(
+                orden=orden,
+                hoja=nombre,
+                produccion=armar_produccion(nombre, filas, horizonte, incidencias, hoja=nombre),
+            )
+        )
+    libro.close()
+    return LecturaDeProduccion(tuple(bloques), horizonte, tuple(incidencias))
+
+
+def _horizonte_de_la_cabecera(hoja: Worksheet, incidencias: list[Incidencia]) -> Horizonte | None:
+    """Deduce el horizonte de la fila de años, sin tope fijado de antemano."""
+    anos: list[int] = []
+    for celda in next(hoja.iter_rows(min_row=FILA_DE_ANOS, max_row=FILA_DE_ANOS))[
+        PRIMERA_COLUMNA_DE_ANOS - 1 :
+    ]:
+        if not isinstance(celda.value, int | float):
+            break
+        anos.append(int(celda.value))
+
+    if not anos:
+        incidencias.append(
+            Incidencia(
+                hoja.title,
+                f"C{FILA_DE_ANOS}",
+                "la fila de anos esta vacia. Sin ella no se sabe que horizonte cubre la plantilla.",
+            )
+        )
+        return None
+
+    esperados = list(range(anos[0], anos[0] + len(anos)))
+    if anos != esperados:
+        incidencias.append(
+            Incidencia(
+                hoja.title,
+                f"C{FILA_DE_ANOS}",
+                f"los anos no son consecutivos: van de {anos[0]} a {anos[-1]} en {len(anos)} "
+                "columnas. Un salto desplaza todas las series.",
+            )
+        )
+        return None
+
+    try:
+        return Horizonte(primer_ano=anos[0], anos=len(anos))
+    except ErrorHorizonte as error:
+        incidencias.append(Incidencia(hoja.title, f"C{FILA_DE_ANOS}", str(error)))
+        return None
 
 
 def leer_o_fallar(ruta: Path, *, escenario: str | None = None) -> Caso:

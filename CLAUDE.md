@@ -245,9 +245,18 @@ La lectura **acumula incidencias con su hoja y su celda** en vez de detenerse en
 plantilla llena a mano llega con varios errores a la vez, y devolverlos de uno en uno obliga a
 corregir y reenviar tantas veces como errores tenga.
 
-**La produccion viene en una pestana por proyecto**, con los sub-bloques `Mina` y `Planta` que usa
-el libro. Sus nombres los declara la hoja `Caso`, junto con el origen del mineral y las etapas de
-la planta: sin esos dos campos, de una plantilla llena no se puede regenerar la misma plantilla.
+**La produccion viene en su propio libro, con una pestana por proyecto** y los sub-bloques `Mina` y
+`Planta` que usa el libro corporativo. `leer_produccion()` lo lee y devuelve los bloques **en el
+orden de las pestanas**, sin unidad asignada: el archivo se sube desde un caso que la plataforma ya
+tiene abierto, y `asociar_por_orden()` empareja la pestana n con la unidad n. El nombre de la
+pestana viaja como pista y nunca como identidad —quien llena el archivo rotula como quiera, y dos
+fuentes de identidad acaban contradiciendose—. Es lo que acordo el avance 02 del 28/08/2026.
+
+Por lo mismo **el libro de produccion no lleva hoja `Caso`**, y el horizonte se deduce contando la
+fila de anos: nada fija el numero de ejercicios de antemano, de modo que un proyecto de vida larga
+no exige tocar el lector. Una fila de anos con saltos se reporta, porque un salto desplaza todas
+las series a partir de ahi sin dejar rastro en el resultado.
+
 [produccion.py](packages/ingest/src/minsur_ingest/produccion.py) hace el parseo, y ahi **no se
 borran los nombres de unidad de las etiquetas**, al reves que en las demas hojas: en `concentrado
 alimentado desde San Rafael` el nombre es el dato.

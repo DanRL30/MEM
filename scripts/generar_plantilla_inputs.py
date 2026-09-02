@@ -14,6 +14,15 @@ mismos, y si divergen, manda el catálogo y este archivo se corrige.
 `Planta` que usa el libro: de donde sale el mineral y por que proceso pasa. Cada
 corriente de tonelaje lleva debajo la ley de cada metal que transporta.
 
+**El libro de produccion no identifica el caso.** No lleva hoja `Caso`: el
+usuario lo sube desde un caso que la plataforma ya tiene abierto, y cada pestana
+se asocia a una unidad **por su orden**, no por su nombre. El nombre final lo
+elige el usuario en un selector de la plataforma. Repetir aqui la identificacion
+solo abriria la puerta a que contradiga a la del caso.
+
+El horizonte tampoco se declara aparte: se deduce de la fila de anos, de modo que
+un proyecto de vida larga no exige tocar nada.
+
 Uso:
     python scripts/generar_plantilla_inputs.py --salida produccion.xlsx \
         --unidad "Proyecto X:mina:Sn,Cu" \
@@ -431,7 +440,11 @@ def _bloque_de_mina(
                 hoja, fila, f"Ley de {subproducto} en el concentrado de {metal}", "%", anos
             )
 
-    if unidad.entrega_a:
+    # Solo tiene sentido preguntarlo cuando la unidad produce mas de un
+    # concentrado y hay que decir cual va al complejo. Con un solo metal la
+    # respuesta es su propio concentrado y preguntarla seria pedir dos veces
+    # el mismo dato.
+    if len(unidad.con_concentrado_propio()) > 1:
         numericas.append(fila)
         fila = fila_de_entrada(hoja, fila, "Concentrado entregado al complejo", "t", anos, True)
     return fila, numericas
@@ -606,6 +619,12 @@ def hoja_instrucciones(libro: Workbook, unidades: list[Unidad]) -> None:
         ("sale el mineral y por que proceso pasa. Cada corriente de tonelaje lleva", None),
         ("debajo la ley de cada metal que transporta.", None),
         ("", None),
+        ("Las pestanas se asocian por orden", CABECERA),
+        ("La plataforma toma la primera pestana como la primera unidad del caso,", None),
+        ("la segunda como la segunda, y asi. El nombre de la pestana es solo una", None),
+        ("pista: el nombre final lo elige quien carga, en un selector.", None),
+        ("No cambie el orden de las pestanas despues de llenarlas.", None),
+        ("", None),
         ("La estructura la determinan las unidades declaradas al generar la", None),
         ("plantilla. Si el caso necesita otra unidad, se vuelve a generar; no se", None),
         ("agregan filas a mano, porque el motor lee la estructura, no el formato.", None),
@@ -696,7 +715,14 @@ def main() -> int:
         return 1
 
     libro = Workbook()
-    hoja_caso(libro, unidades, args.primer_ano, args.anos)
+    if args.bloque == "completo":
+        hoja_caso(libro, unidades, args.primer_ano, args.anos)
+    else:
+        # La plantilla de produccion no identifica el caso. El usuario sube el
+        # archivo desde un caso que la plataforma ya tiene abierto, y las
+        # pestanas se asocian a sus unidades por orden, no por nombre: repetir
+        # aqui la identificacion abre la puerta a que contradiga a la del caso.
+        libro.remove(libro.active)
     for unidad in unidades:
         hoja_produccion_de_unidad(libro, unidad, unidades, args.primer_ano, args.anos)
     if args.bloque == "completo":

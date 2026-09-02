@@ -279,3 +279,39 @@ def _primera(series: dict[str, Serie]) -> Serie:
 
 def _metal(texto: str) -> str:
     return next(m for m in METALES if m.lower() == texto.lower())
+
+
+UNIDADES_PROVISIONALES = ("SR", "B2", "NZ", "SRP", "SD")
+"""Abreviaturas que ofrece el selector mientras no llegue el catalogo de MINSUR.
+
+Son las cinco unidades mineras del modelo vigente: San Rafael, B2, Nazareth, San
+Rafael Potencial y Santo Domingo. **No incluye Pisco**, porque el complejo no se
+carga: se calcula a partir del concentrado que le entregan las minas.
+
+Es una lista provisional y no una regla del motor. El catalogo definitivo lo
+mantiene MINSUR como dato maestro, y hasta entonces un caso nuevo puede declarar
+unidades que no esten aqui.
+"""
+
+
+class ErrorDeAsociacion(ValueError):
+    """Las pestañas del libro no cuadran con las unidades del caso."""
+
+
+def asociar_por_orden(hojas: Sequence[str], unidades: Sequence[str]) -> dict[str, str]:
+    """Empareja cada pestaña con una unidad por su posicion.
+
+    Es lo que acordo el avance 02 del 28/08/2026: el procesamiento se basa en el
+    orden de las hojas y el proyecto se asigna desde la plataforma. El nombre de
+    la pestaña no decide nada, porque quien llena el archivo puede rotularla como
+    quiera y dos fuentes de identidad acaban contradiciendose.
+
+    Devuelve el nombre de hoja de cada unidad, en el orden en que llegaron.
+    """
+    if len(hojas) != len(unidades):
+        raise ErrorDeAsociacion(
+            f"El libro trae {len(hojas)} pestana(s) de proyecto y el caso declara "
+            f"{len(unidades)} unidad(es). Asociarlas por orden exige que sean tantas como "
+            "unidades: sobra o falta un proyecto."
+        )
+    return dict(zip(unidades, hojas, strict=True))

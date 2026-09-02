@@ -21,7 +21,12 @@ from minsur_engine.depreciacion import TasasDeDepreciacion
 from minsur_engine.parametros import ParametrosCorporativos
 from minsur_engine.tributos import EscalaProgresiva, Tramo
 from minsur_ingest.incidencias import ErrorDePlantilla
-from minsur_ingest.plantilla import Lectura, leer_o_fallar, leer_plantilla
+from minsur_ingest.plantilla import Lectura, leer_o_fallar, leer_plantilla, leer_produccion
+from minsur_ingest.produccion import (
+    UNIDADES_PROVISIONALES,
+    ErrorDeAsociacion,
+    asociar_por_orden,
+)
 from minsur_ingest.sinonimos import canonizar
 
 RAIZ = Path(__file__).resolve().parents[3]
@@ -116,7 +121,9 @@ def plantilla_llena(tmp_path: Path) -> Path:
     _escribir(mina, "Ley de Sn en el concentrado", [0.0, 40.0, 40.0])
     _escribir(mina, "Recuperacion de Sn", [0.0, 80.0, 80.0])
     _escribir(mina, "Produccion de concentrado de Sn", [0.0, 500.0, 500.0])
-    _escribir(mina, "Concentrado entregado al complejo", [0.0, 500.0, 500.0])
+    # No lleva "Concentrado entregado al complejo": con un solo metal, lo que
+    # entrega es su propio concentrado y preguntarlo seria pedir el dato dos
+    # veces. La fila solo aparece en unidades polimetalicas.
 
     complejo = libro["Fundicion"]
     _escribir(complejo, "Concentrado alimentado desde Mina Alfa", [0.0, 500.0, 500.0])
@@ -307,6 +314,103 @@ class TestIncidencias:
 
         with pytest.raises(ErrorDePlantilla, match="incidencia"):
             leer_o_fallar(plantilla_llena)
+
+
+class TestLibroDeProduccion:
+    """El libro que sube el usuario: pestañas de proyecto y nada mas.
+
+    No identifica el caso. El archivo llega desde un caso ya abierto en la
+    plataforma, y cada pestaña se asocia a una unidad por su posicion.
+    """
+
+    @pytest.fixture
+    def libro_de_produccion(self, tmp_path: Path) -> Path:
+        generador = _generador()
+        ruta = tmp_path / "produccion.xlsx"
+        unidades = [
+            generador.Unidad.desde_texto(t)  # type: ignore[attr-defined]
+            for t in (
+                "Proyecto X:mina:Sn:preconcentracion,concentradora",
+                "Proyecto Y:mina:Sn:concentradora:relave",
+            )
+        ]
+        libro = generador.Workbook()  # type: ignore[attr-defined]
+        libro.remove(libro.active)
+        for unidad in unidades:
+            generador.hoja_produccion_de_unidad(  # type: ignore[attr-defined]
+                libro, unidad, unidades, 2027, 45
+            )
+        generador.hoja_instrucciones(libro, unidades)  # type: ignore[attr-defined]
+        libro.save(ruta)
+        return ruta
+
+    def test_no_necesita_hoja_de_caso(self, libro_de_produccion: Path) -> None:
+        lectura = leer_produccion(libro_de_produccion)
+        assert lectura.valida, [str(i) for i in lectura.incidencias]
+
+    def test_deduce_un_horizonte_largo_de_la_fila_de_anos(self, libro_de_produccion: Path) -> None:
+        # Nada fija el numero de anos de antemano: se cuenta la fila de anos, de
+        # modo que un proyecto de vida larga no exige tocar el lector.
+        horizonte = leer_produccion(libro_de_produccion).horizonte
+        assert horizonte is not None
+        assert horizonte.primer_ano == 2027
+        assert horizonte.anos == 45
+
+    def test_las_pestanas_llegan_en_orden_y_sin_identidad(self, libro_de_produccion: Path) -> None:
+        bloques = leer_produccion(libro_de_produccion).bloques
+        assert [b.orden for b in bloques] == [1, 2]
+        assert [b.hoja for b in bloques] == ["Proyecto X", "Proyecto Y"]
+
+    def test_cada_pestana_conserva_la_forma_de_su_proyecto(self, libro_de_produccion: Path) -> None:
+        # La primera tiene preconcentracion y la segunda no. Que la estructura
+        # difiera entre pestanas es justo lo que hace util leerlas por separado.
+        primera, segunda = leer_produccion(libro_de_produccion).bloques
+        assert primera.produccion.tratado_en_preconcentracion is not None
+        assert segunda.produccion.tratado_en_preconcentracion is None
+
+    def test_una_fila_de_anos_con_saltos_se_reporta(self, libro_de_produccion: Path) -> None:
+        # Un salto desplaza todas las series a partir de ahi, y el desplazamiento
+        # no deja rastro en el resultado.
+        libro = load_workbook(libro_de_produccion)
+        libro["Proyecto X"].cell(row=3, column=10, value=2999)
+        libro.save(libro_de_produccion)
+
+        lectura = leer_produccion(libro_de_produccion)
+        assert not lectura.valida
+        assert any("consecutivos" in i.mensaje for i in lectura.incidencias)
+
+    def test_un_libro_sin_pestanas_de_proyecto_se_reporta(self, tmp_path: Path) -> None:
+        from openpyxl import Workbook
+
+        ruta = tmp_path / "vacio.xlsx"
+        libro = Workbook()
+        libro.create_sheet("Leeme")
+        del libro["Sheet"]
+        libro.save(ruta)
+
+        lectura = leer_produccion(ruta)
+        assert not lectura.valida
+        assert "ninguna pestana de proyecto" in lectura.incidencias[0].mensaje
+
+
+class TestAsociacionPorOrden:
+    def test_empareja_pestana_con_unidad_por_posicion(self) -> None:
+        asociado = asociar_por_orden(["Proyecto X", "Proyecto Y"], ["SR", "B2"])
+        assert asociado == {"SR": "Proyecto X", "B2": "Proyecto Y"}
+
+    def test_el_nombre_de_la_pestana_no_decide(self) -> None:
+        # Quien llena el archivo rotula como quiera. Si el nombre mandara, una
+        # pestana llamada "B2" acabaria en la unidad equivocada.
+        asociado = asociar_por_orden(["B2", "SR"], ["SR", "B2"])
+        assert asociado["SR"] == "B2"
+
+    def test_si_sobran_o_faltan_pestanas_no_adivina(self) -> None:
+        with pytest.raises(ErrorDeAsociacion, match="sobra o falta"):
+            asociar_por_orden(["Proyecto X"], ["SR", "B2"])
+
+    def test_el_selector_provisional_no_incluye_el_complejo(self) -> None:
+        # Pisco no se carga: se calcula a partir de lo que le entregan las minas.
+        assert UNIDADES_PROVISIONALES == ("SR", "B2", "NZ", "SRP", "SD")
 
 
 class TestSinonimos:

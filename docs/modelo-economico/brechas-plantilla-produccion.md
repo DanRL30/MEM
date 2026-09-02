@@ -229,3 +229,21 @@ Sigue abierto, y **por depender de una respuesta de Finanzas no se implementa**:
 - **La tolerancia de corroboracion.** `TOLERANCIA_POR_DEFECTO` es 0,5 % y es propuesta de INVA.
 - **Que unidad es polimetalica**, segun la seccion 6.
 
+## 9. La plantilla no identifica el caso
+
+Corregido el 01/09/2026 sobre el rediseno, a peticion del Project Manager:
+
+- **El libro de produccion no lleva hoja `Caso`.** El usuario lo sube desde un caso que la
+  plataforma ya tiene abierto. Repetir la identificacion en el archivo solo abre la puerta a que
+  contradiga a la del caso.
+- **Las pestanas se asocian por orden, no por nombre.** La primera es la primera unidad del caso.
+  El nombre de la pestana es una pista para quien carga; el nombre final lo elige en un selector,
+  que por ahora ofrece `SR`, `B2`, `NZ`, `SRP` y `SD`. Es lo que acordo el avance 02 del
+  28/08/2026, y **no incluye Pisco**: el complejo no se carga, se calcula a partir del concentrado
+  que le entregan las minas.
+- **El horizonte se deduce de la fila de anos.** Nada fija el numero de ejercicios de antemano, de
+  modo que un proyecto de vida larga no exige tocar el lector. Una fila con saltos se reporta,
+  porque un salto desplaza todas las series a partir de ahi sin dejar rastro en el resultado.
+- **`Concentrado entregado al complejo` solo aparece en unidades polimetalicas.** Con un solo metal
+  la respuesta es su propio concentrado, y preguntarla seria pedir el mismo dato dos veces.
+
