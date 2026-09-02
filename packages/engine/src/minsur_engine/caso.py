@@ -21,7 +21,7 @@ Ver [modelo-estandar.md](../../../../docs/modelo-economico/modelo-estandar.md).
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 
 from minsur_engine.capex import CapitalDeUnidad
 from minsur_engine.depreciacion import TasasDeDepreciacion
@@ -96,6 +96,30 @@ class ProduccionDeUnidad:
     metal_en_concentrado_vendido: Serie = ()
     capacidad_de_tratamiento: Serie = ()
     """Tope que acota lo alimentado al complejo. Es un supuesto, no producción."""
+
+
+def campos_con_dato(produccion: ProduccionDeUnidad) -> frozenset[str]:
+    """Campos que traen al menos un valor distinto de cero.
+
+    Una fila entera en cero significa que el concepto **no aplica a esta
+    unidad**, y la plataforma no la muestra: en un caso sin cobre ni plata, las
+    filas de cobre y plata sobran en pantalla aunque la plantilla las traiga.
+
+    Es la misma idea que `anos_con_dato` aplicada a las filas en vez de a los
+    años, y vive en el motor para que la API y la interfaz decidan lo mismo. Si
+    cada pantalla lo resolviera por su cuenta, acabarían mostrando cosas
+    distintas del mismo caso.
+
+    **Vacío y todo ceros son lo mismo aquí.** Una serie que no se llenó y una
+    que se llenó con ceros dicen ambas que el concepto no aplica; distinguirlas
+    obligaría al usuario a saber cuál de las dos escribió.
+    """
+    con_dato = set()
+    for campo in fields(produccion):
+        valor = getattr(produccion, campo.name)
+        if isinstance(valor, tuple) and any(valor):
+            con_dato.add(campo.name)
+    return frozenset(con_dato)
 
 
 @dataclass(frozen=True)

@@ -175,7 +175,7 @@ despues, no deuda heredada.
 | `ruff check .` | Limpio |
 | `ruff format --check .` | Limpio, 93 archivos |
 | `mypy packages apps/api/src` | Limpio en modo estricto, 59 archivos |
-| `pytest` | 306 de 306, de las que 31 son el contraste de fidelidad |
+| `pytest` | 311 de 311, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -346,6 +346,22 @@ el 01/09/2026 que varian los primeros ejercicios porque hay mejor informacion
 sobre ellos. `ParametrosCorporativos` conserva la tasa de referencia y
 `DatosComunes.osinergmin` y `.oefa` la sobrescriben cuando el caso las declara;
 vacio significa usar la de referencia.
+
+### Una fila entera en cero no se muestra
+
+La estructura de la plantilla es la misma para todos los proyectos, de modo que
+un caso de solo estano recibe igual las filas de cobre y de plata. En pantalla no
+tienen nada que decir, y `campos_con_dato()` es quien decide cuales sobran: una
+serie sin ningun valor distinto de cero significa que el concepto **no aplica a
+esa unidad**.
+
+Vive en el motor y la corrida lo expone en `campos_con_dato_por_unidad`, para que
+la API y la interfaz lleguen a la misma conclusion del mismo caso. Si cada
+pantalla lo resolviera por su cuenta acabarian mostrando cosas distintas.
+
+**Vacio y todo ceros son lo mismo aqui.** Una serie que no se lleno y una que se
+lleno con ceros dicen ambas que el concepto no aplica; distinguirlas obligaria al
+usuario a recordar cual de las dos escribio.
 
 ### El corroborador: alarma y control de calidad, no correccion
 

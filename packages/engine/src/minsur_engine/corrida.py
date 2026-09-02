@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from minsur_engine import capital_trabajo, complejo, tributos
 from minsur_engine.capex import capex_de_etapa, capex_de_sostenimiento, capex_total
 from minsur_engine.cash_cost import CostoDeUnidad, cash_cost_total
-from minsur_engine.caso import Caso, DatosMaestros, UnidadProductiva
+from minsur_engine.caso import Caso, DatosMaestros, UnidadProductiva, campos_con_dato
 from minsur_engine.complejo import BloqueDelComplejo
 from minsur_engine.corroboracion import Discrepancia, corroborar
 from minsur_engine.depreciacion import depreciacion_por_mina, total_depreciado
@@ -95,6 +95,14 @@ class Corrida:
 
     concentrado_liquidado_por_unidad: dict[str, Serie]
     """Valor neto del concentrado polimetalico que liquida cada unidad."""
+
+    campos_con_dato_por_unidad: dict[str, frozenset[str]]
+    """Filas que cada unidad llena de verdad.
+
+    Una fila entera en cero significa que el concepto no aplica y la
+    plataforma no la muestra. Se decide aqui para que la API y la interfaz
+    no lleguen a conclusiones distintas del mismo caso.
+    """
 
     mineral_tratado_por_unidad: dict[str, Serie]
 
@@ -242,6 +250,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         cash_cost=cash_cost,
         complejo=bloque,
         concentrado_liquidado_por_unidad=resultado_de_ventas.concentrado_liquidado_por_unidad,
+        campos_con_dato_por_unidad={u.nombre: campos_con_dato(u.produccion) for u in caso.unidades},
         mineral_tratado_por_unidad=produccion_por_unidad,
         anos_activos_por_unidad=_anos_activos(caso),
         discrepancias=corroborar(caso),

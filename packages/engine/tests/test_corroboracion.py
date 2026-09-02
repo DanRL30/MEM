@@ -23,6 +23,7 @@ from minsur_engine.caso import (
     ProduccionDeUnidad,
     TerminosComerciales,
     UnidadProductiva,
+    campos_con_dato,
 )
 from minsur_engine.corrida import Corrida, calcular
 from minsur_engine.corroboracion import Discrepancia, corroborar, series_calculadas
@@ -283,3 +284,42 @@ class TestElDatoDelUsuarioEsElQueManda:
         )
         assert con_aviso.flujo.flujo_economico == sin_aviso.flujo.flujo_economico
         assert con_aviso.indicadores.npv == sin_aviso.indicadores.npv
+
+
+class TestFilasQueNoAplican:
+    """Una fila entera en cero no se muestra: el concepto no aplica.
+
+    Es lo que ocurre con el cobre y la plata en un caso de solo estaño. La
+    plantilla los trae porque la estructura es la misma para todos los
+    proyectos, y la pantalla los oculta porque en ese caso no significan nada.
+    """
+
+    def test_el_cobre_y_la_plata_no_aparecen_en_un_caso_de_estano(self) -> None:
+        con_dato = campos_con_dato(_unidad().produccion)
+        assert "concentrado_de_cu" not in con_dato
+        assert "ley_cu" not in con_dato
+        assert "ley_ag" not in con_dato
+
+    def test_lo_que_si_se_llena_aparece(self) -> None:
+        con_dato = campos_con_dato(_unidad().produccion)
+        assert {"mineral_extraido", "ley_de_cabeza", "concentrado_producido"} <= con_dato
+
+    def test_una_serie_vacia_y_una_de_ceros_dicen_lo_mismo(self) -> None:
+        # Distinguirlas obligaria al usuario a saber cual de las dos escribio.
+        vacia = campos_con_dato(_unidad(toneladas_finas=()).produccion)
+        en_cero = campos_con_dato(_unidad(toneladas_finas=(0.0, 0.0)).produccion)
+        assert "toneladas_finas" not in vacia
+        assert "toneladas_finas" not in en_cero
+
+    def test_una_unidad_polimetalica_si_los_muestra(self) -> None:
+        con_dato = campos_con_dato(
+            _unidad(concentrado_de_cu=_par(1_800.0), ley_cu=_par(0.25)).produccion
+        )
+        assert {"concentrado_de_cu", "ley_cu"} <= con_dato
+        assert "ley_ag" not in con_dato
+
+    def test_la_corrida_lo_dice_por_unidad(self) -> None:
+        # La API y la interfaz lo toman de aqui, no lo deciden cada una.
+        corrida = calcular(_caso(_unidad()), MAESTROS)
+        assert "ley_cu" not in corrida.campos_con_dato_por_unidad["Proyecto X"]
+        assert "mineral_extraido" in corrida.campos_con_dato_por_unidad["Proyecto X"]
