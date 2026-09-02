@@ -163,7 +163,7 @@ completa esta en [mapa-n1.md](mapa-n1.md); aqui va la correspondencia de arriba 
 | Costo operativo | `cash_cost.py` | Conceptos base y adicionales |
 | Capital | `capex.py` | Inicial, diferido, sostenimiento, cierre, valor residual |
 | Depreciacion | `depreciacion.py` | **Separada por mina** (`D-04`) |
-| Tributos | `tributos.py` | Tramos, participacion, regalias y aportes |
+| Tributos | `impuestos.py` | Tramos, participacion, regalias y aportes |
 | Flujos | `flujos.py` | EBITDA, EBIT, utilidad neta, flujo economico |
 | Capital de trabajo | `capital_trabajo.py` | Dias, bolsa de egresos, variacion e IGV |
 | Indicadores | `indicadores.py` | NPV, TIR, payback, capital intensity |

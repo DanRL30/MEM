@@ -30,8 +30,8 @@ from minsur_engine.caso import (
 )
 from minsur_engine.depreciacion import TasasDeDepreciacion
 from minsur_engine.horizonte import Horizonte
+from minsur_engine.impuestos import EscalaProgresiva, Tramo
 from minsur_engine.parametros import ParametrosCorporativos
-from minsur_engine.tributos import EscalaProgresiva, Tramo
 
 CABECERAS = {"Authorization": "Bearer token-de-desarrollo"}
 

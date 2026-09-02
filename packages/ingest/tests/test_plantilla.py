@@ -23,8 +23,8 @@ from openpyxl import load_workbook
 from minsur_engine.caso import DatosMaestros
 from minsur_engine.corrida import calcular
 from minsur_engine.depreciacion import TasasDeDepreciacion
+from minsur_engine.impuestos import EscalaProgresiva, Tramo
 from minsur_engine.parametros import ParametrosCorporativos
-from minsur_engine.tributos import EscalaProgresiva, Tramo
 from minsur_ingest.incidencias import ErrorDePlantilla
 from minsur_ingest.plantilla import Lectura, leer_o_fallar, leer_plantilla, leer_produccion
 from minsur_ingest.produccion import (

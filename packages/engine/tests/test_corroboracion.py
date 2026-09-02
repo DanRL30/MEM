@@ -33,8 +33,8 @@ from minsur_engine.corrida import Corrida, calcular
 from minsur_engine.corroboracion import Discrepancia, corroborar, series_calculadas
 from minsur_engine.depreciacion import TasasDeDepreciacion
 from minsur_engine.horizonte import Horizonte
+from minsur_engine.impuestos import EscalaProgresiva, Tramo
 from minsur_engine.parametros import ParametrosCorporativos
-from minsur_engine.tributos import EscalaProgresiva, Tramo
 from minsur_engine.ventas import GRAMOS_POR_ONZA_TROY
 
 MAESTROS = DatosMaestros(

@@ -26,8 +26,8 @@ from dataclasses import dataclass, field, fields
 from minsur_engine.capex import CapitalDeUnidad
 from minsur_engine.depreciacion import TasasDeDepreciacion
 from minsur_engine.horizonte import Horizonte, Serie
+from minsur_engine.impuestos import EscalaProgresiva
 from minsur_engine.parametros import ParametrosCorporativos
-from minsur_engine.tributos import EscalaProgresiva
 
 TIPOS_DE_UNIDAD = ("mina", "refineria", "deposito")
 """La que saca y trata mineral, la que recibe concentrado, y la que solo recibe

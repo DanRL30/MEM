@@ -13,9 +13,9 @@ modulo responsable, de modo que una discrepancia se localiza en un archivo.
 | EBITDA ajustado | `flujos.py` | `::test_ebitda` |
 | Depreciacion tributaria y financiera, por mina | `depreciacion.py` | `::test_depreciacion` |
 | EBIT | `flujos.py` | `::test_ebit` |
-| Base imponible | `tributos.py` | `::test_base_imponible` |
-| Impuestos | `tributos.py` | `::test_impuestos` |
-| Regalias y aportes | `tributos.py` | `::test_regalias_aportes` |
+| Base imponible | `impuestos.py` | `::test_base_imponible` |
+| Impuestos | `impuestos.py` | `::test_impuestos` |
+| Regalias y aportes | `impuestos.py` | `::test_regalias_aportes` |
 | Utilidad neta | `flujos.py` | `::test_utilidad_neta` |
 | CAPEX inicial por clasificacion | `capex.py` | `::test_capex_inicial` |
 | CAPEX diferido y de sostenimiento | `capex.py` | `::test_capex_diferido` |
@@ -57,7 +57,7 @@ asi que el mapa de arriba se contrasta linea por linea contra ella.
 | EBITDA | EBITDA ajustado | `flujos.py` |
 | Depreciation | Depreciacion tributaria y financiera | `depreciacion.py` |
 | EBIT | EBIT | `flujos.py` |
-| Total Taxes | Impuestos | `tributos.py` |
+| Total Taxes | Impuestos | `impuestos.py` |
 | Net income | Utilidad neta | `flujos.py` |
 | Sub total Directs, Indirects, Owners Cost, Contingency | CAPEX inicial por clasificacion | `capex.py` |
 | Total initial capital cost | CAPEX inicial por clasificacion | `capex.py` |
@@ -69,12 +69,12 @@ asi que el mapa de arriba se contrasta linea por linea contra ella.
 | Total capital cost | Suma de los anteriores | `capex.py` |
 | CFO, CFI, CFF, Net Cash Flow | **Nivel N2**, no N1 | `flujos.py` |
 | NPV of Net Cash Flow, IRR | **Nivel N3**, no N1 | `indicadores.py` |
-| Financial Transaction Tax | Impuestos. **Ver nota 2** | `tributos.py` |
-| Osinergmin Fee, OEFA Fee | Regalias y aportes | `tributos.py` |
-| Miners' Retirement Fund | Regalias y aportes | `tributos.py` |
-| Modified Mining Royalty and Special Mining Tax | Regalias y aportes. **Ver nota 2** | `tributos.py` |
-| Workers Profit Share | Impuestos | `tributos.py` |
-| Income tax | Impuestos | `tributos.py` |
+| Financial Transaction Tax | Impuestos. **Ver nota 2** | `impuestos.py` |
+| Osinergmin Fee, OEFA Fee | Regalias y aportes | `impuestos.py` |
+| Miners' Retirement Fund | Regalias y aportes | `impuestos.py` |
+| Modified Mining Royalty and Special Mining Tax | Regalias y aportes. **Ver nota 2** | `impuestos.py` |
+| Workers Profit Share | Impuestos | `impuestos.py` |
+| Income tax | Impuestos | `impuestos.py` |
 
 ### Que cambio en el mapa tras el contraste
 

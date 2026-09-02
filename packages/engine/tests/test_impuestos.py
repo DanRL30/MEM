@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from minsur_engine.tributos import (
+from minsur_engine.impuestos import (
     EntradasTributarias,
     ErrorTributos,
     EscalaProgresiva,

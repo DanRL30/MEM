@@ -6,10 +6,10 @@ localizar una discrepancia en un archivo.
 
 El orden reproduce la cadena del libro:
 
-    produccion --> ventas --> costos --> capital --> depreciacion --> tributos
+    produccion --> ventas --> costos --> capital --> depreciacion --> impuestos
         --> capital de trabajo --> flujo --> indicadores
 
-Solo hay un ciclo en toda la cadena y está dentro de `tributos`, resuelto en
+Solo hay un ciclo en toda la cadena y está dentro de `impuestos`, resuelto en
 forma cerrada según el [ADR 0009](../../../../docs/adr/0009-resolucion-de-la-circularidad-tributaria.md).
 Entre bloques la dirección nunca se invierte.
 
@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
-from minsur_engine import capital_trabajo, refineria, tributos
+from minsur_engine import capital_trabajo, impuestos, refineria
 from minsur_engine.capex import (
     CapitalDeUnidad,
     capex_de_etapa,
@@ -242,7 +242,7 @@ class Corrida:
     depreciacion que llega sumada no se puede volver a separar. Lleva ademas la
     proyeccion ya contabilizada, que no sale de ninguna inversion del caso.
     """
-    tributos_por_ano: tuple[tributos.ResultadoTributario, ...]
+    tributos_por_ano: tuple[impuestos.ResultadoTributario, ...]
     variacion_capital_trabajo: Serie
     flujo: FlujoDelCaso
     indicadores: Indicadores
@@ -932,7 +932,7 @@ def _resolver_tributos(
     exploraciones: Serie,
     depreciacion_tributaria: Serie,
     depreciacion_financiera: Serie,
-) -> tuple[tributos.ResultadoTributario, ...]:
+) -> tuple[impuestos.ResultadoTributario, ...]:
     """Resuelve el bloque tributario de cada año, arrastrando las pérdidas.
 
     Las dos bases difieren en una sola línea, igual que en el libro: la de
@@ -945,7 +945,7 @@ def _resolver_tributos(
     solo deduce el que es gasto, porque el capitalizable se deprecia.
     """
     parametros = maestros.parametros
-    resultados: list[tributos.ResultadoTributario] = []
+    resultados: list[impuestos.ResultadoTributario] = []
     saldo = caso.datos_comunes.saldo_inicial_de_perdidas
 
     for i in range(caso.horizonte.anos):
@@ -959,7 +959,7 @@ def _resolver_tributos(
             + estudios_deducibles[i]
             + ventas[i] * _reguladores(caso, parametros)[i]
         )
-        entradas = tributos.EntradasTributarias(
+        entradas = impuestos.EntradasTributarias(
             ventas_totales=ventas[i],
             base_operativa=ventas[i] - gastos_comunes - depreciacion_financiera[i],
             base_imponible=(
@@ -973,7 +973,7 @@ def _resolver_tributos(
             tasa_participacion=parametros.participacion_trabajadores,
             tasa_impuesto_renta=parametros.impuesto_renta,
         )
-        resultado = tributos.resolver(entradas)
+        resultado = impuestos.resolver(entradas)
         resultados.append(resultado)
 
         # El saldo de perdidas crece con la del ejercicio y baja con lo

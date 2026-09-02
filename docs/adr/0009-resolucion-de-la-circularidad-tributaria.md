@@ -81,6 +81,10 @@ como `SUM(tramos) / margen` y luego se multiplica por la utilidad operativa, de 
 se cancela contra sí mismo y queda `regalía = ventas × C + t × utilidad`. Sin esa cancelación el
 sistema habría sido cuadrático y este ADR se habría supersedido en lugar de forzarse.
 
+**Nota del 02/09/2026.** El módulo que implementa esta decisión pasó a llamarse `impuestos.py`,
+por la hoja del libro que reproduce. Las dos menciones a `tributos.py` de arriba conservan el nombre
+que tenía el módulo cuando se escribieron.
+
 **Nota sobre el contraste.** El modelo de referencia resuelve el ciclo por aproximación, así que sus
 valores traen el error residual de la iteración de Excel. La diferencia es de orden numérico y cae
 muy por debajo de cualquier tolerancia de N1 a N3, pero conviene registrarla al certificar: el motor

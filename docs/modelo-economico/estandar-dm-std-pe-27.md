@@ -56,7 +56,7 @@ parametros maestros ni en `CLAUDE.md`:
 | Income tax | Registrado, 29,5 % |
 | Osinergmin, OEFA, Fondo de jubilacion minera | Registrados |
 
-- Modulo: `tributos.py`, `parametros.py`
+- Modulo: `impuestos.py`, `parametros.py`
 - Estado: pendiente de que Finanzas confirme cuales aplican al alcance de la plataforma (`R-32`).
 
 ## 4. Los tributos se calculan en terminos nominales
@@ -79,7 +79,7 @@ El estandar separa tres registros que hoy el motor no distingue:
 
 Esto obliga a llevar dos escalas en paralelo dentro del calculo, no a convertir al final.
 
-- Modulos: `tributos.py`, `depreciacion.py`, `flujos.py`
+- Modulos: `impuestos.py`, `depreciacion.py`, `flujos.py`
 - Estado: pendiente de confirmar si el modelo de referencia opera asi.
 
 ## 5. Tres niveles de valor
