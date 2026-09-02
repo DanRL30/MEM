@@ -43,6 +43,14 @@ from minsur_engine.horizonte import ErrorHorizonte, Horizonte, Serie
 from minsur_ingest.incidencias import ErrorDePlantilla, Incidencia
 from minsur_ingest.produccion import armar_produccion
 from minsur_ingest.sinonimos import canonizar, normalizar
+from minsur_ingest.supuestos import (
+    CON_DATO_DE_PRECIOS,
+    CON_DATO_DE_SUPUESTOS,
+    CON_DATO_POR_UNIDAD,
+    ComiteDePrecios,
+    SupuestosDelCaso,
+    armar_filas,
+)
 
 HOJAS_REQUERIDAS = ("Caso", "Opex", "Capex", "Precios")
 """La produccion no esta aqui: viene en una pestana por proyecto.
@@ -55,6 +63,9 @@ PRIMERA_FILA_DE_DATOS = 5
 PRIMERA_COLUMNA_DE_ANOS = 3
 FILA_DE_ANOS = 3
 LIMITE_DE_NOMBRE_DE_HOJA = 31
+
+HOJA_DE_PRECIOS = "Comite de Precios"
+HOJA_COMUN = "Comunes"
 
 HOJAS_SIN_DATOS = ("leeme", "caso")
 """Pestanas del libro de produccion que no son un proyecto."""
@@ -90,6 +101,16 @@ FACTORES_DE_ESCALA = {
     "us$/t": 1.0,
     # La ley de plata viene en onzas troy por tonelada, no en porcentaje.
     "oz/t": 1.0,
+    # Unidades de la hoja de supuestos, con las abreviaturas del libro.
+    "$": 1.0,
+    "$/t": 1.0,
+    "$/oz": 1.0,
+    "$/t conc": 1.0,
+    "$/tmf": 1.0,
+    "g/t": 1.0,
+    # Miles de dolares. Es la regla 003 otra vez: el libro alterna escalas y la
+    # conversion ocurre aqui, no dentro del motor.
+    "k$": 1_000.0,
 }
 
 
@@ -111,6 +132,31 @@ class Lectura:
     @property
     def valida(self) -> bool:
         return self.caso is not None
+
+
+@dataclass(frozen=True)
+class LecturaDeComite:
+    """Resultado de leer la plantilla del comite de precios."""
+
+    comite: ComiteDePrecios | None
+    incidencias: tuple[Incidencia, ...]
+
+    @property
+    def valida(self) -> bool:
+        return self.comite is not None
+
+
+@dataclass(frozen=True)
+class LecturaDeSupuestos:
+    """Resultado de leer la plantilla de supuestos del caso."""
+
+    supuestos: SupuestosDelCaso | None
+    horizonte: Horizonte | None
+    incidencias: tuple[Incidencia, ...]
+
+    @property
+    def valida(self) -> bool:
+        return self.supuestos is not None
 
 
 @dataclass(frozen=True)
@@ -312,6 +358,138 @@ def leer_produccion(ruta: Path) -> LecturaDeProduccion:
         )
     libro.close()
     return LecturaDeProduccion(tuple(bloques), horizonte, tuple(incidencias))
+
+
+def leer_comite_de_precios(ruta: Path) -> LecturaDeComite:
+    """Lee la plantilla de precios que sube Finanzas.
+
+    Es dato maestro y por eso lleva identificacion: una corrida registra que
+    comite uso, no "el vigente". Publicar uno nuevo no reescribe evaluaciones
+    pasadas.
+    """
+    incidencias: list[Incidencia] = []
+    if not ruta.exists():
+        return LecturaDeComite(None, (Incidencia("(archivo)", str(ruta), "no existe"),))
+
+    libro = load_workbook(ruta, data_only=True, read_only=True)
+    if HOJA_DE_PRECIOS not in libro.sheetnames:
+        libro.close()
+        return LecturaDeComite(
+            None,
+            (
+                Incidencia(
+                    "(libro)",
+                    "-",
+                    f"falta la hoja {HOJA_DE_PRECIOS!r}. No es la plantilla del comite.",
+                ),
+            ),
+        )
+
+    hoja = libro[HOJA_DE_PRECIOS]
+    horizonte = _horizonte_de_la_cabecera(hoja, incidencias)
+    if horizonte is None:
+        libro.close()
+        return LecturaDeComite(None, tuple(incidencias))
+
+    nombre = str(hoja["B2"].value or "").strip()
+    aprobado = str(hoja["D2"].value or "").strip()
+    campos = armar_filas(
+        CON_DATO_DE_PRECIOS,
+        _pares(hoja, horizonte, incidencias),
+        incidencias,
+        hoja=HOJA_DE_PRECIOS,
+    )
+    libro.close()
+
+    if not nombre:
+        incidencias.append(
+            Incidencia(
+                HOJA_DE_PRECIOS,
+                "B2",
+                "el comite no esta identificado. Una corrida registra que comite uso, "
+                "y sin nombre no hay a que referirse.",
+            )
+        )
+    if incidencias:
+        return LecturaDeComite(None, tuple(incidencias))
+
+    return LecturaDeComite(
+        ComiteDePrecios(
+            nombre=nombre,
+            aprobado_el=aprobado,
+            horizonte=horizonte,
+            sn=campos.get("sn", ()),
+            cu=campos.get("cu", ()),
+            ag=campos.get("ag", ()),
+        ),
+        (),
+    )
+
+
+def leer_supuestos(ruta: Path) -> LecturaDeSupuestos:
+    """Lee la plantilla de supuestos del caso.
+
+    La pestana `Comunes` trae lo que es del caso; las demas, en orden, traen lo
+    que es de cada unidad: su depreciacion y su recuperacion en el complejo.
+    Igual que en produccion, la unidad se asigna por posicion y no por nombre.
+    """
+    incidencias: list[Incidencia] = []
+    if not ruta.exists():
+        return LecturaDeSupuestos(None, None, (Incidencia("(archivo)", str(ruta), "no existe"),))
+
+    libro = load_workbook(ruta, data_only=True, read_only=True)
+    if HOJA_COMUN not in libro.sheetnames:
+        libro.close()
+        return LecturaDeSupuestos(
+            None,
+            None,
+            (
+                Incidencia(
+                    "(libro)",
+                    "-",
+                    f"falta la hoja {HOJA_COMUN!r}. No es la plantilla de supuestos.",
+                ),
+            ),
+        )
+
+    horizonte = _horizonte_de_la_cabecera(libro[HOJA_COMUN], incidencias)
+    if horizonte is None:
+        libro.close()
+        return LecturaDeSupuestos(None, None, tuple(incidencias))
+
+    comunes = armar_filas(
+        CON_DATO_DE_SUPUESTOS,
+        _pares(libro[HOJA_COMUN], horizonte, incidencias),
+        incidencias,
+        hoja=HOJA_COMUN,
+    )
+    por_unidad: dict[str, dict[str, Serie]] = {}
+    for nombre in libro.sheetnames:
+        if normalizar(nombre) in HOJAS_SIN_DATOS or nombre == HOJA_COMUN:
+            continue
+        por_unidad[nombre] = armar_filas(
+            CON_DATO_POR_UNIDAD,
+            _pares(libro[nombre], horizonte, incidencias),
+            incidencias,
+            hoja=nombre,
+        )
+    libro.close()
+
+    if incidencias:
+        return LecturaDeSupuestos(None, horizonte, tuple(incidencias))
+    return LecturaDeSupuestos(
+        SupuestosDelCaso(comunes=comunes, por_unidad=por_unidad), horizonte, ()
+    )
+
+
+def _pares(
+    hoja: Worksheet, horizonte: Horizonte, incidencias: list[Incidencia]
+) -> list[tuple[str, Serie]]:
+    """Etiqueta y serie de cada fila con datos de una pestana."""
+    return [
+        (fila.concepto, _serie(fila, horizonte, incidencias))
+        for fila in _leer_pestana_de_unidad(hoja, horizonte)
+    ]
 
 
 def _horizonte_de_la_cabecera(hoja: Worksheet, incidencias: list[Incidencia]) -> Horizonte | None:

@@ -42,6 +42,11 @@ try:
     from openpyxl.worksheet.worksheet import Worksheet
 
     from minsur_ingest.produccion import FILAS_DE_PRODUCCION
+    from minsur_ingest.supuestos import (
+        FILAS_DE_PRECIOS,
+        FILAS_DE_SUPUESTOS,
+        FILAS_POR_UNIDAD,
+    )
 except ImportError:  # pragma: no cover - entorno sin sincronizar
     print("Falta openpyxl o minsur_ingest. Sincroniza con: uv sync --all-packages")
     raise SystemExit(1) from None
@@ -385,6 +390,66 @@ def _nombre_de_hoja(nombre: str) -> str:
     return limpio[:31] or "Proyecto"
 
 
+def _hoja_de_filas(
+    libro: Workbook,
+    nombre: str,
+    titulo: str,
+    definicion: object,
+    primer_ano: int,
+    anos: int,
+) -> None:
+    """Escribe una pestana a partir de una estructura fija de filas."""
+    hoja = libro.create_sheet(_nombre_de_hoja(nombre))
+    encabezar(hoja, titulo, primer_ano, anos)
+    fila, numericas = PRIMERA_FILA_DE_DATOS, []
+    for definida in definicion:  # type: ignore[attr-defined]
+        if definida.medida is None:
+            fila = fila_de_seccion(hoja, fila, definida.etiqueta, anos)
+            continue
+        numericas.append(fila)
+        fila = fila_de_entrada(
+            hoja, fila, definida.etiqueta, definida.medida, anos, definida.calculada
+        )
+    validacion_numerica(hoja, numericas, anos)
+
+
+def hoja_comite_de_precios(libro: Workbook, primer_ano: int, anos: int) -> None:
+    """La plantilla que sube Finanzas: precios aprobados y nada mas.
+
+    Va separada de los demas supuestos porque tiene otro dueno. Es dato maestro:
+    Finanzas la aprueba y la sube, y quien modela solo elige que comite usa.
+    Mezclarla con los supuestos del caso dejaria a cualquiera cambiando un precio
+    aprobado sin que nadie lo advierta.
+    """
+    hoja = libro.create_sheet("Comite de Precios")
+    encabezar(hoja, "Comite de Precios", primer_ano, anos)
+    # Un comite se identifica, porque una corrida registra cual uso y no "el
+    # vigente": publicar uno nuevo no puede reescribir evaluaciones pasadas.
+    hoja["A2"] = "Comite"
+    hoja["A2"].font = CABECERA
+    hoja["B2"].fill = DATO
+    hoja["C2"] = "Aprobado el"
+    hoja["C2"].font = CABECERA
+    hoja["D2"].fill = DATO
+
+    fila, numericas = PRIMERA_FILA_DE_DATOS, []
+    for definida in FILAS_DE_PRECIOS:
+        if definida.medida is None:
+            fila = fila_de_seccion(hoja, fila, definida.etiqueta, anos)
+            continue
+        numericas.append(fila)
+        fila = fila_de_entrada(hoja, fila, definida.etiqueta, definida.medida, anos)
+    validacion_numerica(hoja, numericas, anos)
+
+
+def hoja_supuestos(libro: Workbook, primer_ano: int, anos: int) -> None:
+    _hoja_de_filas(libro, "Comunes", "Supuestos del caso", FILAS_DE_SUPUESTOS, primer_ano, anos)
+
+
+def hoja_supuestos_de_unidad(libro: Workbook, nombre: str, primer_ano: int, anos: int) -> None:
+    _hoja_de_filas(libro, nombre, f"Supuestos de {nombre}", FILAS_POR_UNIDAD, primer_ano, anos)
+
+
 def hoja_opex(libro: Workbook, unidades: list[Unidad], primer_ano: int, anos: int) -> None:
     hoja = libro.create_sheet("Opex")
     encabezar(hoja, "Costo operativo por unidad productiva, en US$", primer_ano, anos)
@@ -537,7 +602,7 @@ def main() -> int:
     p.add_argument("--anos", type=int, default=36)
     p.add_argument(
         "--bloque",
-        choices=("produccion", "completo"),
+        choices=("produccion", "supuestos", "precios", "completo"),
         default="produccion",
         help="Bloque a emitir. 'completo' mantiene el libro unico anterior.",
     )
@@ -560,6 +625,19 @@ def main() -> int:
         return 1
 
     libro = Workbook()
+    if args.bloque == "precios":
+        libro.remove(libro.active)
+        hoja_comite_de_precios(libro, args.primer_ano, args.anos)
+        return _guardar(libro, args)
+
+    if args.bloque == "supuestos":
+        libro.remove(libro.active)
+        hoja_supuestos(libro, args.primer_ano, args.anos)
+        for unidad in unidades:
+            hoja_supuestos_de_unidad(libro, unidad.nombre, args.primer_ano, args.anos)
+        hoja_instrucciones(libro, unidades)
+        return _guardar(libro, args)
+
     if args.bloque == "completo":
         hoja_caso(libro, unidades, args.primer_ano, args.anos)
     else:
@@ -583,11 +661,14 @@ def main() -> int:
         hoja_precios(libro, unidades, args.primer_ano, args.anos)
     hoja_instrucciones(libro, unidades)
 
+    return _guardar(libro, args)
+
+
+def _guardar(libro: Workbook, args: argparse.Namespace) -> int:
     args.salida.parent.mkdir(parents=True, exist_ok=True)
     libro.save(args.salida)
-
     print(f"Plantilla escrita en {args.salida}")
-    print(f"  {len(unidades)} unidad(es), {args.anos} anos desde {args.primer_ano}")
+    print(f"  {args.anos} anos desde {args.primer_ano}")
     print(f"  hojas: {', '.join(libro.sheetnames)}")
     return 0
 

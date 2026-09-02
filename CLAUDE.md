@@ -173,9 +173,9 @@ despues, no deuda heredada.
 |---|---|
 | `verificar_convenciones.py` | Sin infracciones |
 | `ruff check .` | Limpio |
-| `ruff format --check .` | Limpio, 91 archivos |
-| `mypy packages apps/api/src` | Limpio en modo estricto, 57 archivos |
-| `pytest` | 288 de 288, de las que 31 son el contraste de fidelidad |
+| `ruff format --check .` | Limpio, 93 archivos |
+| `mypy packages apps/api/src` | Limpio en modo estricto, 59 archivos |
+| `pytest` | 299 de 299, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -302,6 +302,29 @@ generaliza a un proyecto nuevo. Es la desviacion `D-05`, y arrastra una segunda
 consecuencia de coherencia: **el excedente se valoriza a la ley de lo que
 efectivamente fue a spot**, no a la del conjunto. Decir que sale el peor
 concentrado y cobrarlo al promedio seria contradictorio.
+
+### Los supuestos van en dos plantillas, y no por comodidad
+
+`minsur_ingest/supuestos.py` define las dos, y `leer_comite_de_precios()` y
+`leer_supuestos()` las leen. **Tienen duenos distintos.** El comite de precios es
+dato maestro: lo aprueba y lo sube Finanzas, y quien modela solo elige que comite
+usa. El resto de los supuestos son del caso. Mezclarlos en un archivo dejaria a
+cualquiera cambiando un precio aprobado sin que nadie lo advierta.
+
+El comite lleva **nombre y fecha de aprobacion**, y sin nombre se rechaza: una
+corrida registra que comite uso, no "el vigente", y sin identificacion no hay a
+que referirse. No tiene las ocho ranuras del libro —que reserva ocho juegos y
+elige uno con un selector—: versionar es lo mismo sin el limite ni las ranuras
+rotuladas `xxx`.
+
+La plantilla de supuestos lleva una pestana `Comunes` y una por proyecto, en
+orden. Lo que es de cada unidad es su depreciacion —tributaria y financiera, como
+pide `D-04`— y su recuperacion en el complejo, **una por unidad y no por los
+grupos del libro**, que es la regla de oro.
+
+Tres unidades de medida nuevas que conviene no perder de vista: la plata se
+cotiza en `$/oz` y su ley pagable en `g/t`, y la depreciacion del libro va en
+`k$`, que la ingesta convierte a dolares. Es la regla `003` otra vez.
 
 ### El corroborador: alarma y control de calidad, no correccion
 
