@@ -480,14 +480,34 @@ def hoja_precios(libro: Workbook, unidades: list[Unidad], primer_ano: int, anos:
     validacion_numerica(hoja, numericas, anos)
 
 
-def hoja_instrucciones(libro: Workbook, unidades: list[Unidad]) -> None:
-    hoja = libro.create_sheet("Leeme")
-    lineas = [
-        ("Plantilla canonica de inputs", TITULO),
-        ("", None),
-        ("Las celdas con color son las que se llenan. El resto es estructura.", None),
-        ("Una celda vacia significa que el concepto no aplica ese ano.", None),
-        ("", None),
+def _leeme_del_bloque(bloque: str) -> list[tuple[str, Font | None]]:
+    """Lo que cambia entre plantillas, que es mas de lo que comparten."""
+    if bloque == "opex":
+        return [
+            ("Todo lo que se pide aqui es dato", CABECERA),
+            ("Ninguna fila se recalcula ni se corrobora: el libro corporativo no", None),
+            ("carga en este bloque ningun valor derivado. Los totales, el costo por", None),
+            ("tonelada y los subtotales del complejo los calcula la plataforma y no", None),
+            ("se piden. Tampoco la planilla, que sale del cash cost de la unidad por", None),
+            ("la tasa de los supuestos, ni la parte deducible de la gestion social.", None),
+            ("", None),
+            ("Una pestana por unidad, y el complejo tambien lleva la suya", CABECERA),
+            ("Su produccion es resultado de lo que le entregan las minas, pero su", None),
+            ("costo es un dato como el de cualquiera. Por eso este libro trae una", None),
+            ("pestana mas que el de produccion.", None),
+            ("", None),
+            ("Los conceptos propios del proyecto van en la cola", CABECERA),
+            ("Bajo `Otros conceptos` hay filas en blanco para lo que este proyecto", None),
+            ("tenga y el catalogo no recoja: se escribe el nombre en la columna A y", None),
+            ("su serie al lado. Solo afectan al total. No se agregan mas filas de las", None),
+            ("que hay, ni se escriben importes sin nombrar el concepto.", None),
+            ("", None),
+            ("Los importes van en miles de dolares", CABECERA),
+            ("Es lo que dice la columna de unidad, y es la escala del libro. La", None),
+            ("plataforma convierte al leer.", None),
+            ("", None),
+        ]
+    return [
         ("Las celdas verdes son corroborables", CABECERA),
         ("Se llenan igual que las crema. La diferencia es que el sistema las", None),
         ("recalcula a partir del resto de la cadena y avisa si el dato cargado no", None),
@@ -499,6 +519,27 @@ def hoja_instrucciones(libro: Workbook, unidades: list[Unidad]) -> None:
         ("sale el mineral y por que proceso pasa. Cada corriente de tonelaje lleva", None),
         ("debajo la ley de cada metal que transporta.", None),
         ("", None),
+    ]
+
+
+def hoja_instrucciones(libro: Workbook, unidades: list[Unidad], bloque: str = "produccion") -> None:
+    """Escribe la hoja `Leeme`, con lo propio del bloque que se este emitiendo.
+
+    Las tres plantillas comparten la asociacion por orden y la estructura fija,
+    pero no lo demas: opex no tiene filas corroborables ni sub-bloques de mina y
+    planta, y ahi el complejo si lleva pestana. Una sola hoja para las tres
+    describia la de produccion y contradecia a las otras.
+    """
+    hoja = libro.create_sheet("Leeme")
+    lineas = [
+        ("Plantilla canonica de inputs", TITULO),
+        ("", None),
+        ("Las celdas con color son las que se llenan. El resto es estructura.", None),
+        ("Una celda vacia significa que el concepto no aplica ese ano.", None),
+        ("", None),
+    ]
+    lineas += _leeme_del_bloque(bloque)
+    lineas += [
         ("Las pestanas se asocian por orden", CABECERA),
         ("La plataforma toma la primera pestana como la primera unidad del caso,", None),
         ("la segunda como la segunda, y asi. El nombre de la pestana es solo una", None),
@@ -606,7 +647,7 @@ def main() -> int:
         libro.remove(libro.active)
         for unidad in unidades:
             hoja_opex_de_unidad(libro, unidad.nombre, args.primer_ano, args.anos)
-        hoja_instrucciones(libro, unidades)
+        hoja_instrucciones(libro, unidades, "opex")
         return _guardar(libro, args)
 
     if args.bloque == "supuestos":
