@@ -134,17 +134,19 @@ gastos por otro, con destinos distintos en el flujo. Ver
 
 **Cash cost.** Exploraciones · Geologia · Mina · Planta de preconcentracion · Planta concentradora ·
 Mantenimiento · Energia · Apoyo · Estudios y optimizaciones · Relavera · Linea de transmision ·
-Peajes y mantenimiento · Agua potable · STA.
+Peajes y mantenimiento · Agua potable · STA · Fundicion · Refineria · Planta de subproductos ·
+Mantenimiento de fundicion y refineria.
 
-`Peajes y mantenimiento` y `STA` se anadieron el 02/09/2026: son de Santo Domingo y ninguna otra
-unidad los tiene. `STA` es una abreviatura que ningun documento traduce, asi que se conserva literal
-y esta consultada.
+Los cuatro ultimos son de la refineria, y van en la misma estructura que los demas: una mina los
+deja en cero, igual que la unidad sin preconcentracion deja en cero esa fila. `Peajes y
+mantenimiento` y `STA` son de Santo Domingo y ninguna otra unidad los tiene; `STA` es una
+abreviatura que ningun documento traduce, asi que se conserva literal y esta consultada.
 
-**Siete conceptos del libro quedan deliberadamente fuera**, por decision del 02/09/2026. Cuatro son
-las lineas propias del complejo —`Fundicion`, `Refineria`, `Pta Subproductos` y `Mantenimiento
-F&R`—, dos son de Santo Domingo —`Servicios Mina` y `Preconcentrado Blue Sky`— y la septima es
-`Planillas`, que no es un dato sino la planilla derivada del cash cost. Un caso que necesite
-cualquiera de las seis primeras las carga por la cola de conceptos propios, que para eso existe.
+**Tres conceptos del libro quedan deliberadamente fuera**, por decision del 02/09/2026. Dos son de
+Santo Domingo —`Servicios Mina`, que solo esa unidad distingue de `Mina`, y `Preconcentrado Blue
+Sky`, que lleva el nombre de un tercero— y el tercero es `Planillas`, que no es un dato sino la
+planilla derivada del cash cost. Los dos primeros se cargan por la cola de conceptos propios, que
+para eso existe; el tercero no vuelve por ningun camino.
 
 **Gastos.** Gastos administrativos · Gestion Social · Predios · Servidumbres y usufructos ·
 Estudios Pre Factibilidad (Gasto) · Estudios Factibilidad (Capitalizable) · Exploraciones.

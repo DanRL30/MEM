@@ -5,8 +5,8 @@ con el script que la emite, se llena por posición, se lee y se calcula. Generad
 y lector son las dos mitades del mismo contrato y esta prueba falla en cuanto una
 se mueve sin la otra.
 
-Las cifras son redondas a propósito: el cash cost de la mina suma 300 y el del
-complejo 100, de modo que cualquier desvío se ve a simple vista.
+Las cifras son redondas a propósito: el cash cost de la mina suma 300 y el de
+la refinería 100, de modo que cualquier desvío se ve a simple vista.
 """
 
 from __future__ import annotations
@@ -90,12 +90,12 @@ def _escribir(hoja: object, etiqueta: str, valores: list[float]) -> int:
 
 @pytest.fixture
 def libro_de_opex(tmp_path: Path) -> Path:
-    """Un libro de dos pestañas —una mina y el complejo— con costos y gastos."""
+    """Un libro de dos pestañas —una mina y la refinería— con costos y gastos."""
     generador = _generador()
     ruta = tmp_path / "opex.xlsx"
     libro = generador.Workbook()  # type: ignore[attr-defined]
     libro.remove(libro.active)
-    for nombre in ("Mina Alfa", "Complejo"):
+    for nombre in ("Mina Alfa", "Refineria"):
         generador.hoja_opex_de_unidad(libro, nombre, 2027, ANOS)  # type: ignore[attr-defined]
     libro.save(ruta)
 
@@ -107,7 +107,7 @@ def libro_de_opex(tmp_path: Path) -> Path:
     _escribir(mina, "Gestión Social", [0.0, 40.0, 40.0])
     _escribir(mina, "Estudios Pre Factibilidad (Gasto)", [30.0, 0.0, 0.0])
     _escribir(mina, "Estudios Factibilidad (Capitalizable)", [70.0, 0.0, 0.0])
-    _escribir(libro["Complejo"], "Mantenimiento", [0.0, 100.0, 100.0])
+    _escribir(libro["Refineria"], "Fundición", [0.0, 100.0, 100.0])
     libro.save(ruta)
     return ruta
 
@@ -127,7 +127,7 @@ def _caso() -> Caso:
                 ),
             ),
             UnidadProductiva(
-                nombre="Complejo",
+                nombre="Refineria",
                 tipo="fundicion",
                 produccion=ProduccionDeUnidad(mineral_tratado=ceros),
             ),
@@ -152,7 +152,7 @@ class TestIdaYVuelta:
     def test_la_plantilla_llena_se_lee(self, libro_de_opex: Path) -> None:
         lectura = leer_opex(libro_de_opex)
         assert lectura.valida, [str(i) for i in lectura.incidencias]
-        assert [b.hoja for b in lectura.bloques] == ["Mina Alfa", "Complejo"]
+        assert [b.hoja for b in lectura.bloques] == ["Mina Alfa", "Refineria"]
         assert lectura.horizonte is not None
         assert lectura.horizonte.primer_ano == 2027
 
@@ -161,7 +161,7 @@ class TestIdaYVuelta:
         # que no aplica va en cero y la plataforma no lo muestra.
         libro = load_workbook(libro_de_opex)
         esperadas = [f.etiqueta for f in CON_DATO_DE_CASH_COST + CON_DATO_DE_GASTOS]
-        for nombre in ("Mina Alfa", "Complejo"):
+        for nombre in ("Mina Alfa", "Refineria"):
             hoja = libro[nombre]
             leidas = [
                 str(fila[0].value).strip()
@@ -176,18 +176,18 @@ class TestIdaYVuelta:
         assert mina.gastos["Gastos administrativos"] == (0.0, 50_000.0, 50_000.0)
         assert "Gastos administrativos" not in mina.costos
 
-    def test_el_complejo_tambien_lleva_pestana(self, libro_de_opex: Path) -> None:
+    def test_la_refineria_tambien_lleva_pestana(self, libro_de_opex: Path) -> None:
         # Su produccion es resultado, pero su costo es dato: por eso el libro de
         # opex trae una pestana mas que el de produccion.
-        complejo = _con_opex(libro_de_opex).unidades[1]
-        assert complejo.es_fundicion
-        assert complejo.costos["Mantenimiento"] == (0.0, 100_000.0, 100_000.0)
+        refineria = _con_opex(libro_de_opex).unidades[1]
+        assert refineria.es_fundicion
+        assert refineria.costos["Fundición"] == (0.0, 100_000.0, 100_000.0)
 
     def test_el_caso_leido_calcula(self, libro_de_opex: Path) -> None:
         corrida = calcular(_con_opex(libro_de_opex), MAESTROS)
         assert corrida.cash_cost == (0.0, 400_000.0, 400_000.0)
         assert corrida.cash_cost_por_unidad["Mina Alfa"] == (0.0, 300_000.0, 300_000.0)
-        assert corrida.cash_cost_por_unidad["Complejo"] == (0.0, 100_000.0, 100_000.0)
+        assert corrida.cash_cost_por_unidad["Refineria"] == (0.0, 100_000.0, 100_000.0)
 
 
 class TestConversionDeEscalas:
@@ -219,7 +219,7 @@ class TestLaCola:
         # anadido solo afecta al total.
         libro = load_workbook(libro_de_opex)
         hoja = libro["Mina Alfa"]
-        fila = _escribir(hoja, "STA", [0.0] * ANOS) + 2
+        fila = _escribir(hoja, CON_DATO_DE_CASH_COST[-1].etiqueta, [0.0] * ANOS) + 2
         hoja.cell(row=fila, column=1, value="Servidumbre de paso del ferrocarril")
         for i, valor in enumerate([0.0, 25.0, 25.0]):
             hoja.cell(row=fila, column=3 + i, value=valor)
@@ -238,7 +238,7 @@ class TestLaCola:
         # Tragarlos convertiria un gasto mal escrito en un costo con su nombre.
         libro = load_workbook(libro_de_opex)
         hoja = libro["Mina Alfa"]
-        primera = _escribir(hoja, "STA", [0.0] * ANOS) + 1
+        primera = _escribir(hoja, CON_DATO_DE_CASH_COST[-1].etiqueta, [0.0] * ANOS) + 1
         for salto in range(CONCEPTOS_LIBRES + 1):
             hoja.cell(row=primera + salto, column=1, value=f"Concepto propio {salto}")
             hoja.cell(row=primera + salto, column=2, value="$k")
@@ -253,7 +253,7 @@ class TestLaCola:
         # un costo que nadie puede atribuir y que desaparece del total.
         libro = load_workbook(libro_de_opex)
         hoja = libro["Mina Alfa"]
-        fila = _escribir(hoja, "STA", [0.0] * ANOS) + 2
+        fila = _escribir(hoja, CON_DATO_DE_CASH_COST[-1].etiqueta, [0.0] * ANOS) + 2
         hoja.cell(row=fila, column=3, value=90.0)
         libro.save(libro_de_opex)
 

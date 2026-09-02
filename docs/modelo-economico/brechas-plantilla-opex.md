@@ -19,13 +19,13 @@ el codigo necesita.
 | Conceptos que emitia la plantilla anterior | 18 |
 | Conceptos del libro que la plantilla no sabia nombrar | 7 |
 | Conceptos de la plantilla ubicados en el bloque equivocado | 3 |
-| Conceptos que el catalogo recoge, tras la revision del 02/09/2026 | 14 |
+| Conceptos que el catalogo recoge, tras la revision del 02/09/2026 | 18 |
 
-Los 7 sin nombrar no son 7 conceptos olvidados: cinco son de Santo Domingo y del complejo y dos son
+Los 7 sin nombrar no son 7 conceptos olvidados: cinco son de Santo Domingo y de la refineria y dos son
 abreviaturas del libro sobre conceptos que la plantilla ya tenia. Esa distincion cambia el trabajo,
 igual que en produccion.
 
-Del libro al catalogo no hay correspondencia uno a uno, y tampoco la pretende: **siete conceptos se
+Del libro al catalogo no hay correspondencia uno a uno, y tampoco la pretende: **tres conceptos se
 dejaron fuera a proposito** en la revision del 02/09/2026. Ver la seccion 9.
 
 ## 2. La forma real de la hoja
@@ -36,14 +36,14 @@ Cuatro zonas, y solo la primera y la cuarta son plantilla.
 |---|---|---|
 | 7-15, 20, 24-33, 37-46, 50-63, 67-75 | Cash cost por concepto, seis unidades | **Dato** |
 | 17, 21, 34, 47, 64, 76, 86, 88 | Totales por unidad y total general | Calculo |
-| 79-84 | Costo por tonelada del complejo, su recuperacion y sus subtotales | Calculo |
+| 79-84 | Costo por tonelada de la refineria, su recuperacion y sus subtotales | Calculo |
 | 91-97 | Produccion de cada unidad | Calculo, desde `InputsProd` |
 | 99-123 | Cash cost unitario, `$/tt` y `$/tmf` | Calculo, regla `008` |
 | 126-134, 137-146, 150-158, 161-170 | Gastos, cuatro unidades | **Dato**, salvo tres filas |
 | 173-182 | Total de gastos | Calculo |
 
 Las seis unidades del bloque de cash cost tienen conceptos distintos: San Rafael diez, B2 uno,
-Nazareth diez, San Rafael Potencial diez, Santo Domingo catorce y el complejo nueve.
+Nazareth diez, San Rafael Potencial diez, Santo Domingo catorce y la refineria nueve.
 
 **El criterio que separa dato de calculo es el acordado el 01/09/2026**: una celda es input si no
 tiene formula o si su formula solo referencia libros externos. Aplicado aqui da un resultado que
@@ -61,8 +61,7 @@ tabla de sinonimos las distingue: solo la posicion. Se cierra leyendo por secuen
 hace `minsur_ingest/opex.py`.
 
 **Clase 2 — sinonimos sobre conceptos que ya existen.** El libro abrevia: `LT`, `Pta Subproductos`,
-`Mantenimiento F&R`, `Peajes / Mantenimiento`. Se cierra en `sinonimos.py`, y solo para los que el
-catalogo conserva.
+`Mantenimiento F&R`, `Peajes / Mantenimiento`. Se cierra en `sinonimos.py`.
 
 **Clase 3 — alias de unidad dentro del concepto.** `Tratamiento de Relaves B2` y `Preconcentrado
 Blue Sky` llevan el nombre propio de una unidad pegado al concepto, y no se pueden generalizar
@@ -132,32 +131,31 @@ Cerrado el 02/09/2026: la estructura unica, la cola extensible del acuerdo 6, el
 con su reparto por destino, las dos filas derivadas y el desglose del cash cost por unidad.
 
 **No se implemento, por depender de una respuesta:** la depreciacion del estudio capitalizable
-(punto 4 de la seccion 6) y el costo del complejo derivado del costo por tonelada. Lo segundo es
-como el libro rellena lo que no carga, y desde la revision del 02/09/2026 vuelve a estar sobre la
-mesa: el complejo ya no tiene en la plantilla sus cuatro lineas propias. Se decide con Finanzas
+(punto 4 de la seccion 6) y el costo de la refineria derivado del costo por tonelada, que es como el
+libro rellena lo que no carga para las unidades sin bloque propio. La plataforma carga el bloque de
+la refineria entero, de modo que anadir la derivacion duplicaria el costo. Se decide con Finanzas
 junto con la plantilla, en la sesion del acuerdo 10.
 
-## 9. Los siete conceptos que quedan fuera a proposito
+## 9. Los tres conceptos que quedan fuera a proposito
 
 Revision del 02/09/2026, decidida por el Project Manager sobre la primera version de la plantilla.
 No son omisiones: el libro los tiene y el catalogo no.
 
 | Concepto del libro | Por que sale |
 |---|---|
-| `Fundicion` | Linea propia del complejo |
-| `Refineria` | Linea propia del complejo |
-| `Pta Subproductos` | Linea propia del complejo |
-| `Mantenimiento F&R` | Linea propia del complejo |
 | `Servicios Mina` | Solo Santo Domingo lo distingue de `Mina` |
 | `Preconcentrado Blue Sky` | Lleva el nombre de un tercero, y solo Santo Domingo lo tiene |
 | `Planillas` | **No es un dato**: es la planilla, que se deriva del cash cost de la unidad |
 
-Las seis primeras siguen siendo cargables: van por la cola de conceptos propios, que existe
-precisamente para lo que una unidad tiene y el catalogo no recoge. La septima no vuelve por ningun
-camino, porque pedirla como dato es lo que la regla `026` prohibe.
+Los dos primeros siguen siendo cargables: van por la cola de conceptos propios, que existe
+precisamente para lo que una unidad tiene y el catalogo no recoge. El tercero no vuelve por ningun
+camino, porque pedirlo como dato es lo que la regla `026` prohibe.
 
-**El complejo queda con los conceptos genericos.** Su pestana sigue existiendo —su costo es dato,
-no resultado— pero lo que carga son mantenimiento, energia, apoyo y estudios, mas lo que su cola
-recoja. Si Finanzas prefiere derivar su costo del costo por tonelada, como hace el libro para las
-unidades sin bloque, la pestana deja de tener sentido y se retira; hasta entonces se mantiene, que
-es lo unico que no pierde informacion.
+`Covid`, que el libro escribe en el bloque de la refineria, tampoco esta en el catalogo: es una
+reclasificacion de un caso concreto, de las que el acuerdo 6 manda a la cola.
+
+**Los conceptos de la refineria si estan en el catalogo**, y en la misma estructura que los demas:
+fundicion, refineria, planta de subproductos y su mantenimiento. Una mina los deja en cero, igual
+que deja en cero la preconcentracion la unidad que no la tiene. Partir la plantilla en dos —una de
+mina y otra de refineria— habria roto la propiedad que la hace servir para un proyecto que no
+existe todavia.

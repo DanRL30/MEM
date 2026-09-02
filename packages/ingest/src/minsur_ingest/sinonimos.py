@@ -44,6 +44,7 @@ SINONIMOS = {
     # el catalogo usa el concepto y aqui se traduce el rotulo del libro.
     "tratamiento de relaves b2": "relavera",
     "peajes mantenimiento": "peajes y mantenimiento",
+    "mantenimiento f r": "mantenimiento de fundicion y refineria",
 }
 
 METALES_CONOCIDOS = ("Sn", "Cu", "Ag")

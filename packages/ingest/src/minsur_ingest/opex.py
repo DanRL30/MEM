@@ -94,18 +94,25 @@ FILAS_DE_CASH_COST = (
     FilaDeOpex("Peajes y mantenimiento", MEDIDA),
     FilaDeOpex("Agua potable", MEDIDA),
     FilaDeOpex("STA", MEDIDA),
+    # Los de la refineria. Van en la misma estructura que los demas, no en una
+    # plantilla aparte: una mina los deja en cero, como deja en cero la
+    # preconcentracion la unidad que no la tiene.
+    FilaDeOpex("Fundición", MEDIDA),
+    FilaDeOpex("Refinería", MEDIDA),
+    FilaDeOpex("Planta de subproductos", MEDIDA),
+    FilaDeOpex("Mantenimiento de fundición y refinería", MEDIDA),
 )
 """Los conceptos de costo que el usuario carga, uno por unidad.
 
-Siete conceptos del libro quedan fuera por decision del 02/09/2026. Cuatro son
-las lineas propias del complejo —fundicion, refineria, planta de subproductos y
-su mantenimiento—, dos son de Santo Domingo —servicios de mina y preconcentrado
-de terceros— y la septima es la planilla, que **no es un dato**: se deriva del
-cash cost de la unidad por la tasa de los supuestos, igual que la parte
-deducible de la gestion social se deriva de esta.
+Tres conceptos del libro quedan fuera por decision del 02/09/2026. Dos son de
+Santo Domingo —servicios de mina y preconcentrado de terceros— y el tercero es
+la planilla, que **no es un dato**: se deriva del cash cost de la unidad por la
+tasa de los supuestos, igual que la parte deducible de la gestion social se
+deriva de esta.
 
 Lo que una unidad tenga y no este aqui entra por la cola de conceptos propios,
-que para eso existe.
+que para eso existe. Ahi va tambien el `Covid` de la refineria, que es una
+reclasificacion de un caso concreto y no un concepto del catalogo.
 """
 
 FILAS_DE_LA_COLA = (

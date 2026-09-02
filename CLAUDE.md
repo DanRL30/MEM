@@ -294,17 +294,22 @@ mismo patron que produccion: una pestana por unidad, estructura fija, lectura po
 secuencia y asociacion por orden. Tres cosas lo diferencian y conviene tenerlas
 presentes antes de tocarlo.
 
-**El complejo lleva pestana**, al reves que en produccion. Su produccion es
+**La refineria lleva pestana**, al reves que en produccion. Su produccion es
 resultado, pero su costo es dato. Por eso el libro de opex trae **una pestana
 mas** que el de produccion, y `aplicar()` recorre `caso.unidades` sin saltar la
-fundicion. Sus cuatro lineas propias —fundicion, refineria, planta de
-subproductos y su mantenimiento— salieron del catalogo el 02/09/2026 y hoy carga
-por los conceptos genericos y por su cola.
+fundicion.
 
-**El catalogo no reproduce el libro concepto a concepto.** Siete de los suyos
+**Sus conceptos van en la misma estructura que los de las minas**, no en una
+plantilla aparte: fundicion, refineria, planta de subproductos y su
+mantenimiento. Una mina los deja en cero, igual que deja en cero la
+preconcentracion la unidad que no la tiene. Partir la plantilla en dos habria
+roto justo la propiedad que la hace servir para un proyecto que no existe
+todavia.
+
+**El catalogo no reproduce el libro concepto a concepto.** Tres de los suyos
 quedan fuera por decision del 02/09/2026, listados en la seccion 9 de
 [brechas-plantilla-opex.md](docs/modelo-economico/brechas-plantilla-opex.md).
-Seis se cargan por la cola si un caso los necesita; el septimo, `Planillas`, no
+Dos se cargan por la cola si un caso los necesita; el tercero, `Planillas`, no
 vuelve por ningun camino, porque es la planilla derivada y pedirla como dato es
 lo que la regla `026` prohibe.
 
