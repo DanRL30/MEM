@@ -37,7 +37,7 @@ from minsur_engine.depreciacion import (
     tasas_de_agotamiento,
     total_depreciado,
 )
-from minsur_engine.horizonte import Horizonte
+from minsur_engine.horizonte import Horizonte, Serie
 
 TASAS = TasasDeDepreciacion(maquinaria=0.20, instalaciones=0.10, edificaciones=0.05)
 
@@ -350,3 +350,37 @@ class TestLoQueDepreciaSinSerCapital:
         proyeccion = horizonte.serie([37.0] * horizonte.anos, nombre="sap")
         detalle = depreciacion_por_mina(horizonte, [], TASAS, proyecciones={"B2": proyeccion})
         assert detalle["B2"][PROYECCION_SAP] == proyeccion
+
+
+class TestLasDosPuertasDeProduccion:
+    """La tributaria acumula; la financiera cierra ano a ano."""
+
+    def _con_parada(self, horizonte: Horizonte) -> Serie:
+        # Produce, para un ejercicio, y vuelve.
+        return horizonte.serie([0.0, 100.0, 0.0, 100.0] + [0.0] * 4, nombre="produccion")
+
+    def test_la_tributaria_sigue_depreciando_en_el_ano_de_parada(
+        self, horizonte: Horizonte
+    ) -> None:
+        detalle = depreciacion_por_componente(
+            horizonte, capital(horizonte), TASAS, produccion=self._con_parada(horizonte)
+        )
+        assert detalle["maquinaria"][2] > 0.0
+
+    def test_la_financiera_pierde_la_cuota_del_ano_sin_produccion(
+        self, horizonte: Horizonte
+    ) -> None:
+        # El libro multiplica el total del ano por la bandera `Ano con
+        # produccion`: un ano de parada no difiere la cuota, la pierde.
+        detalle = depreciacion_por_componente(
+            horizonte,
+            capital(horizonte),
+            TASAS,
+            produccion=self._con_parada(horizonte),
+            agotamiento=Agotamiento(
+                extraido=self._con_parada(horizonte),
+                reservas=1_000.0,
+            ),
+        )
+        assert detalle["maquinaria"][1] > 0.0
+        assert detalle["maquinaria"][2] == 0.0

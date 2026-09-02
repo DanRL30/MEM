@@ -161,6 +161,13 @@ class UnidadProductiva:
     las leen de otro libro y las que las derivan de la producción.
     """
 
+    conversion_de_recursos: Serie = ()
+    """Recursos que pasan a reserva cada año, y alargan la vida de la unidad.
+
+    Es lo que permite el acuerdo 9 de la minuta del 27/08/2026. A diferencia de
+    las reservas, que son un saldo de apertura, esto sí es una serie.
+    """
+
     proyeccion_tributaria: Serie = ()
     proyeccion_financiera: Serie = ()
     """Depreciación ya contabilizada de los activos que existen antes del caso.

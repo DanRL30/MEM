@@ -130,6 +130,9 @@ FILAS_POR_UNIDAD = (
     # La via financiera agota el capital contra las reservas. Declararlas las
     # convierte en dato; dejarlas vacias las convierte en calculo.
     FilaDeSupuesto("Reservas", "kt", "reservas", constante=True),
+    # Recursos que pasan a reserva, ano a ano: es lo que permite el acuerdo 9 de
+    # la minuta del 27/08/2026. A diferencia de las reservas, no es un saldo.
+    FilaDeSupuesto("Conversion de Recursos", "kt", "conversion_de_recursos"),
     FilaDeSupuesto("Refineria", SECCION),
     FilaDeSupuesto("Recuperacion de Sn en la refineria", "%", "recuperacion_en_la_refineria"),
     FilaDeSupuesto("Gastos", SECCION),
@@ -329,6 +332,9 @@ def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProdu
                 "proyeccion_financiera", unidad.proyeccion_financiera
             ),
             reservas=_reservas(propios_de[unidad.nombre], unidad.reservas),
+            conversion_de_recursos=propios_de[unidad.nombre].get(
+                "conversion_de_recursos", unidad.conversion_de_recursos
+            ),
         )
         for unidad in caso.unidades
     )

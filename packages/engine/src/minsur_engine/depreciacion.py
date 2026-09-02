@@ -42,14 +42,24 @@ Depreciación lineal sobre el valor original, con **la última cuota ajustada al
 saldo**. Sin ese ajuste, el último ejercicio arrastra un residuo que el contraste
 detecta como una diferencia pequeña y persistente.
 
-## La depreciación no corre antes de producir
+## Las dos vías miran la producción de forma distinta
+
+La tributaria acumula:
 
     IF(SUM(produccion hasta el ano) = 0, 0, ...)
 
-Un activo construido antes del arranque no deprecia hasta que la unidad produce.
-La condición se aplica **solo a las unidades que producen**: una refinería o un
-depósito de relaves no lo hacen nunca por diseño, y aplicársela les anularía el
-escudo fiscal entero en vez de retrasarlo.
+Un activo construido antes del arranque no deprecia hasta que la unidad produce,
+y desde entonces deprecia siempre. Es la regla `013`.
+
+La financiera no acumula: multiplica el total del año por una bandera de ese año,
+`Ano con produccion`, que vale uno o cero según haya producción **en ese
+ejercicio**. La diferencia aparece cuando una unidad para un año a mitad de vida
+o termina de producir antes del horizonte: ahí la tributaria sigue depreciando y
+la financiera no. Es la regla `041`.
+
+Las dos se aplican **solo a las unidades que producen**: una refinería o un
+depósito de relaves no lo hacen nunca por diseño, y aplicárselas les anularía el
+escudo entero en vez de retrasarlo.
 
 ## La proyección de SAP no es un componente del capital
 
@@ -310,9 +320,13 @@ def depreciacion_por_componente(
 
     if produccion is None:
         return detalle
+    # La via financiera se identifica por traer agotamiento, y es la que el
+    # libro cierra ano a ano en vez de acumular.
+    puerta = (
+        _en_anos_con_produccion if agotamiento is not None else _sin_depreciar_antes_de_producir
+    )
     return {
-        componente: _sin_depreciar_antes_de_producir(horizonte, serie, produccion)
-        for componente, serie in detalle.items()
+        componente: puerta(horizonte, serie, produccion) for componente, serie in detalle.items()
     }
 
 
@@ -412,17 +426,32 @@ def _en(serie: Sequence[float], i: int) -> float:
     return serie[i] if i < len(serie) else 0.0
 
 
+def _en_anos_con_produccion(horizonte: Horizonte, depreciacion: Serie, produccion: Serie) -> Serie:
+    """Deja la cuota solo en los ejercicios con produccion, sin acumular.
+
+    Es la bandera `Ano con produccion` del libro, que multiplica el total de la
+    depreciacion financiera de la unidad. Un ano de parada no difiere la cuota:
+    la pierde.
+    """
+    _verificar_produccion(horizonte, produccion)
+    return tuple(valor if produccion[i] != 0.0 else 0.0 for i, valor in enumerate(depreciacion))
+
+
 def _sin_depreciar_antes_de_producir(
     horizonte: Horizonte, depreciacion: Serie, produccion: Serie
 ) -> Serie:
-    if len(produccion) != horizonte.anos:
-        raise ErrorDepreciacion(
-            f"La serie de produccion trae {len(produccion)} valores y el horizonte tiene "
-            f"{horizonte.anos} anos."
-        )
+    _verificar_produccion(horizonte, produccion)
     acumulada = 0.0
     resultado: list[float] = []
     for i, valor in enumerate(depreciacion):
         acumulada += produccion[i]
         resultado.append(valor if acumulada != 0.0 else 0.0)
     return tuple(resultado)
+
+
+def _verificar_produccion(horizonte: Horizonte, produccion: Serie) -> None:
+    if len(produccion) != horizonte.anos:
+        raise ErrorDepreciacion(
+            f"La serie de produccion trae {len(produccion)} valores y el horizonte tiene "
+            f"{horizonte.anos} anos."
+        )

@@ -652,6 +652,9 @@ def _agotamiento(unidad: UnidadProductiva, horizonte: Horizonte) -> Agotamiento:
     return Agotamiento(
         extraido=extraido,
         reservas=declaradas if declaradas is not None else sum(extraido),
+        conversion_de_recursos=_serie(
+            unidad.conversion_de_recursos, horizonte, f"{unidad.nombre}/conversion"
+        ),
     )
 
 

@@ -182,7 +182,7 @@ despues, no deuda heredada.
 | `ruff check .` | Limpio |
 | `ruff format --check .` | Limpio, 99 archivos |
 | `mypy packages apps/api/src` | Limpio en modo estricto, 63 archivos |
-| `pytest` | 370 de 370, de las que 31 son el contraste de fidelidad |
+| `pytest` | 372 de 372, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -427,6 +427,12 @@ en la formula de una unidad concreta no tiene donde vivir. Son las reglas `036` 
 proyecto nuevo puede traer componentes que hoy no existen, y una depreciacion
 que llega sumada no se puede volver a separar. `Corrida` lleva las dos vistas:
 el total por mina y el detalle por componente.
+
+**Las dos vias miran la produccion de forma distinta.** La tributaria acumula
+-no deprecia antes del primer ano con produccion y desde ahi deprecia siempre- y
+la financiera cierra ano a ano con la bandera `Ano con produccion`: un ano de
+parada a mitad de vida no difiere la cuota financiera, la pierde. Es la regla
+`041`, y es facil de perder porque las dos parecen la misma condicion.
 
 **Las reservas son un saldo de apertura y ruedan.** `reservas finales =
 anteriores - extraido + conversion`, redondeado a tonelada entera, que es la

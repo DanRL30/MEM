@@ -56,6 +56,7 @@ que es lo que el motor necesita.
 | 038 | `Depreciacion`, filas de reservas 872, 935, 1121, 1260 y 1399 | Dos unidades leen sus reservas de un libro externo y tres las derivan de la produccion, sumando toda la fila del horizonte. Nazareth suma el mineral **tratado** y las otras dos el **extraido** | Las reservas de una unidad en operacion son dato de su plan de vida de mina; las de un proyecto salen de su propio plan. La plataforma lo resuelve dejando que se declaren: **declararlas las convierte en dato y dejarlas vacias en calculo** | Project Manager | 02/09/2026 | `corrida.py` |
 | 039 | `Depreciacion`, fila 941 | La tasa de agotamiento de una de las seis unidades no lleva el tope `MIN(..., 100 %)` que llevan las otras cinco | Omision del libro. Sin el tope, una extraccion mayor que el saldo deprecia mas capital del que queda. **La plataforma aplica el tope en todas las unidades, presentes y futuras**: la evaluacion de un proyecto X, Y o Z usa los mismos conceptos y las mismas reglas que las unidades actuales, y una excepcion que vive en la formula de una unidad concreta no tiene donde alojarse. Pendiente del acta que lo registre como desviacion | Project Manager | 02/09/2026 | `depreciacion.py` |
 | 040 | `Supuestos`, filas 69 a 79 | Dos bloques de `Proyeccion SAP`, uno por via, con un valor por unidad en `k$` | Depreciacion ya contabilizada de los activos que existen antes del primer ano del caso. La via tributaria la consume agregada y la financiera por unidad; la plataforma la lleva por unidad en las dos, que es lo que pide `D-04` | Derivada del libro | 02/09/2026 | `depreciacion.py` |
+| 041 | `Depreciacion`, filas 786 y 787 frente a la regla `013` | El total de la depreciacion financiera de cada unidad se multiplica por `Ano con produccion`, una bandera de ese ejercicio, mientras la tributaria acumula con `IF(SUM(produccion hasta el ano)=0,...)` | **Las dos vias miran la produccion de forma distinta.** Un ano de parada a mitad de vida no difiere la cuota financiera: la pierde. La tributaria sigue depreciando | Derivada del libro | 02/09/2026 | `depreciacion.py` |
 
 ## Detalle de las que no caben en una fila
 
@@ -167,7 +168,7 @@ utilidad`. Esa cancelación es lo que sostiene la decisión del ADR.
 4. **Precisión numérica** — se evalúa contra la tolerancia acordada y se documenta como aceptable
    sin corrección si queda dentro del umbral.
 
-Las cuarenta del registro son de tipo 2, salvo la 005, la 007, la 010, la 015 y nueve de las
+Las cuarenta y una del registro son de tipo 2, salvo la 005, la 007, la 010, la 015 y nueve de las
 que salieron el 01/09/2026 de leer el bloque de Pisco y la hoja de supuestos —016 a 023 y 025—,
 que son de tipo 3: se reproducen y se reportan. Las dos que salieron el 02/09/2026 de leer
 `InputsOpex` —029 y 030— tambien son de tipo 3, y ninguna de las dos alimenta el flujo: viven en
@@ -189,7 +190,8 @@ consultada.
 evalua un proyecto que hoy no existe con los mismos conceptos y las mismas reglas que las unidades
 actuales, de modo que una excepcion alojada en la formula de una unidad concreta no tiene donde
 vivir. Son la 036 -el computo se deprecia como maquinaria tambien en la via financiera- y la 039
--el tope de agotamiento se aplica en todas las unidades-. Las dos esperan el acta que las registre
+-el tope de agotamiento se aplica en todas las unidades-. La 041 salio de revisar si el bloque
+quedaba cerrado, y es de tipo 2: la via financiera cierra la puerta ano a ano y no acumulando. Las dos esperan el acta que las registre
 como desviaciones acordadas; hasta entonces, la linea que difiera del modelo por su causa se
 sustenta en este registro.
 
