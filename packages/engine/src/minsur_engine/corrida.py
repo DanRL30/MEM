@@ -118,7 +118,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     parametros = maestros.parametros
 
     bloque = _bloque_del_complejo(caso)
-    ventas = _ventas(caso, bloque.refinado_sin_restriccion)
+    ventas = _ventas(caso, bloque)
     cash_cost = _cash_cost(caso)
     capital = [u.capital for u in caso.unidades if u.capital is not None]
 
@@ -307,8 +307,12 @@ def _refinado_del_complejo(caso: Caso) -> Serie:
     return tuple(refinado)
 
 
-def _ventas(caso: Caso, refinado_del_complejo: Serie) -> Serie:
-    """Venta anual: metal refinado más metal en concentrado, más ajustes."""
+def _ventas(caso: Caso, bloque: BloqueDelComplejo) -> Serie:
+    """Venta anual: metal refinado más metal en concentrado, más ajustes.
+
+    El excedente del complejo no se descarta: es concentrado que no llegó a
+    refinarse y se vende como tal, por el camino del metal en concentrado.
+    """
     horizonte = caso.horizonte
     terminos = caso.terminos
     precio_refinado = _serie(terminos.precio_metal_refinado, horizonte, "precio refinado")
@@ -325,7 +329,7 @@ def _ventas(caso: Caso, refinado_del_complejo: Serie) -> Serie:
         # El complejo no declara su refinado: se calculo desde las minas. Una
         # unidad que vende directo si lo declara, porque no pasa por fundicion.
         volumen_refinado = (
-            refinado_del_complejo
+            bloque.refinado
             if unidad.es_fundicion
             else _serie(
                 unidad.produccion.metal_refinado_vendido, horizonte, f"{unidad.nombre}/refinado"
@@ -336,6 +340,11 @@ def _ventas(caso: Caso, refinado_del_complejo: Serie) -> Serie:
             horizonte,
             f"{unidad.nombre}/en concentrado",
         )
+        if unidad.es_fundicion:
+            volumen_concentrado = tuple(
+                volumen_concentrado[i] + bloque.refinado_del_excedente[i]
+                for i in range(horizonte.anos)
+            )
         for i in range(horizonte.anos):
             refinado[i] += venta_de_metal_refinado(
                 volumen_refinado[i], precio_refinado[i], premio[i]

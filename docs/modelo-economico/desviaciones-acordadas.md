@@ -30,8 +30,9 @@ cuanto valen juntas, y esa identidad debe cumplirse.
 
 ## Estado de la validacion
 
-**Las cuatro desviaciones estan acordadas en minuta firmada, pero su tratamiento en el contraste es
-propuesta de INVA y no esta confirmado por Finanzas.** Hasta que lo este, las pruebas de fidelidad
+**Las cuatro primeras estan acordadas en minuta firmada, pero su tratamiento en el contraste es
+propuesta de INVA y no esta confirmado por Finanzas.** La quinta la decidio el Project Manager el
+01/09/2026 y esta pendiente de llevar a Finanzas. Hasta que lo este, las pruebas de fidelidad
 las marcan como pendientes y no como aprobadas. La consulta corresponde emitirla junto con las de
 `estandar-dm-std-pe-27.md`.
 
@@ -96,6 +97,41 @@ En el contraste, la suma de las depreciaciones de Nazareth y San Rafael debe rep
 consolidado del modelo. El reparto entre ambas no tiene contraparte en el libro.
 
 Queda por precisar: como se reparte entre las dos minas la base depreciable que el modelo consolida.
+
+## D-05. El recorte por capacidad se reparte por merito
+
+- **Origen:** decision del Project Manager, 01/09/2026, sobre el hallazgo de la regla `017`.
+- **Tratamiento propuesto:** `RECALCULADA`
+
+Cuando las minas entregan mas concentrado del que el complejo puede tratar, una parte no se refina
+y se vende como concentrado. **Quien se queda fuera cambia el resultado**, porque cada unidad
+entrega concentrado de distinta ley y se refina con distinta recuperacion.
+
+El modelo se lo resta **entero a la ultima unidad en entrar**: en la banda del caso con Santo
+Domingo, la formula del refinado hace entrar a esa unidad con `(alimentado - excedente)` mientras
+las otras cuatro entran completas. Esa asimetria no se puede generalizar a un proyecto nuevo sin
+decidir arbitrariamente a quien le toca.
+
+La plataforma reparte **por merito: va a spot primero el concentrado de menor ley**, de modo que se
+refina el mejor y se vende el peor. Es lo que haria cualquier operador, y no depende de en que orden
+se declararon las unidades.
+
+El efecto es material y no un matiz de redondeo. Sobre las cinco unidades del modelo con un
+excedente de 6 800 t, el refinado del ano va de 32 524 tmf a prorrata a 33 506 por merito, pasando
+por 32 759 con el criterio del libro.
+
+**Arrastra una segunda consecuencia, y es de coherencia.** El libro valoriza el excedente a la ley
+promedio del conjunto. Con reparto por merito lo que sale es el concentrado de menor ley, asi que
+usar el promedio sobrestimaria el metal contenido en lo que se vende: la plataforma usa la ley de
+lo que efectivamente fue a spot. No se puede decir que sale el peor concentrado y despues cobrarlo
+como si fuera del promedio.
+
+El contraste de esta linea se hace contra el valor que define el acuerdo, no contra la celda del
+modelo. El motor expone las dos: `refinado` con el tope aplicado y `refinado_sin_restriccion` sin
+el, que es la linea que el libro rotula asi.
+
+Queda por precisar: si el criterio de merito es la ley del concentrado o el margen por tonelada, que
+tambien depende del cargo de tratamiento de cada origen.
 
 ---
 

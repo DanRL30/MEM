@@ -55,7 +55,14 @@ class AporteAlComplejo:
     concentrado: Serie
     ley: Serie
     recuperacion: Serie
+    a_spot: Serie
+    """Parte de su concentrado que no se refina y se vende como concentrado."""
+
     refinado: Serie
+    """Lo que se refina de esta unidad, ya descontado lo que fue a spot."""
+
+    refinado_sin_restriccion: Serie
+    """Lo que se refinaría si el complejo no tuviera tope."""
 
 
 @dataclass(frozen=True)
@@ -73,16 +80,21 @@ class BloqueDelComplejo:
     toneladas_alimentadas: Serie
     """Alimentado más escoria. En el libro la escoria no aporta nada."""
 
+    refinado: Serie
+    """Lo que el complejo refina de verdad, con el tope aplicado."""
+
     refinado_sin_restriccion: Serie
-    """Suma de los aportes, cada uno con su recuperación. Antes del tope."""
+    """Lo que refinaría sin tope. Es la línea que el libro rotula así."""
 
     concentrado_excedente: Serie
     ley_del_excedente: Serie
+    """Ley de lo que efectivamente fue a spot, no la del conjunto."""
+
     refinado_del_excedente: Serie
     """Venta spot. El libro no le aplica recuperación: es metal contenido."""
 
     check: Serie
-    """Tratado más excedente menos lo entregado. Debe ser cero."""
+    """Alimentado más excedente menos lo entregado. Debe ser cero."""
 
 
 def calcular(
@@ -95,15 +107,17 @@ def calcular(
     Sin capacidad declarada no hay cuello de botella: todo lo entregado se trata
     y el excedente es cero.
     """
-    entregado = alimentacion_a_fundicion(
-        horizonte, [_serie(c.concentrado, horizonte) for c in componentes]
-    )
+    concentrados = [_serie(c.concentrado, horizonte) for c in componentes]
+    entregado = alimentacion_a_fundicion(horizonte, concentrados)
     if capacidad:
         tope = _serie(capacidad, horizonte)
         alimentado = tratamiento_limitado(entregado, tope)
         excedente = excedente_por_capacidad(entregado, tope)
     else:
         alimentado, excedente = entregado, horizonte.ceros()
+
+    a_spot = _reparto_por_merito(componentes, excedente, horizonte)
+    aportes = tuple(_aporte(c, a_spot[c.unidad], horizonte) for c in componentes)
 
     ley = tuple(
         ley_agregada(
@@ -112,8 +126,13 @@ def calcular(
         )
         for i in range(horizonte.anos)
     )
-    aportes = tuple(_aporte(c, horizonte) for c in componentes)
-    refinado = tuple(sum(a.refinado[i] for a in aportes) for i in range(horizonte.anos))
+    ley_spot = tuple(
+        ley_agregada(
+            [a.a_spot[i] for a in aportes],
+            [a.ley[i] for a in aportes],
+        )
+        for i in range(horizonte.anos)
+    )
 
     return BloqueDelComplejo(
         aportes=aportes,
@@ -121,15 +140,52 @@ def calcular(
         concentrado_alimentado=alimentado,
         ley_de_alimentacion=ley,
         toneladas_alimentadas=alimentado,
-        refinado_sin_restriccion=refinado,
+        refinado=tuple(sum(a.refinado[i] for a in aportes) for i in range(horizonte.anos)),
+        refinado_sin_restriccion=tuple(
+            sum(a.refinado_sin_restriccion[i] for a in aportes) for i in range(horizonte.anos)
+        ),
         concentrado_excedente=excedente,
-        ley_del_excedente=ley,
-        refinado_del_excedente=tuple(excedente[i] * ley[i] for i in range(horizonte.anos)),
+        ley_del_excedente=ley_spot,
+        refinado_del_excedente=tuple(excedente[i] * ley_spot[i] for i in range(horizonte.anos)),
         check=tuple(alimentado[i] + excedente[i] - entregado[i] for i in range(horizonte.anos)),
     )
 
 
-def _aporte(componente: Componente, horizonte: Horizonte) -> AporteAlComplejo:
+def _reparto_por_merito(
+    componentes: Sequence[Componente], excedente: Serie, horizonte: Horizonte
+) -> dict[str, list[float]]:
+    """Reparte el recorte mandando a spot primero el concentrado de menor ley.
+
+    Cuando las minas entregan más de lo que el complejo puede tratar, alguien se
+    queda fuera, y quién se queda fuera cambia el resultado: cada unidad entrega
+    concentrado de distinta ley y se refina con distinta recuperación.
+
+    **El criterio es de mérito: se refina el mejor concentrado y se vende el
+    peor.** Es lo que haría cualquier operador y es una decisión del servicio,
+    no una regla del libro: el libro le resta el recorte entero a la última
+    unidad en entrar, y esa asimetría no se puede generalizar a un proyecto
+    nuevo. Queda registrada como desviación acordada.
+
+    El empate se resuelve por nombre, para que dos corridas del mismo caso den
+    exactamente lo mismo.
+    """
+    reparto = {c.unidad: [0.0] * horizonte.anos for c in componentes}
+    for i in range(horizonte.anos):
+        resto = excedente[i]
+        if resto <= 0.0:
+            continue
+        for componente in sorted(componentes, key=lambda c: (_en(c.ley, i), c.unidad)):
+            if resto <= 0.0:
+                break
+            cede = min(_en(componente.concentrado, i), resto)
+            reparto[componente.unidad][i] = cede
+            resto -= cede
+    return reparto
+
+
+def _aporte(
+    componente: Componente, a_spot: Sequence[float], horizonte: Horizonte
+) -> AporteAlComplejo:
     """El refinado de una unidad, con su recuperación y solo la suya."""
     concentrado = _serie(componente.concentrado, horizonte)
     ley = _serie(componente.ley, horizonte)
@@ -139,7 +195,13 @@ def _aporte(componente: Componente, horizonte: Horizonte) -> AporteAlComplejo:
         concentrado=concentrado,
         ley=ley,
         recuperacion=recuperacion,
-        refinado=tuple(concentrado[i] * ley[i] * recuperacion[i] for i in range(horizonte.anos)),
+        a_spot=tuple(a_spot),
+        refinado=tuple(
+            (concentrado[i] - a_spot[i]) * ley[i] * recuperacion[i] for i in range(horizonte.anos)
+        ),
+        refinado_sin_restriccion=tuple(
+            concentrado[i] * ley[i] * recuperacion[i] for i in range(horizonte.anos)
+        ),
     )
 
 

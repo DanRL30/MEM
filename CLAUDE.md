@@ -175,7 +175,7 @@ despues, no deuda heredada.
 | `ruff check .` | Limpio |
 | `ruff format --check .` | Limpio, 91 archivos |
 | `mypy packages apps/api/src` | Limpio en modo estricto, 57 archivos |
-| `pytest` | 276 de 276, de las que 31 son el contraste de fidelidad |
+| `pytest` | 282 de 282, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -293,6 +293,14 @@ a cual se parece, y una diferencia en un total agregado no se puede atribuir a u
 unidad. El efecto es medible, no un matiz, y esta fijado en
 `test_complejo.py::TestReglaDeOro`. Dar el mismo valor a las unidades de un grupo
 reproduce el comportamiento del libro sin tocar el motor.
+
+**Cuando el complejo se satura, el recorte se reparte por merito**: va a spot
+primero el concentrado de menor ley, de modo que se refina el mejor y se vende el
+peor. El libro se lo resta entero a la ultima unidad en entrar, y eso no se
+generaliza a un proyecto nuevo. Es la desviacion `D-05`, y arrastra una segunda
+consecuencia de coherencia: **el excedente se valoriza a la ley de lo que
+efectivamente fue a spot**, no a la del conjunto. Decir que sale el peor
+concentrado y cobrarlo al promedio seria contradictorio.
 
 ### El corroborador: alarma y control de calidad, no correccion
 
@@ -420,7 +428,7 @@ en [reglas-no-documentadas.md](docs/modelo-economico/reglas-no-documentadas.md) 
 Finanzas. Corregirlo en el codigo rompe el contraste de fidelidad, que es el criterio de aceptacion
 del entregable.
 
-**La excepcion son las desviaciones acordadas, y hoy son cuatro lineas del contraste N1.** MINSUR
+**La excepcion son las desviaciones acordadas, y hoy son cinco lineas del contraste N1.** MINSUR
 pidio expresamente que la plataforma se aparte del modelo en esos puntos; el registro, con la
 reunion que origina cada acuerdo y el tratamiento que le corresponde, esta en
 [desviaciones-acordadas.md](docs/modelo-economico/desviaciones-acordadas.md). Ahi el motor no
