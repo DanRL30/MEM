@@ -43,7 +43,7 @@ que es lo que el motor necesita.
 | 025 | `Supuestos!H120` | La capacidad maxima de la refineria es un solo valor, no una serie por ano | Refina la regla `002`: el libro la declara una vez y la repite incrustada en las formulas de `InputsProd` | | | `refineria.py` |
 | 026 | `InputsOpex`, filas 131, 142, 155 y 166 | `Planilla = total del cash cost de la unidad x Supuestos!H111` | La planilla no es un dato: se deriva del costo. La plataforma la calcula y no la pide | Derivada del libro | 02/09/2026 | `cash_cost.py` |
 | 027 | `InputsOpex`, filas 134, 146, 158 y 170 | `Gestion Social Deducible` es una copia de `Gestion Social`, afectada por `x 0,85` en dos escenarios y por nada en el resto | La parte deducible es una fraccion declarada por unidad y por escenario. Sin declarar, el gasto es deducible entero | | | `cash_cost.py` |
-| 028 | `InputsOpex`, fila 132, leida por `Depreciacion` | San Rafael y San Rafael Potencial traen una fila `Estudios` que alimenta la depreciacion; Nazareth y Santo Domingo la parten en `Estudios Pre Factibilidad (Gasto)` y `Estudios Factibilidad (Capitalizable)` | Un `Estudios` sin calificar es capitalizable. **La eleccion cambia la base imponible**, no solo el vocabulario | | | `opex.py` |
+| 028 | `InputsOpex`, fila 132, leida por `Depreciacion` | San Rafael y San Rafael Potencial traen una fila `Estudios` que alimenta la depreciacion; Nazareth y Santo Domingo la parten en `Estudios Pre Factibilidad (Gasto)` y `Estudios Factibilidad (Capitalizable)` | Un `Estudios` sin calificar es capitalizable. **La eleccion cambia la base imponible**, no solo el vocabulario. Se hace lo que hace el modelo | Project Manager | 02/09/2026 | `opex.py` |
 | 029 | `InputsOpex`, columna de total de siete de los nueve escenarios | La columna `Total` suma desde el segundo ano del bloque y excluye el primero. Dos escenarios si lo incluyen | Arrastre al construir los bloques. La columna es de presentacion y no alimenta el flujo | | | |
 | 030 | `InputsOpex`, filas 108 y 119 | La fila rotulada `Reclasif COVID` calcula sobre `Relavera`, y el `Cash Cost Santo Domingo /tmf` de dos escenarios divide por la fila del titulo del bloque en vez de por su total | Referencias arrastradas en filas de presentacion. Ninguna de las dos alimenta el flujo | | | |
 | 031 | `InputsCapex`, filas 7 a 11 frente a 15 a 69 | La etapa no se carga: `Cierre Mina` es el codigo `NOD` de todas las unidades, `Capex Inicial` es la unidad en sus primeros anos productivos y el resto es `Sostenimiento` | La clasificacion contable es el unico dato del capital y la etapa sale de ella | Derivada del libro | 02/09/2026 | `capex.py` |
@@ -181,9 +181,10 @@ mismo dia como deliberada, de modo que paso a tipo 2. La 015 es la única donde 
 hojas del libro se contradicen entre sí: sigue a `FC NZ`, que es la hoja del caso. Seis quedaron confirmadas por Finanzas el 01/09/2026; siguen abiertas la 003 (unidades de
 medida), la 004 (tramos tributarios), la 007 (valores guardados sin recalcular), la 027 (fraccion
 deducible de la gestion social) y la 033 (el rango del ajuste de capex). La 028 queda contestada por
-la 037, y la 034, la 036 y la 037 se implementaron el 02/09/2026 por decision del Project Manager:
-**se hace lo que hace el libro, sin fusionar los componentes**. Las tres siguen pendientes de
-confirmacion escrita de Finanzas.
+la 037, y la 028, la 034, la 036 y la 037 se resolvieron el 02/09/2026 por decision del Project
+Manager: **se hace lo que hace el libro, sin fusionar los componentes**. De esas cuatro, solo la 036
+sigue consultada, y no por la tasa sino por el metodo: la via financiera excluye de la maquinaria un
+componente que lleva su mismo codigo.
 
 Ver la bitácora de discrepancias abiertas en `bitacora-discrepancias.md`.
 
