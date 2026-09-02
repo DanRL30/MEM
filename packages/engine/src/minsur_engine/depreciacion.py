@@ -12,7 +12,7 @@ y solo cambiaban las tasas. La disección de la hoja mostró que no:
 | Componente | Tributaria | Financiera |
 |---|---|---|
 | Maquinaria, equipos y vehículos | Lineal | Lineal |
-| Equipos de cómputo | Lineal | **Agotamiento** |
+| Equipos de cómputo | Lineal | Lineal |
 | Instalaciones y equipos diversos | Lineal | **Agotamiento** |
 | Edificaciones y construcciones | Lineal | **Agotamiento** |
 | No depreciable | Su tasa | Su tasa |
@@ -22,10 +22,10 @@ fracción del saldo que representa lo extraído sobre las reservas que quedaban.
 Un activo así no se agota en un número fijo de ejercicios, sino al ritmo al que
 se vacía el yacimiento, que es lo que la contabilidad financiera persigue.
 
-Los equipos de cómputo caen del lado del agotamiento aunque su clasificación
-contable sea la de la maquinaria, porque la fila que agota toma el capital de la
-unidad menos la maquinaria y menos lo no depreciable, y ahí el libro resta solo
-la fila de maquinaria. Se reproduce y está consultado: es la regla `036`.
+En el libro los equipos de cómputo caen del lado del agotamiento, porque la fila
+que agota resta solo la fila de maquinaria y arrastra un componente de su misma
+clase. **La plataforma no lo reproduce**: el cómputo es maquinaria y se deprecia
+como ella en las dos vías. Es la regla `036`.
 
 ## Cada componente se deprecia y se informa por separado
 
@@ -67,12 +67,16 @@ from dataclasses import dataclass
 from minsur_engine.capex import NATURALEZAS, CapitalDeUnidad
 from minsur_engine.horizonte import Horizonte, Serie
 
-COMPONENTES_POR_AGOTAMIENTO = ("equipos_de_computo", "instalaciones", "edificaciones")
+COMPONENTES_POR_AGOTAMIENTO = ("instalaciones", "edificaciones")
 """Lo que la vía financiera agota contra las reservas en vez de depreciar lineal.
 
-Es la lectura literal del libro: la fila que agota toma el capital de la unidad
-menos la maquinaria y menos lo no depreciable, y al restar solo la fila de
-maquinaria deja dentro los equipos de cómputo, que comparten su clasificación.
+**Los equipos de cómputo no están aquí, y el libro los deja dentro.** Su fila de
+agotamiento toma el capital de la unidad menos la maquinaria y menos lo no
+depreciable, y al restar solo la fila de maquinaria arrastra al cómputo, que
+lleva su mismo código contable. MINSUR lo identificó como un arrastre de la
+fórmula el 02/09/2026: el cómputo es maquinaria, y se deprecia como ella en las
+dos vías. Es la regla `036`, y el segundo punto donde la plataforma no
+reproduce el modelo.
 """
 
 PROYECCION_SAP = "Proyeccion SAP"

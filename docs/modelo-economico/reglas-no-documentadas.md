@@ -51,7 +51,7 @@ que es lo que el motor necesita.
 | 033 | `Depreciacion`, filas 7 a 10 | Cada fila de capex entra a la depreciacion multiplicada por `(1 + Supuestos!H114)`, con rango declarado `-35, +50` y valor cero hoy | Banda de precision del estimado que afecta al capital entero, no solo a la depreciacion | | | `corrida.py` |
 | 034 | `Depreciacion`, escudo de cierre | `No Depreciable` entra con tasa 1, es decir se deduce entero en su ano | El nombre engana: no es que no se deprecie, es que no se reparte. Es el escudo del capital de cierre | Project Manager | 02/09/2026 | `depreciacion.py` |
 | 035 | `Depreciacion`, filas 781 y siguientes | La via financiera no deprecia lineal todo el capital: la maquinaria si, y las instalaciones, las edificaciones y los equipos de computo se agotan con tasa `MIN(extraido / reservas, 100 %)` sobre un saldo unico | Metodo de unidades de produccion, y solo para tres de los cinco componentes | Derivada del libro | 02/09/2026 | `depreciacion.py` |
-| 036 | `Depreciacion` frente a `InputsCapex` | `Equipos de Cómputo` lleva el codigo `MAQ` y se deprecia con la maquinaria en la via tributaria, pero la financiera lo excluye de ella: la fila que agota resta solo la fila de maquinaria y deja el computo dentro de lo que se agota | **La tasa no es una eleccion: es la de su clase.** Lo que queda en duda es la exclusion en la via financiera, que trata como de otra clase un componente que lleva el mismo codigo. La plataforma reproduce los dos tratamientos y conserva el componente separado en la salida | Project Manager | 02/09/2026 | `depreciacion.py` |
+| 036 | `Depreciacion` frente a `InputsCapex` | `Equipos de Cómputo` lleva el codigo `MAQ` y se deprecia con la maquinaria en la via tributaria, pero la financiera lo excluye de ella: la fila que agota resta solo la fila de maquinaria y deja el computo dentro de lo que se agota | **La tasa no es una eleccion: es la de su clase.** La exclusion en la via financiera es un arrastre de la formula, que al restar solo la fila de maquinaria trata como de otra clase un componente que lleva su mismo codigo. **La plataforma no la reproduce**: el computo se deprecia como maquinaria en las dos vias, y se informa como componente propio. Pendiente del acta que lo registre como desviacion | Project Manager | 02/09/2026 | `depreciacion.py` |
 | 037 | `Depreciacion`, columna de tasas | La tasa declarada para `Estudios` es 0,05 | **Cierra la consulta que abrio la regla `028`**: el estudio capitalizable se deprecia como una edificacion, en las dos vias, y llega por los gastos y no por el capital | Project Manager | 02/09/2026 | `depreciacion.py` |
 | 038 | `Depreciacion`, filas de reservas 872, 935, 1121, 1260 y 1399 | Dos unidades leen sus reservas de un libro externo y tres las derivan de la produccion, sumando toda la fila del horizonte. Nazareth suma el mineral **tratado** y las otras dos el **extraido** | Las reservas de una unidad en operacion son dato de su plan de vida de mina; las de un proyecto salen de su propio plan. La plataforma lo resuelve dejando que se declaren: **declararlas las convierte en dato y dejarlas vacias en calculo** | Project Manager | 02/09/2026 | `corrida.py` |
 | 039 | `Depreciacion`, fila 941 | La tasa de agotamiento de una de las seis unidades no lleva el tope `MIN(..., 100 %)` que llevan las otras cinco | Omision del libro. Sin el tope, una extraccion mayor que el saldo deprecia mas capital del que queda. **La plataforma aplica el tope en todas las unidades, presentes y futuras**: la evaluacion de un proyecto X, Y o Z usa los mismos conceptos y las mismas reglas que las unidades actuales, y una excepcion que vive en la formula de una unidad concreta no tiene donde alojarse. Pendiente del acta que lo registre como desviacion | Project Manager | 02/09/2026 | `depreciacion.py` |
@@ -182,9 +182,16 @@ hojas del libro se contradicen entre sí: sigue a `FC NZ`, que es la hoja del ca
 medida), la 004 (tramos tributarios), la 007 (valores guardados sin recalcular), la 027 (fraccion
 deducible de la gestion social) y la 033 (el rango del ajuste de capex). La 028 queda contestada por
 la 037, y la 028, la 034, la 036 y la 037 se resolvieron el 02/09/2026 por decision del Project
-Manager: **se hace lo que hace el libro, sin fusionar los componentes**. De esas cuatro, solo la 036
-sigue consultada, y no por la tasa sino por el metodo: la via financiera excluye de la maquinaria un
-componente que lleva su mismo codigo.
+Manager: **se hace lo que hace el libro, sin fusionar los componentes**. Ninguna de las cuatro sigue
+consultada.
+
+**Dos reglas dejaron de reproducir el modelo, y las dos por el mismo criterio**: la plataforma
+evalua un proyecto que hoy no existe con los mismos conceptos y las mismas reglas que las unidades
+actuales, de modo que una excepcion alojada en la formula de una unidad concreta no tiene donde
+vivir. Son la 036 -el computo se deprecia como maquinaria tambien en la via financiera- y la 039
+-el tope de agotamiento se aplica en todas las unidades-. Las dos esperan el acta que las registre
+como desviaciones acordadas; hasta entonces, la linea que difiera del modelo por su causa se
+sustenta en este registro.
 
 Ver la bitácora de discrepancias abiertas en `bitacora-discrepancias.md`.
 

@@ -280,6 +280,26 @@ class TestAgotamiento:
         assert tributaria["edificaciones"][0] == pytest.approx(5.0)
         assert financiera["edificaciones"][0] == pytest.approx(10.0)
 
+    def test_el_computo_se_deprecia_como_maquinaria_en_las_dos_vias(
+        self, horizonte: Horizonte
+    ) -> None:
+        # El libro lo arrastra al agotamiento porque su fila resta solo la fila
+        # de maquinaria. MINSUR lo identifico como arrastre: el computo es
+        # maquinaria y se deprecia como ella tambien en la via financiera.
+        capital_con_computo = CapitalDeUnidad(
+            unidad="San Rafael",
+            por_etapa={"inicial": horizonte.serie([100.0] + [0.0] * 7, nombre="inicial")},
+            por_naturaleza={
+                "equipos_de_computo": horizonte.serie([100.0] + [0.0] * 7, nombre="computo")
+            },
+        )
+        tributaria = depreciacion_por_componente(horizonte, capital_con_computo, TASAS)
+        financiera = depreciacion_por_componente(
+            horizonte, capital_con_computo, TASAS, agotamiento=self._agotamiento(horizonte)
+        )
+        assert tributaria["equipos_de_computo"] == financiera["equipos_de_computo"]
+        assert financiera["equipos_de_computo"][0] == pytest.approx(20.0)
+
     def test_computo_no_se_suma_a_maquinaria(self, horizonte: Horizonte) -> None:
         # El libro los fusiona bajo un codigo; aqui cada componente se informa
         # por separado para que un proyecto nuevo pueda tener el suyo.

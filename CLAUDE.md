@@ -182,7 +182,7 @@ despues, no deuda heredada.
 | `ruff check .` | Limpio |
 | `ruff format --check .` | Limpio, 99 archivos |
 | `mypy packages apps/api/src` | Limpio en modo estricto, 63 archivos |
-| `pytest` | 366 de 366, de las que 31 son el contraste de fidelidad |
+| `pytest` | 367 de 367, de las que 31 son el contraste de fidelidad |
 | `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
 | `pnpm test` | 2 de 2, un archivo |
 
@@ -382,7 +382,7 @@ mostro que no.
 | Componente | Tributaria | Financiera |
 |---|---|---|
 | Maquinaria, equipos y vehiculos | Lineal | Lineal |
-| Equipos de computo | Lineal | **Agotamiento** |
+| Equipos de computo | Lineal | Lineal |
 | Instalaciones y equipos diversos | Lineal | **Agotamiento** |
 | Edificaciones y construcciones | Lineal | **Agotamiento** |
 | No depreciable | **Entero en su ano** | **Entero en su ano** |
@@ -404,7 +404,15 @@ puede depreciar sin haber invertido, con solo capitalizar un estudio.
 fusione los equipos de computo con la maquinaria bajo un mismo codigo. Su tasa
 sigue siendo la de la maquinaria, y no por falta de una propia: **su
 clasificacion contable es `MAQ`**, de modo que separar el componente separa el
-detalle y no la clase. Un
+detalle y no la clase.
+
+**Dos puntos no reproducen el modelo, y los dos por el mismo criterio.** El libro
+arrastra el computo al agotamiento -su fila resta solo la fila de maquinaria- y
+omite el tope del 100 % en una de las seis unidades. La plataforma no reproduce
+ninguna de las dos, porque evalua un proyecto que hoy no existe con los mismos
+conceptos y las mismas reglas que las unidades actuales, y una excepcion alojada
+en la formula de una unidad concreta no tiene donde vivir. Son las reglas `036` y
+`039`, a la espera del acta que las registre como desviaciones. Un
 proyecto nuevo puede traer componentes que hoy no existen, y una depreciacion
 que llega sumada no se puede volver a separar. `Corrida` lleva las dos vistas:
 el total por mina y el detalle por componente.

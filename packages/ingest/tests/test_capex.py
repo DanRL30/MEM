@@ -6,8 +6,8 @@ con el script que la emite, se llena por posición, se lee y se calcula.
 El caso tiene las tres clases de unidad —una mina, una relavera de depósito y la
 refinería— porque lo que distingue a esta plantilla de las otras dos es
 justamente que las tres llevan pestaña. Las cifras son redondas: la mina invierte
-1 000 en maquinaria el primer año, 200 en cómputo el segundo y deja 500 de cierre
-el tercero; el depósito, 300 en edificaciones.
+1 000 en maquinaria el primer año, 200 en cómputo el segundo, y el tercero 400 en
+edificaciones y 500 de cierre; el depósito, 300 en edificaciones.
 """
 
 from __future__ import annotations
@@ -96,6 +96,7 @@ def libro_de_capex(tmp_path: Path) -> Path:
     _escribir(mina, "Maquinaria, equipos y vehículos", [1_000.0, 0.0, 0.0])
     _escribir(mina, "Equipos de cómputo", [0.0, 200.0, 0.0])
     _escribir(mina, "No depreciable", [0.0, 0.0, 500.0])
+    _escribir(mina, "Edificaciones y construcciones", [0.0, 0.0, 400.0])
     _escribir(libro["Relavera B4"], "Edificaciones y construcciones", [300.0, 0.0, 0.0])
     libro.save(ruta)
     return ruta
@@ -178,7 +179,7 @@ class TestIdaYVuelta:
 
     def test_el_caso_leido_calcula(self, libro_de_capex: Path) -> None:
         corrida = calcular(_con_capex(libro_de_capex), MAESTROS)
-        assert corrida.capex == (1_300_000.0, 200_000.0, 500_000.0)
+        assert corrida.capex == (1_300_000.0, 200_000.0, 900_000.0)
 
 
 class TestConversionDeEscalas:
@@ -202,7 +203,7 @@ class TestLaEtapaSeDeriva:
         capital = _con_capex(libro_de_capex).unidades[0].capital
         assert capital is not None
         assert capital.por_etapa["inicial"] == (1_000_000.0, 0.0, 0.0)
-        assert capital.por_etapa["sostenimiento"] == (0.0, 200_000.0, 0.0)
+        assert capital.por_etapa["sostenimiento"] == (0.0, 200_000.0, 400_000.0)
 
     def test_una_unidad_que_no_produce_lo_lleva_todo_a_inicial(self, libro_de_capex: Path) -> None:
         # Sin produccion no hay primer ano de produccion, de modo que no hay
@@ -241,7 +242,7 @@ class TestElDeposito:
 class TestElAjusteDeCapex:
     def test_sin_ajuste_nada_se_mueve(self, libro_de_capex: Path) -> None:
         caso = _con_capex(libro_de_capex)
-        assert calcular(caso, MAESTROS).capex == (1_300_000.0, 200_000.0, 500_000.0)
+        assert calcular(caso, MAESTROS).capex == (1_300_000.0, 200_000.0, 900_000.0)
 
     def test_el_ajuste_escala_el_capital_y_su_depreciacion(self, libro_de_capex: Path) -> None:
         caso = _con_capex(libro_de_capex)
@@ -287,8 +288,8 @@ class TestLasReservas:
         # Con mas reservas que lo que el plan extrae, cada ano se agota una
         # fraccion menor del saldo.
         assert (
-            con_declarar.depreciacion_financiera_por_mina["Mina Alfa"][1]
-            < sin_declarar.depreciacion_financiera_por_mina["Mina Alfa"][1]
+            con_declarar.depreciacion_financiera_por_mina["Mina Alfa"][2]
+            < sin_declarar.depreciacion_financiera_por_mina["Mina Alfa"][2]
         )
 
 
