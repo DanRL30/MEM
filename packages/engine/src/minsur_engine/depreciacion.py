@@ -225,9 +225,15 @@ def tasas_de_agotamiento(horizonte: Horizonte, agotamiento: Agotamiento) -> Seri
     """Fracción del saldo que se agota cada año: lo extraído sobre las reservas.
 
     El primer ejercicio la mide contra las reservas de apertura y los siguientes
-    contra el saldo de cierre del anterior. **El tope del 100 % se aplica
-    siempre**: el libro lo omite en una de las seis unidades, y sin el una
-    extraccion mayor que el saldo depreciaria mas capital del que queda.
+    contra el saldo de cierre del anterior.
+
+    **El tope del 100 % se aplica siempre.** El libro lo omite en una de las
+    seis unidades, y sin él una extracción mayor que el saldo depreciaría más
+    capital del que queda. No se reproduce la omisión, y no solo porque el
+    resultado sea imposible: la plataforma evalúa un proyecto que hoy no existe
+    con los mismos conceptos y las mismas reglas que las unidades actuales, y
+    una excepción que vive en la fórmula de una unidad concreta no tiene dónde
+    alojarse ahí.
     """
     apertura = agotamiento.reservas
     cierres = saldo_de_reservas(horizonte, agotamiento)
