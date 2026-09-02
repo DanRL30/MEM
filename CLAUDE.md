@@ -165,6 +165,10 @@ Hoy `apps/web/tests/` solo contiene `App.test.tsx`. Un filtro por una vista que 
 selecciona nada y vitest termina en 1 con `No test files found`: es un filtro vacio, no una
 regresion.
 
+Dos pruebas tardan cerca de minuto y medio, y casi todo ese tiempo es el montaje del entorno jsdom
+en Windows -- 70 s de los 83 s medidos el 02/09/2026-. No esta colgado: vitest no imprime nada
+hasta que termina de preparar el entorno.
+
 Las pruebas de extremo a extremo estan declaradas y sin poblar. `pnpm test:e2e` apunta a
 `tests/e2e/playwright.config.ts`, que todavia no existe; el directorio solo tiene su `.gitkeep`.
 Son PT7.2 y llegan detras de las vistas.
@@ -190,23 +194,41 @@ Se descompone en `pnpm api:schema` (Python, escribe `packages/contracts/openapi.
 `pnpm api:types` (Node, escribe `packages/contracts/src/api.d.ts`). El primero invoca `python` a
 secas, no `uv run`, asi que exige el entorno del proyecto activo o falla con `ModuleNotFoundError`.
 
+### Las plantillas de Bicep
+
+Ninguna de las puertas anteriores mira las plantillas de Bicep. `pytest` no las toca, y `ruff` y
+`mypy` alcanzan solo a los cuatro scripts de Python de `infra/pipelines/scripts/`, que si estan
+sujetos a las dos. Lo que valida las plantillas es
+[iac-validate.yml](infra/pipelines/iac-validate.yml); en local, con la CLI de Azure instalada, son
+estos dos comandos:
+
+```bash
+az bicep build --file infra/bicep/main.bicep --stdout > /dev/null
+az bicep lint --file infra/bicep/main.bicep
+```
+
+El primero compila y delata lo que no resuelve; el segundo aplica las reglas de estilo. Los dos
+apuntan a `main.bicep` a proposito: el pipeline recorre `infra/bicep/*.bicep`, que hoy es solo esa
+plantilla, y los once modulos de `modules/` se compilan a traves de ella. Un modulo que nadie
+referencie no lo compila nadie. Hoy los once son alcanzables -`punto-privado.bicep` por la via de
+`almacenamiento`, `base-datos` y `boveda`-, y conviene que siga siendo asi.
+
+**El `what-if` no se corre desde una maquina local.** Necesita la conexion de servicio del pipeline
+contra el entorno destino, y ese contraste es parte de la aprobacion del pase, no de la
+verificacion previa a un commit.
+
 ---
 
 ## 3. Estado verificado de las comprobaciones
 
-Reejecutado el 02/09/2026 sobre el arbol completo. **Todas las puertas de
-[ci.yml](infra/pipelines/ci.yml) estan en verde.** Cualquier fallo es una regresion introducida
-despues, no deuda heredada.
+Reejecutadas el 02/09/2026 sobre el arbol completo, las puertas de
+[ci.yml](infra/pipelines/ci.yml) -convenciones, `ruff check`, `ruff format`, `mypy` en estricto,
+`pytest`, y `pnpm lint`, `typecheck`, `test` y `build`- **estan todas en verde**. Cualquier fallo es
+una regresion introducida despues, no deuda heredada.
 
-| Comprobacion | Resultado |
-|---|---|
-| `verificar_convenciones.py` | Sin infracciones |
-| `ruff check .` | Limpio |
-| `ruff format --check .` | Limpio, 99 archivos |
-| `mypy packages apps/api/src` | Limpio en modo estricto, 63 archivos |
-| `pytest` | 379 de 379, de las que 38 son el contraste de fidelidad |
-| `pnpm lint`, `pnpm typecheck`, `pnpm build` | Limpios |
-| `pnpm test` | 2 de 2, un archivo |
+Aqui no va la cuenta de pruebas ni de archivos: es un numero que envejece en el commit siguiente y
+que el propio comando informa mejor. Lo que este archivo fija es el invariante -el arbol se entrega
+en verde- y lo que cuesta reaprender si se pierde, que es lo que sigue.
 
 Dos cosas que conviene saber sobre como se llego aqui, porque explican decisiones que de otro modo
 parecen arbitrarias:
@@ -267,139 +289,86 @@ contraste contra el modelo.
 
 ### La ingesta es la frontera
 
-`packages/ingest` lee la plantilla que emite `scripts/generar_plantilla_inputs.py` y devuelve un
-caso validado. Es el unico sitio donde se convierten escalas —la regla 003, con el libro alternando
-dolares y miles de dolares— y donde vive la tabla de sinonimos que traduce el vocabulario del libro
-al del catalogo: sin ella, leer una plantilla llenada al estilo del libro pierde una de cada veinte
-lineas en silencio.
+`packages/ingest` lee las plantillas que emite `scripts/generar_plantilla_inputs.py` y devuelve un
+caso validado, o las incidencias con su hoja y su celda. Es el unico sitio donde se convierten
+escalas -la regla `003`, con el libro alternando dolares, `k$` y `$k`- y donde vive la tabla de
+sinonimos que traduce el vocabulario del libro al del catalogo: sin ella, leer una plantilla llenada
+al estilo del libro pierde una de cada veinte lineas en silencio.
 
-La lectura **acumula incidencias con su hoja y su celda** en vez de detenerse en la primera. Una
-plantilla llena a mano llega con varios errores a la vez, y devolverlos de uno en uno obliga a
-corregir y reenviar tantas veces como errores tenga.
+Cinco propiedades sostienen la lectura de los tres libros de entrada. Romper cualquiera de ellas no
+produce un error: produce un caso plausible y equivocado.
 
-**La produccion viene en su propio libro, con una pestana por proyecto y una sola
-estructura para todas.** No se adapta al proyecto: uno sin preconcentracion deja
-esas filas en cero y la plataforma no las muestra. Las etiquetas, las unidades de
-medida y el orden son los del libro de MINSUR, y viven en
-[produccion.py](packages/ingest/src/minsur_ingest/produccion.py), que es la unica
-fuente de verdad: el generador la escribe y el lector la espera.
+- **Estructura fija y una pestana por unidad, en orden.** El libro no identifica el caso -no lleva
+  hoja `Caso`-: el archivo se sube desde un caso que la plataforma ya tiene abierto y
+  `asociar_por_orden()` empareja la pestana n con la unidad n. El nombre de la pestana viaja como
+  pista y nunca como identidad, y el horizonte se deduce contando la fila de anos.
+- **Se lee por secuencia, no por nombre.** El libro repite la etiqueta `Ley Sn` cinco veces y lo
+  unico que las distingue es la fila que llevan encima. Si la secuencia se rompe, la lectura de esa
+  pestana se detiene y se reporta: seguir leyendo asignaria cada serie al concepto de al lado.
+- **Lo que no se sabe consumir se reporta.** Hasta el 01/09/2026 una fila con concepto desconocido
+  se descartaba con un `continue`: el usuario la llenaba, el caso se leia sin errores y su dato no
+  llegaba al motor. Es el peor fallo posible en una frontera, porque no deja sintoma.
+- **Las incidencias se acumulan.** Una plantilla llena a mano llega con varios errores a la vez, y
+  devolverlos de uno en uno obliga a corregir y reenviar tantas veces como errores tenga.
+- **La misma estructura para todos los proyectos.** Un caso de solo estano recibe igual las filas de
+  cobre y de plata y las deja en cero. Partir la plantilla por tipo de unidad habria roto justo la
+  propiedad que la hace servir para un proyecto que todavia no existe.
 
-**Se lee por secuencia, no por nombre.** El libro repite la etiqueta `Ley Sn`
-cinco veces y lo unico que las distingue es la fila que llevan encima. Si la
-secuencia se rompe, la lectura de esa pestana se detiene y se reporta: seguir
-leyendo asignaria cada serie al concepto de al lado y el caso saldria plausible y
-equivocado.
+La estructura de cada libro vive en su modulo
+-[produccion.py](packages/ingest/src/minsur_ingest/produccion.py),
+[opex.py](packages/ingest/src/minsur_ingest/opex.py),
+[capex.py](packages/ingest/src/minsur_ingest/capex.py)-, y ese modulo es la unica fuente de verdad:
+el generador la escribe y el lector la espera. La auditoria fila a fila contra el libro corporativo,
+que es de donde salen, esta en los `brechas-plantilla-*.md` de
+[docs/modelo-economico/](docs/modelo-economico/).
 
-`leer_produccion()` devuelve los bloques **en el orden de las pestanas**, sin
-unidad asignada: el archivo se sube desde un caso que la plataforma ya tiene
-abierto, y `asociar_por_orden()` empareja la pestana n con la unidad n. El nombre
-de la pestana viaja como pista y nunca como identidad. Por lo mismo el libro **no
-lleva hoja `Caso`**, y el horizonte se deduce contando la fila de anos: nada fija
-el numero de ejercicios de antemano, de modo que un proyecto de vida larga no
-exige tocar el lector.
+### Los tres libros de entrada no son simetricos
 
-**La refineria no tiene pestana.** Sus filas son resultado del concentrado que le
-entregan las minas —la lectura de las formulas del libro lo confirmo fila por
-fila— y sus dos entradas reales, la capacidad y la recuperacion, son supuestos
-que en el libro viven en la hoja `Supuestos`.
+| | Produccion | Opex | Capex |
+|---|---|---|---|
+| Pestana de la refineria | No: su produccion es resultado | Si: su costo es dato | Si |
+| Pestana del deposito | No: no extrae mineral | Si | Si |
+| Corroborador | Si | No, y no lo habra | No |
+| Cola de conceptos propios | No | Si, de longitud y lugar fijos | No |
 
-**Lo que la ingesta no sabe consumir se reporta.** Hasta el 01/09/2026 una fila
-con concepto desconocido se descartaba con un `continue`: el usuario la llenaba,
-el caso se leia sin errores y su dato no se usaba. Es el peor fallo posible en una
-frontera, porque no deja sintoma.
+**La refineria no tiene pestana de produccion** porque todas sus filas salen del concentrado que le
+entregan las minas, y sus dos unicas entradas -capacidad y recuperacion- son supuestos. **Si tiene
+bloque de opex**, con cuatro conceptos propios que las minas dejan en cero, de modo que el libro de
+opex trae una pestana mas que el de produccion.
 
-### El opex tiene su libro, y ahi la refineria si lleva pestana
+**No hay corroborador en opex ni en capex, y no lo habra.** Ahi el bloque es todo dato y no hay dos
+valores que comparar; lo que esas hojas calculan -totales, ratios, subtotales- no se carga. Es la
+diferencia con produccion, donde el usuario carga tambien lo derivable.
 
-[opex.py](packages/ingest/src/minsur_ingest/opex.py) declara la estructura y
-[leer_opex()](packages/ingest/src/minsur_ingest/plantilla.py) la lee, con el
-mismo patron que produccion: una pestana por unidad, estructura fija, lectura por
-secuencia y asociacion por orden. Tres cosas lo diferencian y conviene tenerlas
-presentes antes de tocarlo.
+**La cola de conceptos propios del opex es de longitud fija y va en un lugar fijo** -acuerdo 6 del
+27/08/2026-, y eso es lo que permite seguir leyendo por secuencia: pasada la cuenta de la cola, lo
+que venga tiene que ser el bloque de gastos. Lo que se escriba en la cola solo afecta al total, que
+es la condicion con que el acuerdo la mantiene contrastable.
 
-**La refineria lleva pestana**, al reves que en produccion. Su produccion es
-resultado, pero su costo es dato. Por eso el libro de opex trae **una pestana
-mas** que el de produccion, y `aplicar()` recorre `caso.unidades` sin saltar la
-refineria.
+**Del capex se pide una sola clasificacion, la contable, y cinco conceptos por unidad.** La etapa no
+se pide porque el libro no la carga: sale por formula, y
+[clasificar_por_etapa](packages/engine/src/minsur_engine/capex.py) la reproduce. La consecuencia
+importa al leer una prueba: el `Check` del libro se cumple por construccion y dejo de ser una
+verificacion. `Equipos de Computo` se pide aparte de la maquinaria y se consolida al leer.
 
-**Sus conceptos van en la misma estructura que los de las minas**, no en una
-plantilla aparte: fundicion, refineria, planta de subproductos y su
-mantenimiento. Una mina los deja en cero, igual que deja en cero la
-preconcentracion la unidad que no la tiene. Partir la plantilla en dos habria
-roto justo la propiedad que la hace servir para un proyecto que no existe
-todavia.
+**Tres filas del bloque de gastos no se piden porque el libro las deriva**: `Ano con operacion`,
+`Planilla` y `Gestion Social Deducible`, que son las reglas `026` y `027`. Los gastos no son cash
+cost -viven en `UnidadProductiva.gastos`, aparte de `costos`- y cada fila va a un sitio distinto:
+los administrativos y la gestion social al flujo operativo, los predios y los estudios al de
+inversiones, y solo una parte de todos ellos rebaja la base imponible. Los estudios se llevan por
+partida doble, `estudios` y `estudios_deducibles`: la diferencia son los capitalizables, que el
+libro deprecia en vez de deducir.
 
-**El catalogo no reproduce el libro concepto a concepto.** Tres de los suyos
-quedan fuera por decision del 02/09/2026, listados en la seccion 9 de
-[brechas-plantilla-opex.md](docs/modelo-economico/brechas-plantilla-opex.md).
-Dos se cargan por la cola si un caso los necesita; el tercero, `Planillas`, no
-vuelve por ningun camino, porque es la planilla derivada y pedirla como dato es
-lo que la regla `026` prohibe.
-
-**No hay corroborador y no lo habra.** La auditoria de `InputsOpex`
-—[brechas-plantilla-opex.md](docs/modelo-economico/brechas-plantilla-opex.md)—
-confirmo que el bloque es todo dato. Lo que el libro calcula ahi son totales,
-ratios y la produccion que trae de `InputsProd`, y nada de eso se carga: no hay
-dos valores que comparar. Es la diferencia con produccion, donde el usuario carga
-tambien lo derivado.
-
-**La cola de conceptos propios es de longitud fija y va en un lugar fijo.** Es el
-acuerdo 6 del 27/08/2026, y esa disposicion es lo que permite seguir leyendo por
-secuencia. Pasada la cuenta de la cola, lo que venga tiene que ser el bloque de
-gastos: seguir tragando filas convertiria un gasto mal escrito en un costo con su
-nombre. Lo que se escriba en la cola **solo afecta al total**, que es la condicion
-con que el acuerdo la mantiene contrastable.
-
-### Los gastos no son cash cost, y cada fila va a un sitio distinto
-
-El bloque de gastos de `InputsOpex` entra por la misma pestana y vive en
-`UnidadProductiva.gastos`, separado de `costos`. La separacion no es de orden:
-los administrativos y la gestion social van al flujo operativo, los predios y los
-estudios al de inversiones, y solo una parte de todos ellos rebaja la base
-imponible.
-
-**Dos filas no se piden porque el libro las deriva.** `Planilla` sale del cash
-cost de la unidad por la tasa de los supuestos (regla `026`) y `Gestión Social
-Deducible` es la gestion social por su fraccion deducible, que sin declarar es
-entera (regla `027`). Pedirlas como dato invitaria a que contradijeran a su
-origen.
-
-**Los estudios se llevan por partida doble.** `estudios` es la salida de caja
-completa y `estudios_deducibles` la parte que rebaja la base: la diferencia son
-los capitalizables, que el libro deprecia en vez de deducir. Su naturaleza
-contable no esta declarada en ninguna parte, asi que hoy salen de caja y no se
-deprecian; eso se cierra con la plantilla de CAPEX.
-
-### El capital se pide una vez y la etapa se deriva
-
-[capex.py](packages/ingest/src/minsur_ingest/capex.py) declara la estructura y
-`leer_capex()` la lee, con el mismo patron que opex. La plantilla pide **cinco
-conceptos por unidad**, la clasificacion contable, y nada mas.
-
-**La etapa no se pide porque el libro no la carga.** La auditoria de
-`InputsCapex` —[brechas-plantilla-capex.md](docs/modelo-economico/brechas-plantilla-capex.md)—
-encontro que en toda el area numerica de esa hoja no hay una sola constante
-tecleada, y que la etapa sale por formula de la clasificacion, con tres reglas
-que [clasificar_por_etapa](packages/engine/src/minsur_engine/capex.py) reproduce:
-el cierre es exactamente lo no depreciable, el capital anterior al primer ano con
-produccion es inicial, y el resto es sostenimiento. La cuarta etapa del libro no
-tiene formula y vale cero siempre.
-
-**Consecuencia sobre el `Check`:** con una sola clasificacion cargada, las dos
-salen de las mismas celdas y el cuadre se cumple por construccion. La
-verificacion de `CapitalDeUnidad` se conserva —el capital tambien se construye a
-mano en las pruebas— pero por la via de la plantilla ya no puede fallar, y decir
-lo contrario seria prometer una comprobacion que no existe.
-
-**Equipos de computo va aparte de maquinaria en la plantilla y se consolida al
-leer**, que es lo que hace la via tributaria del libro. Se piden separados porque
-asi llega el dato y porque la via financiera los trata distinto: el dia que
-Finanzas confirme una tasa propia, se le da sin volver a pedir los datos.
+**`TIPOS_DE_UNIDAD` tiene `mina`, `refineria` y `deposito`.** Un deposito recibe relave, no extrae y
+no vende: solo lleva capital y depreciacion, y su costo operativo se carga en la linea `Relavera` de
+la mina a la que sirve. No confundirlo con una relavera de reprocesamiento, que es una mina con
+origen de relave. `UnidadProductiva.produce` decide quien lleva pestana de produccion, y es tambien
+la puerta de la regla `013`: aplicarla a una unidad que no produce por diseno le anularia el escudo
+fiscal entero en vez de retrasarlo.
 
 ### La depreciacion tiene dos vias y dos metodos, no dos juegos de tasas
 
-Hasta el 02/09/2026 el motor asumia que la tributaria y la financiera
-compartian el mecanismo y solo cambiaban las tasas. La diseccion de la hoja
-mostro que no.
+Es lo mas facil de romper del motor, porque las dos vias se parecen y no lo son.
 
 | Componente | Tributaria | Financiera |
 |---|---|---|
@@ -410,228 +379,112 @@ mostro que no.
 | No depreciable | **Entero en su ano** | **Entero en su ano** |
 | Estudios capitalizables | Lineal al 5 % | Lineal al 5 % |
 
-**Agotamiento** es el metodo de unidades de produccion: cada ano se deprecia la
-fraccion del saldo que representa lo extraido sobre las reservas que quedaban.
-No hay cronograma por ano de inversion, hay **un solo saldo** que recibe las
-inversiones y se agota al ritmo al que se vacia el yacimiento.
+**Agotamiento** es el metodo de unidades de produccion: no hay cronograma por ano de inversion, hay
+un solo saldo que recibe las inversiones y se agota al ritmo al que se vacia el yacimiento. Y **`No
+depreciable` engana con el nombre**: no es que no se deprecie, es que no se reparte, y entra entero
+en su ejercicio.
 
-**Las tasas se pueden declarar por caso, y son un solo valor.** Son dato maestro
-que mantiene MINSUR (`R-32`), y la plantilla de supuestos las admite igual: lo
-que el caso declara sobrescribe **solo ese componente**, y lo que calla se rige
-por la version de datos maestros que la corrida registra en su terna. Es el mismo
-patron que ya usan OEFA y Osinergmin.
+Cuatro cosas que conviene no reaprender por las malas:
 
-Van en filas **constantes**: una tasa no cambia de ano a ano, de modo que la
-plantilla les deja una sola celda. Ofrecer cuarenta invita a repetir el mismo
-numero cuarenta veces o, peor, a cambiarlo a la mitad. Lo mismo vale para las
-reservas de apertura.
+- **Las dos vias miran la produccion de forma distinta.** La tributaria acumula; la financiera
+  cierra ano a ano contra la bandera `Ano con produccion`, de modo que una parada a mitad de vida no
+  difiere la cuota financiera: la pierde. Es la regla `041`, y es facil de perder porque las dos
+  parecen la misma condicion.
+- **Cada componente se deprecia y se informa por separado**, aunque el libro fusione el computo con
+  la maquinaria bajo un mismo codigo. `Corrida` lleva las dos vistas, el total por mina y el detalle
+  por componente: un proyecto nuevo puede traer componentes que hoy no existen, y una depreciacion
+  que llega sumada no se puede volver a separar.
+- **Dos puntos no reproducen el modelo a proposito**, las reglas `036` y `039`, por el mismo
+  criterio: una excepcion alojada en la formula de una unidad concreta no tiene donde vivir cuando
+  lo que se evalua es un proyecto que hoy no existe. Estan a la espera del acta que las registre
+  como desviaciones.
+- **Las tasas y las reservas son dato maestro que el caso puede sobrescribir**, componente a
+  componente, y van en filas constantes: una sola celda, no cuarenta. Declarar las reservas las
+  convierte en dato; dejarlas vacias, en calculo, y vacio no es cero.
 
-**`No depreciable` engana con el nombre**: no es que no se deprecie, es que no
-se reparte. Es el escudo del capital de cierre y entra entero en su ejercicio.
+El estudio capitalizable no sale del capital: llega por los gastos del opex, de modo que una unidad
+puede depreciar sin haber invertido. La `Proyeccion SAP` tampoco es un componente: es la
+depreciacion ya contabilizada de los activos que existen antes del primer ano del caso, y viaja en
+el mismo mapa porque se suma con ellos.
 
-**El estudio capitalizable no sale del capital**: llega por los gastos de la
-plantilla de opex y el libro lo deprecia igual, en las dos vias. Una unidad
-puede depreciar sin haber invertido, con solo capitalizar un estudio.
-
-**Cada componente se deprecia y se informa por separado**, aunque el libro
-fusione los equipos de computo con la maquinaria bajo un mismo codigo. Su tasa
-sigue siendo la de la maquinaria, y no por falta de una propia: **su
-clasificacion contable es `MAQ`**, de modo que separar el componente separa el
-detalle y no la clase.
-
-**Dos puntos no reproducen el modelo, y los dos por el mismo criterio.** El libro
-arrastra el computo al agotamiento -su fila resta solo la fila de maquinaria- y
-omite el tope del 100 % en una de las seis unidades. La plataforma no reproduce
-ninguna de las dos, porque evalua un proyecto que hoy no existe con los mismos
-conceptos y las mismas reglas que las unidades actuales, y una excepcion alojada
-en la formula de una unidad concreta no tiene donde vivir. Son las reglas `036` y
-`039`, a la espera del acta que las registre como desviaciones. Un
-proyecto nuevo puede traer componentes que hoy no existen, y una depreciacion
-que llega sumada no se puede volver a separar. `Corrida` lleva las dos vistas:
-el total por mina y el detalle por componente.
-
-**Las dos vias miran la produccion de forma distinta.** La tributaria acumula
--no deprecia antes del primer ano con produccion y desde ahi deprecia siempre- y
-la financiera cierra ano a ano con la bandera `Ano con produccion`: un ano de
-parada a mitad de vida no difiere la cuota financiera, la pierde. Es la regla
-`041`, y es facil de perder porque las dos parecen la misma condicion.
-
-**Las reservas son un saldo de apertura y ruedan.** `reservas finales =
-anteriores - extraido + conversion`, redondeado a tonelada entera, que es la
-regla `001`. La tasa del primer ejercicio se mide contra la apertura y la de los
-siguientes contra el cierre del anterior.
-
-**Declararlas las convierte en dato; dejarlas vacias, en calculo.** Es la
-distincion que hace el libro entre las unidades en operacion, que las leen de su
-plan de vida de mina, y los proyectos, que las derivan de lo que su propio plan
-extrae. En la plantilla de supuestos es una fila por unidad: vacia no son cero
-reservas.
-
-**La `Proyeccion SAP` no es un componente del capital.** Es la depreciacion ya
-contabilizada de los activos que existen antes del primer ano del caso, viene de
-los supuestos por unidad y por via, y viaja en el mismo mapa que los componentes
-porque se suma con ellos.
-
-### La relavera de deposito es una tercera clase de unidad
-
-`TIPOS_DE_UNIDAD` tiene `mina`, `refineria` y `deposito`. Un deposito recibe
-relave, no extrae mineral y no vende nada: **solo lleva capital y depreciacion**,
-y su costo operativo se carga en la linea `Relavera` de la mina a la que sirve.
-No confundirla con una relavera de reprocesamiento, que es una mina con
-`origen="relave"`.
-
-Dos efectos que conviene tener presentes:
-
-- **`UnidadProductiva.produce` es lo que decide quien lleva pestana de
-  produccion**, y hoy solo la mina. Los libros de opex y de capex llevan una por
-  unidad, los tres tipos incluidos.
-- **La puerta de la regla 013 solo se aplica a las unidades que producen.** Una
-  refineria o un deposito no producen nunca por diseno, de modo que la puerta les
-  anularia el escudo fiscal entero en vez de retrasarlo.
+La derivacion completa, con la celda de origen de cada regla, esta en
+[brechas-plantilla-capex.md](docs/modelo-economico/brechas-plantilla-capex.md) y
+[reglas-no-documentadas.md](docs/modelo-economico/reglas-no-documentadas.md).
 
 ### El bloque de la refineria: todo resultado, y sin agrupar
 
-[refineria.py](packages/engine/src/minsur_engine/refineria.py) rehace el bloque
-entero desde lo que producen las minas: lo alimentado por cada origen y su ley,
-el consolidado acotado por la capacidad, la ley promedio ponderada, el refinado,
-el excedente y su venta spot, y el `Check` del libro. **Ninguna de esas filas es
-un dato.** Sus dos unicas entradas son supuestos —la capacidad y la recuperacion
-de cada componente—, que en el libro viven en la hoja `Supuestos`.
+[refineria.py](packages/engine/src/minsur_engine/refineria.py) rehace el bloque de Pisco entero
+desde lo que producen las minas: lo alimentado por cada origen y su ley, el consolidado acotado por
+la capacidad, la ley promedio ponderada, el refinado, el excedente y su venta spot, y el `Check` del
+libro. **Ninguna de esas filas es un dato.**
 
-**Regla de oro: nada se agrupa.** Cada unidad aporta con su propia recuperacion y
-su refinado se calcula por separado; el total es la suma de esos aportes. El libro
-agrupa —`Recuperación Sn SR + B2` y `NZ + SRP`— y la plataforma no lo reproduce,
-por decision del 01/09/2026: un proyecto nuevo no cabe en ningun grupo sin decidir
-a cual se parece, y una diferencia en un total agregado no se puede atribuir a una
-unidad. El efecto es medible, no un matiz, y esta fijado en
-`test_refineria.py::TestReglaDeOro`. Dar el mismo valor a las unidades de un grupo
-reproduce el comportamiento del libro sin tocar el motor.
+**Regla de oro: nada se agrupa.** El libro junta la recuperacion en `SR + B2` y `NZ + SRP`; la
+plataforma la lleva por unidad. Un proyecto nuevo no cabe en ningun grupo sin decidir a cual se
+parece, y una diferencia en un total agregado no se puede atribuir a un origen. El efecto es
+medible, no un matiz, y lo fija `test_refineria.py::TestReglaDeOro`. Dar el mismo valor a las
+unidades de un grupo reproduce el comportamiento del libro sin tocar el motor. La misma regla rige
+la venta: la liquidacion se guarda en `concentrado_liquidado_por_unidad`, no solo su suma.
 
-**Cuando la refineria se satura, el recorte se reparte por merito**: va a spot
-primero el concentrado de menor ley, y **con leyes iguales decide el margen por
-tonelada** —lo que gana la refineria por refinar una tonelada en vez de venderla—,
-que con igual contenido es la diferencia de recuperaciones. El libro se lo resta entero a la ultima unidad en entrar, y eso no se
-generaliza a un proyecto nuevo. Es la desviacion `D-05`, y arrastra una segunda
-consecuencia de coherencia: **el excedente se valoriza a la ley de lo que
-efectivamente fue a spot**, no a la del conjunto. Decir que sale el peor
-concentrado y cobrarlo al promedio seria contradictorio.
+**Cuando la refineria satura, el recorte se reparte por merito** -sale a spot el concentrado de
+menor ley, y con leyes iguales desempata el margen por tonelada-, y **solo al superar la capacidad,
+nunca antes**, aunque algun origen de margen negativo. Es la desviacion `D-05`, decidida por el
+Project Manager y no una lectura del libro, y arrastra que el excedente se valorice a la ley de lo
+que efectivamente fue a spot: decir que sale el peor concentrado y cobrarlo al promedio seria
+contradictorio. Ver
+[desviaciones-acordadas.md](docs/modelo-economico/desviaciones-acordadas.md).
 
-### Los supuestos van en dos plantillas, y no por comodidad
-
-`minsur_ingest/supuestos.py` define las dos, y `leer_comite_de_precios()` y
-`leer_supuestos()` las leen. **Tienen duenos distintos.** El comite de precios es
-dato maestro: lo aprueba y lo sube Finanzas, y quien modela solo elige que comite
-usa. El resto de los supuestos son del caso. Mezclarlos en un archivo dejaria a
-cualquiera cambiando un precio aprobado sin que nadie lo advierta.
-
-El comite lleva **nombre y fecha de aprobacion**, y sin nombre se rechaza: una
-corrida registra que comite uso, no "el vigente", y sin identificacion no hay a
-que referirse. No tiene las ocho ranuras del libro —que reserva ocho juegos y
-elige uno con un selector—: versionar es lo mismo sin el limite ni las ranuras
-rotuladas `xxx`.
-
-La plantilla de supuestos lleva una pestana `Comunes` y una por proyecto, en
-orden. Lo que es de cada unidad es su depreciacion —tributaria y financiera, como
-pide `D-04`— y su recuperacion en la refineria, **una por unidad y no por los
-grupos del libro**, que es la regla de oro.
-
-Tres unidades de medida nuevas que conviene no perder de vista: la plata se
-cotiza en `$/oz` y su ley pagable en `g/t`, y la depreciacion del libro va en
-`k$`, que la ingesta convierte a dolares. Es la regla `003` otra vez.
-
-### Los tres caminos de ingreso, y por fin los tres cableados
-
-El libro vende por tres vias y `corrida._ventas` las recorre todas: **estano
-refinado** a precio mas premio, **estano en concentrado** a precio por el factor
-pagable, y el **concentrado polimetalico**, que se liquida embarque a embarque
-valorizando su contenido pagable y descontando maquila y refinacion.
-
-La tercera estuvo implementada y sin cablear hasta el 01/09/2026:
-`liquidar_concentrado` existia, estaba probada, y nadie la llamaba. El
-concentrado de cobre se calculaba y no se cobraba.
-
-La liquidacion se guarda **por unidad** en `concentrado_liquidado_por_unidad`, no
-solo su suma: es la regla de oro aplicada a la venta, y sin ella una diferencia
-no se puede atribuir a un origen.
-
-**Los aportes reguladores son series del caso, no tasas fijas.** MINSUR confirmo
-el 01/09/2026 que varian los primeros ejercicios porque hay mejor informacion
-sobre ellos. `ParametrosCorporativos` conserva la tasa de referencia y
-`DatosComunes.osinergmin` y `.oefa` la sobrescriben cuando el caso las declara;
-vacio significa usar la de referencia.
-
-### Una fila entera en cero no se muestra
-
-La estructura de la plantilla es la misma para todos los proyectos, de modo que
-un caso de solo estano recibe igual las filas de cobre y de plata. En pantalla no
-tienen nada que decir, y `campos_con_dato()` es quien decide cuales sobran: una
-serie sin ningun valor distinto de cero significa que el concepto **no aplica a
-esa unidad**.
-
-Vive en el motor y la corrida lo expone en `campos_con_dato_por_unidad`, para que
-la API y la interfaz lleguen a la misma conclusion del mismo caso. Si cada
-pantalla lo resolviera por su cuenta acabarian mostrando cosas distintas.
-
-**Vacio y todo ceros son lo mismo aqui.** Una serie que no se lleno y una que se
-lleno con ceros dicen ambas que el concepto no aplica; distinguirlas obligaria al
-usuario a recordar cual de las dos escribio.
+Los supuestos que lo alimentan van en **dos plantillas con duenos distintos**: el comite de precios
+es dato maestro que aprueba y sube Finanzas -lleva nombre y fecha de aprobacion, y sin nombre se
+rechaza, porque una corrida registra que comite uso y no el vigente-, y el resto son supuestos del
+caso, con una pestana `Comunes` y una por proyecto. Mezclarlos dejaria a cualquiera cambiando un
+precio aprobado sin que nadie lo advierta.
 
 ### El corroborador: alarma y control de calidad, no correccion
 
-Toda la produccion entra como dato, **incluidos los valores que salen de un
-calculo interno**. El usuario carga sus series tal como las tiene y
-[corroboracion.py](packages/engine/src/minsur_engine/corroboracion.py) las rehace
-y compara, celda a celda, con su unidad, su ano y su magnitud.
-
-Las ocho reglas no son una interpretacion nuestra: son las formulas del bloque
-`Calculo Interno` del libro de produccion que MINSUR entrego el 01/09/2026. Estan
-transcritas en el docstring del modulo y en
-[brechas-plantilla-produccion.md](docs/modelo-economico/brechas-plantilla-produccion.md).
-Dos merecen atencion porque es facil equivocarlas: **las toneladas finas llevan
-el factor de recuperacion**, y **el concentrado es las finas entre su ley y nada
-mas** —aplicar la recuperacion otra vez la cuenta dos veces—.
+Toda la produccion entra como dato, **incluidos los valores que salen de un calculo interno**, y
+[corroboracion.py](packages/engine/src/minsur_engine/corroboracion.py) los rehace y compara celda a
+celda, con su unidad, su ano y su magnitud. Las ocho reglas no son una interpretacion nuestra: son
+las formulas del bloque `Calculo Interno` del libro que MINSUR entrego el 01/09/2026, transcritas en
+el docstring del modulo.
 
 Tres propiedades que no conviene romper:
 
-- **El dato cargado es el que usa el flujo.** El recalculo lo audita y no lo
-  sustituye nunca. Es la misma regla de fidelidad que impide corregir el modelo
-  corporativo, y esta atada por `test_corroboracion.py::TestElDatoDelUsuarioEsElQueManda`:
-  alterar una fila corroborable mueve el resultado **como mueve el dato**, no
-  como dice el recalculo, y alterar una que solo lee el corroborador deja el
-  resultado intacto hasta el ultimo decimal. Si alguna de esas dos pruebas
-  falla, es que el recalculo se colo en el calculo.
-- **Corroborar nunca detiene el calculo.** Un caso con una ley mal tecleada llega
-  hasta el NPV para que se vea el efecto.
-- **El informe viaja en la corrida** y se congela con ella. Sin eso no se puede
-  sustentar despues por que se acepto una diferencia.
+- **El dato cargado es el que usa el flujo.** El recalculo lo audita y no lo sustituye nunca; es la
+  misma regla de fidelidad que impide corregir el modelo corporativo. Lo atan las dos pruebas de
+  `test_corroboracion.py::TestElDatoDelUsuarioEsElQueManda`, y si alguna falla es que el recalculo
+  se colo en el calculo.
+- **Corroborar nunca detiene el calculo.** Un caso con una ley mal tecleada llega hasta el NPV para
+  que se vea el efecto.
+- **El informe viaja en la corrida** y se congela con ella. Sin eso no se puede sustentar despues
+  por que se acepto una diferencia.
 
-La tolerancia de corroboracion **no es la del contraste N1**: aquella compara el
-motor contra el libro y la fija Finanzas (`R-31`); esta compara el dato del
-usuario contra el recalculo del propio sistema. El 0,5 % de
-`TOLERANCIA_POR_DEFECTO` es propuesta de INVA y esta consultada.
+La tolerancia de corroboracion **no es la del contraste N1**: aquella compara el motor contra el
+libro y la fija Finanzas (`R-31`); esta compara el dato del usuario contra el recalculo del propio
+sistema, y el 0,5 % de `TOLERANCIA_POR_DEFECTO` es propuesta de INVA.
 
-### El capital de trabajo rota sobre la bolsa, y el IGV llega en cero
+### Cinco decisiones del motor que no se deducen leyendolo
 
-La hoja `Otros` del libro es la que arma el capital de trabajo, y tiene tres cosas que no se
-deducen del codigo si no se leyeron sus formulas.
-
-**La deuda rota sobre la bolsa de egresos, no sobre el costo operativo.**
-[_bolsa_de_egresos](packages/engine/src/minsur_engine/corrida.py) suma los once conceptos de las
-filas 43 a 55, **capital incluido**. Con el saldo en `base x dias / 360`, dejar el capex fuera mueve
-la variacion por encima de la tolerancia de N1 justo en el ano de mayor desembolso. La bolsa no
-vuelve al flujo: cada componente ya llega por su linea.
-
-**La cuenta no se mueve en un ano sin produccion.** El libro multiplica la fila entera por la
-bandera `Ano con produccion`, de modo que hay tres comportamientos: un ano productivo seguido de
-otro mueve la diferencia de saldos, el ultimo de una racha suma ademas el saldo entero -la cartera
-se cobra y las deudas se pagan- y una parada no mueve nada. Sin el tercero, una parada intermedia
-recupera el saldo dos veces. Es la regla `053`, y `test_el_ciclo_cierra_salvo_lo_que_abre_antes_de_producir`
-la fija sin necesidad de tener el libro delante.
-
-**El IGV se calcula entero y llega al flujo multiplicado por cero.** No es codigo muerto ni una
-omision: el bloque tiene cifras, sale en los estados financieros y su variacion entra al flujo
-multiplicada por `PESO_DEL_IGV_EN_EL_FLUJO`, que vale cero porque el libro escribe ese cero. Es la
-regla `014`, sin confirmar por Finanzas. El dia que la confirmen, cambia esa linea y nada mas.
+- **Los tres caminos de ingreso.** `corrida._ventas` recorre estano refinado a precio mas premio,
+  estano en concentrado a precio por el factor pagable, y la liquidacion del polimetalico embarque a
+  embarque. El tercero estuvo implementado, probado y sin cablear hasta el 01/09/2026: el
+  concentrado de cobre se calculaba y no se cobraba.
+- **Una fila entera en cero no se muestra.** `campos_con_dato()` vive en el motor y la corrida lo
+  expone en `campos_con_dato_por_unidad`, para que la API y la interfaz lleguen a la misma
+  conclusion del mismo caso; si cada pantalla lo resolviera por su cuenta acabarian mostrando cosas
+  distintas. Vacio y todo ceros son lo mismo aqui.
+- **La deuda del capital de trabajo rota sobre la bolsa de egresos, capital incluido**, no sobre el
+  costo operativo. Dejar el capex fuera mueve la variacion por encima de la tolerancia de N1 justo
+  en el ano de mayor desembolso. La bolsa no vuelve al flujo: cada componente ya llega por su linea.
+  Y la cuenta no se mueve en un ano sin produccion, con los tres comportamientos de la regla `053`
+  que fija `test_el_ciclo_cierra_salvo_lo_que_abre_antes_de_producir`.
+- **El IGV se calcula entero y llega al flujo multiplicado por cero.** No es codigo muerto ni una
+  omision: el bloque tiene cifras, sale en los estados financieros y su variacion entra multiplicada
+  por `PESO_DEL_IGV_EN_EL_FLUJO`, que vale cero porque el libro escribe ese cero. Es la regla `014`,
+  sin confirmar por Finanzas; el dia que la confirmen, cambia esa linea y nada mas.
+- **Los aportes reguladores son series del caso, no tasas fijas.** MINSUR confirmo el 01/09/2026 que
+  varian los primeros ejercicios porque hay mejor informacion sobre ellos. `ParametrosCorporativos`
+  conserva la tasa de referencia y `DatosComunes.osinergmin` y `.oefa` la sobrescriben cuando el
+  caso las declara.
 
 ### Lo que ya esta construido: el dominio
 
@@ -713,7 +566,8 @@ publicado, de modo que un cambio de rutas o de cabeceras no se comprueba corrien
 Una sola plantilla, `infra/bicep/main.bicep`, para los cuatro entornos; solo cambian los
 `.bicepparam` de `envs/`. Los pipelines de `infra/pipelines/` se apoyan en cuatro scripts de Python
 (`verificacion_pase.py`, `verificar_manifiestos.py`, `evaluar_hallazgos.py`, `evaluar_zap.py`) que
-tambien estan sujetos a `ruff` y `mypy`.
+tambien estan sujetos a `ruff` y `mypy`. Como se compilan y se analizan las plantillas esta en la
+seccion 2.
 
 ---
 
@@ -722,7 +576,15 @@ tambien estan sujetos a `ruff` y `mypy`.
 **Los archivos de bloqueo estan versionados y CI los exige intactos.** Corre `uv sync --frozen` y
 `pnpm install --frozen-lockfile`, de modo que un `uv.lock` o un `pnpm-lock.yaml` que no concuerde
 con su manifiesto detiene el pipeline en el primer paso. Si cambias una dependencia, el lock
-regenerado entra en el mismo commit.
+regenerado entra en el mismo commit:
+
+```bash
+uv lock
+pnpm install --lockfile-only
+```
+
+`uv sync --all-packages` tambien regenera el lock si el manifiesto cambio, de modo que un
+`uv.lock` modificado despues de instalar no es ruido: es el cambio que hay que versionar.
 
 **`packages/contracts/src/api.d.ts` es generado pero CI no lo genera.** El trabajo `web` de
 [ci.yml](infra/pipelines/ci.yml) corre `pnpm typecheck` sin pasar antes por `pnpm contracts`, y
