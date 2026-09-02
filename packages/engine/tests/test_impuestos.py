@@ -14,11 +14,14 @@ from __future__ import annotations
 
 import pytest
 
+from minsur_engine.horizonte import Horizonte
 from minsur_engine.impuestos import (
+    BloqueDeImpuestos,
     EntradasTributarias,
     ErrorTributos,
     EscalaProgresiva,
     Tramo,
+    calcular,
     resolver,
     resolver_por_punto_fijo,
 )
@@ -89,6 +92,36 @@ class TestEscalaProgresiva:
             regalia = ESCALA_REGALIA.suma_de_tramos(utilidad / ventas) * ventas
             assert regalia == pytest.approx(ventas * constante + pendiente * utilidad)
 
+    def test_los_aportes_suman_lo_mismo_que_la_forma_afin(self) -> None:
+        # Dos implementaciones de la misma cantidad, por el mismo motivo que
+        # conviven la solucion cerrada y el punto fijo: la de tramos informa la
+        # tabla del libro y la afin resuelve el sistema. Si divergen, una de las
+        # dos esta mal.
+        for margen in (-0.20, 0.0, 0.05, 0.10, 0.25, 0.40, 5.0):
+            assert sum(ESCALA_REGALIA.aportes(margen)) == pytest.approx(
+                ESCALA_REGALIA.suma_de_tramos(margen)
+            )
+            assert sum(ESCALA_IEM.aportes(margen)) == pytest.approx(
+                ESCALA_IEM.suma_de_tramos(margen)
+            )
+
+    def test_un_tramo_no_aporta_nada_por_encima_del_margen(self) -> None:
+        # Margen 0,25: los dos primeros tramos completos, el tercero parcial y
+        # el cuarto en cero. Es la fila de la tabla que el libro deja vacia.
+        aportes = ESCALA_REGALIA.aportes(0.25)
+        assert aportes == pytest.approx((0.10 * 0.01, 0.10 * 0.02, 0.05 * 0.04, 0.0))
+
+    def test_la_tasa_efectiva_es_la_suma_entre_el_margen(self) -> None:
+        assert ESCALA_REGALIA.tasa_efectiva(0.25) == pytest.approx(
+            sum(ESCALA_REGALIA.aportes(0.25)) / 0.25
+        )
+
+    def test_sin_margen_la_tasa_efectiva_es_cero(self) -> None:
+        # Es el `IFERROR` de las filas 22 y 26: la division se indetermina y
+        # cero es el resultado esperado.
+        assert ESCALA_REGALIA.tasa_efectiva(0.0) == 0.0
+        assert ESCALA_IEM.tasa_efectiva(0.0) == 0.0
+
     def test_una_escala_con_hueco_no_se_construye(self) -> None:
         with pytest.raises(ErrorTributos, match="hueco"):
             EscalaProgresiva(tramos=(Tramo(0.0, 0.1, 0.01), Tramo(0.2, 0.3, 0.02)))
@@ -146,6 +179,24 @@ class TestRegalia:
         r = resolver(datos)
         assert r.regalia > datos.tasa_regalia_ventas * datos.ventas_totales
 
+    def test_la_tea_reconstruye_la_regalia(self) -> None:
+        # El libro escribe `TEA x utilidad operativa` y el motor
+        # `suma de tramos x ventas`. Son la misma cantidad, y esta prueba es lo
+        # que permite informar la primera mientras se calcula con la segunda.
+        for base in (150_000.0, 400_000.0, 700_000.0):
+            r = resolver(entradas(base_operativa=base, base_imponible=base - 20_000.0))
+            assert r.tasa_efectiva_regalia * r.utilidad_operativa == pytest.approx(
+                r.regalia_sobre_margen
+            )
+            assert r.tasa_efectiva_iem * r.utilidad_operativa == pytest.approx(
+                r.impuesto_especial_mineria
+            )
+
+    def test_la_regalia_mayor_es_el_maximo_de_las_dos_filas(self) -> None:
+        for base in (30_000.0, 400_000.0, 700_000.0):
+            r = resolver(entradas(base_operativa=base, base_imponible=base - 20_000.0))
+            assert r.regalia == max(r.regalia_sobre_margen, r.regalia_sobre_ventas)
+
 
 class TestDeduccionesYSalidas:
     def test_las_perdidas_acumuladas_se_deducen_hasta_la_mitad_de_la_utilidad(self) -> None:
@@ -179,3 +230,157 @@ class TestDeduccionesYSalidas:
             neta - r.fondo_jubilacion_minera - r.participacion_trabajadores
         ) * datos.tasa_impuesto_renta
         assert r.impuesto_renta == pytest.approx(esperado)
+
+
+HORIZONTE = Horizonte(primer_ano=2027, anos=4)
+
+
+def bloque(**cambios: object) -> BloqueDeImpuestos:
+    """La hoja entera sobre un caso pequeño, con un año de pérdida en medio."""
+    argumentos: dict[str, object] = {
+        "ventas": (0.0, 1_000_000.0, 400_000.0, 1_200_000.0),
+        "cash_cost": (0.0, 400_000.0, 380_000.0, 420_000.0),
+        "fletes": (0.0, 30_000.0, 12_000.0, 36_000.0),
+        "gasto_de_ventas": (0.0, 20_000.0, 8_000.0, 24_000.0),
+        "administrativos": (5_000.0, 50_000.0, 50_000.0, 50_000.0),
+        "estudios_deducibles": (12_000.0, 4_000.0, 4_000.0, 0.0),
+        "gestion_social_deducible": (0.0, 15_000.0, 15_000.0, 15_000.0),
+        "otros_gastos": (0.0, 6_000.0, 6_000.0, 6_000.0),
+        "tasa_osinergmin": (0.0014, 0.0014, 0.0014, 0.0014),
+        "tasa_oefa": (0.001, 0.001, 0.001, 0.001),
+        "depreciacion_financiera": (0.0, 90_000.0, 90_000.0, 90_000.0),
+        "depreciacion_tributaria": (0.0, 120_000.0, 120_000.0, 60_000.0),
+        "exploraciones": (8_000.0, 0.0, 0.0, 0.0),
+        "tasa_regalia_ventas": 0.01,
+        "tasa_fondo_jubilacion": 0.005,
+        "tasa_participacion": 0.08,
+        "tasa_impuesto_renta": 0.295,
+        "saldo_inicial_de_perdidas": 0.0,
+    }
+    argumentos.update(cambios)
+    return calcular(
+        HORIZONTE,
+        escala_regalia=ESCALA_REGALIA,
+        escala_iem=ESCALA_IEM,
+        **argumentos,  # type: ignore[arg-type]
+    )
+
+
+def suma_de_filas(filas: tuple[tuple[float, ...], ...], ano: int) -> float:
+    return sum(fila[ano] for fila in filas)
+
+
+class TestLaHojaEntera:
+    """El bloque reproduce la hoja `Impuestos` fila a fila.
+
+    Estas pruebas no verifican el resultado tributario -de eso se ocupan las de
+    arriba- sino que las filas expuestas sean las de la hoja y que sus sumas
+    cierren. Si una fila se cae del bloque, o entra con el signo cambiado, aqui
+    se ve; en el NPV, no.
+    """
+
+    def test_la_utilidad_operativa_es_la_suma_de_sus_doce_filas(self) -> None:
+        # `Impuestos!20 = SUM(8:19)`, con la 19 incluida: el fondo de jubilacion
+        # descuenta la misma utilidad que lo determina.
+        b = bloque()
+        for ano in range(HORIZONTE.anos):
+            assert b.regalias.utilidad_operativa[ano] == pytest.approx(
+                suma_de_filas(b.regalias.conceptos, ano)
+            )
+
+    def test_la_utilidad_operativa_de_renta_es_la_suma_de_sus_once_filas(self) -> None:
+        # `Impuestos!41 = SUM(30:40)`. Aqui no entra el fondo de jubilacion.
+        b = bloque()
+        for ano in range(HORIZONTE.anos):
+            assert b.renta.utilidad_operativa[ano] == pytest.approx(
+                suma_de_filas(b.renta.conceptos, ano)
+            )
+
+    def test_la_utilidad_imponible_es_la_suma_de_sus_seis_filas(self) -> None:
+        # `Impuestos!47 = SUM(41:46)`.
+        b = bloque()
+        for ano in range(HORIZONTE.anos):
+            assert b.renta.utilidad_imponible[ano] == pytest.approx(
+                suma_de_filas(b.renta.sumandos_de_la_imponible, ano)
+            )
+
+    def test_la_utilidad_tras_participaciones_es_la_suma_de_sus_tres_filas(self) -> None:
+        # `Impuestos!59 = SUM(56:58)`.
+        b = bloque()
+        for ano in range(HORIZONTE.anos):
+            assert b.impuesto_a_la_renta.utilidad_luego_de_participaciones[ano] == pytest.approx(
+                suma_de_filas(b.impuesto_a_la_renta.sumandos, ano)
+            )
+
+    def test_el_saldo_final_es_la_suma_de_sus_tres_filas(self) -> None:
+        # `Impuestos!67 = SUM(64:66)`.
+        b = bloque()
+        p = b.perdida_tributaria
+        for ano in range(HORIZONTE.anos):
+            assert p.saldo_final[ano] == pytest.approx(
+                p.saldo_inicial[ano] + p.perdida_de_ejercicio[ano] + p.perdida_a_amortizar[ano]
+            )
+
+    def test_el_lazo_cierra_fila_contra_fila(self) -> None:
+        # `Impuestos!19 = 57`, que es el unico lazo de la hoja.
+        b = bloque()
+        assert b.regalias.fondo_de_jubilacion == b.impuesto_a_la_renta.fondo_de_jubilacion
+
+    def test_el_saldo_de_perdidas_rueda_de_un_ano_al_siguiente(self) -> None:
+        # `Impuestos!64` del ejercicio n es la `67` del n-1.
+        p = bloque(ventas=(0.0, 200_000.0, 400_000.0, 1_500_000.0)).perdida_tributaria
+        for ano in range(HORIZONTE.anos - 1):
+            assert p.saldo_inicial[ano + 1] == pytest.approx(p.saldo_final[ano])
+        assert p.saldo_inicial[0] == 0.0
+
+    def test_un_ejercicio_con_perdida_alimenta_el_saldo(self) -> None:
+        p = bloque().perdida_tributaria
+        with_perdida = [i for i, v in enumerate(p.perdida_de_ejercicio) if v > 0.0]
+        assert with_perdida, "el caso de prueba deberia tener un ano en perdida"
+        for ano in with_perdida:
+            assert p.saldo_final[ano] > p.saldo_inicial[ano]
+
+    def test_las_dos_bases_difieren_en_la_via_de_la_depreciacion(self) -> None:
+        # Es la diferencia que un contraste por indicadores no delata: las dos
+        # bases comparten nueve conceptos y separan la depreciacion.
+        b = bloque()
+        assert b.regalias.depreciacion_financiera != b.renta.depreciacion_tributaria
+        assert b.regalias.costo_de_produccion == b.renta.costo_de_produccion
+        assert b.regalias.ventas_totales == b.renta.ventas_netas
+
+    def test_los_gastos_entran_con_el_signo_del_libro(self) -> None:
+        b = bloque()
+        assert all(valor <= 0.0 for valor in b.regalias.costo_de_produccion)
+        assert all(valor <= 0.0 for valor in b.regalias.osinergmin)
+        assert all(valor >= 0.0 for valor in b.regalias.ventas_totales)
+
+    def test_las_filas_financieras_estan_declaradas_y_valen_cero(self) -> None:
+        # Las filas 44 y 45 del libro estan vacias, y el estandar las nombra.
+        b = bloque()
+        assert b.renta.ingresos_financieros == HORIZONTE.ceros()
+        assert b.renta.gastos_financieros == HORIZONTE.ceros()
+
+    def test_la_tabla_de_tramos_lleva_una_fila_por_tramo(self) -> None:
+        b = bloque()
+        assert len(b.tramos_de_regalia) == len(ESCALA_REGALIA.tramos)
+        assert len(b.tramos_de_iem) == len(ESCALA_IEM.tramos)
+        for fila in b.tramos_de_regalia:
+            assert len(fila.aporte) == HORIZONTE.anos
+
+    def test_los_aportes_de_la_tabla_reconstruyen_la_tea(self) -> None:
+        # `Impuestos!22 = SUM(72:87) / 21`, que es lo que hace contrastable un
+        # tramo suelto cuando la TEA no cuadra.
+        b = bloque()
+        for ano in range(HORIZONTE.anos):
+            margen = b.regalias.margen_operativo[ano]
+            if margen == 0.0:
+                assert b.regalias.tasa_efectiva_regalia[ano] == 0.0
+                continue
+            aportado = suma_de_filas(tuple(f.aporte for f in b.tramos_de_regalia), ano)
+            assert b.regalias.tasa_efectiva_regalia[ano] == pytest.approx(aportado / margen)
+
+    def test_sin_ventas_el_ejercicio_no_paga_nada(self) -> None:
+        b = bloque()
+        assert b.regalias.ventas_totales[0] == 0.0
+        assert b.regalias.regalia_mayor[0] == 0.0
+        assert b.impuesto_a_la_renta.impuesto_a_la_renta[0] == 0.0

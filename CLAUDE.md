@@ -462,8 +462,17 @@ La tolerancia de corroboracion **no es la del contraste N1**: aquella compara el
 libro y la fija Finanzas (`R-31`); esta compara el dato del usuario contra el recalculo del propio
 sistema, y el 0,5 % de `TOLERANCIA_POR_DEFECTO` es propuesta de INVA.
 
-### Cinco decisiones del motor que no se deducen leyendolo
+### Seis decisiones del motor que no se deducen leyendolo
 
+- **El unico lazo del motor esta en `impuestos.py`, y no se itera.** La hoja `Impuestos` se muerde
+  la cola: el fondo de jubilacion minera es gasto de la misma utilidad operativa que sirve para
+  calcularlo, y en el libro es la fila 19 leyendo la 57. El libro lo cierra con el calculo iterativo
+  de Excel; el motor resuelve el sistema en forma cerrada, porque es afin a trozos, y lo contrasta
+  contra un punto fijo independiente. Si `test_coincide_con_el_punto_fijo` falla, la derivacion esta
+  mal aunque el resultado parezca razonable. Lo decide el
+  [ADR 0009](docs/adr/0009-resolucion-de-la-circularidad-tributaria.md). El bloque expone la hoja
+  entera **con el signo del libro** -ventas positivas, gastos negativos-, de modo que cada total es
+  literalmente la suma de las filas que tiene encima, y eso es lo que se contrasta.
 - **Los tres caminos de ingreso.** `corrida._ventas` recorre estano refinado a precio mas premio,
   estano en concentrado a precio por el factor pagable, y la liquidacion del polimetalico embarque a
   embarque. El tercero estuvo implementado, probado y sin cablear hasta el 01/09/2026: el

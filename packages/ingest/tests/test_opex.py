@@ -319,7 +319,7 @@ class TestGastosDerivados:
         # Los 30 del estudio de gasto y los 70 del capitalizable salen de caja.
         assert corrida.flujo.flujo_de_inversiones[0] == pytest.approx(-100_000.0)
         # De la base imponible solo se descuentan los 30.
-        assert corrida.tributos_por_ano[0].utilidad_imponible == pytest.approx(-30_000.0)
+        assert corrida.impuestos.por_ano[0].utilidad_imponible == pytest.approx(-30_000.0)
 
     def test_el_estudio_capitalizable_se_deprecia(self, libro_de_opex: Path) -> None:
         # Capitalizar es diferir, no perder: sale de caja el primer ano y rebaja

@@ -48,6 +48,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import pairwise
 
+from minsur_engine.horizonte import Horizonte, Serie
+
 TOLERANCIA_CONSISTENCIA = 1e-9
 
 
@@ -116,6 +118,38 @@ class EscalaProgresiva:
                 break
         return constante, 0.0
 
+    def aportes(self, margen: float) -> tuple[float, ...]:
+        """El aporte de cada tramo, que es lo que la hoja escribe fila a fila.
+
+        Reproduce la fórmula de las tablas `Impuestos!72:87` y `!92:108`: un
+        tramo por debajo del margen aporta su ancho entero por su tasa, el que
+        contiene al margen aporta la porción que le corresponde, y el que queda
+        por encima no aporta nada.
+
+        Es la misma cantidad que `coeficientes()` evalúa en forma afín, y las
+        dos conviven a propósito: esta sirve para informar la tabla del libro,
+        aquella para resolver el sistema sin iterar.
+        """
+        aportes: list[float] = []
+        for tramo in self.tramos:
+            if margen > tramo.limite_superior:
+                aportes.append((tramo.limite_superior - tramo.limite_inferior) * tramo.tasa)
+            elif margen < tramo.limite_inferior:
+                aportes.append(0.0)
+            else:
+                aportes.append((margen - tramo.limite_inferior) * tramo.tasa)
+        return tuple(aportes)
+
+    def tasa_efectiva(self, margen: float) -> float:
+        """La TEA de las filas 22 y 26: la suma de aportes entre el margen.
+
+        El libro la protege con `IFERROR` porque un margen nulo la indetermina,
+        y cero es el resultado esperado (regla `008`).
+        """
+        if margen == 0.0:
+            return 0.0
+        return sum(self.aportes(margen)) / margen
+
     def suma_de_tramos(self, margen: float) -> float:
         constante, pendiente = self.coeficientes(margen)
         return constante + pendiente * margen
@@ -151,17 +185,63 @@ class EntradasTributarias:
 
 @dataclass(frozen=True)
 class ResultadoTributario:
-    """Solución del año, con las líneas que el contraste N1 verifica una a una."""
+    """Solución del año, con las líneas que el contraste N1 verifica una a una.
+
+    Cada campo es una fila de la hoja `Impuestos`, y el número entre paréntesis
+    de su comentario es esa fila. Nada aquí es un intermedio inventado: si un
+    valor no está en la hoja, no está en este resultado.
+    """
 
     utilidad_operativa: float
+    """`20`, y la incógnita del sistema."""
+
     margen_operativo: float
+    """`21`."""
+
+    tasa_efectiva_regalia: float
+    """`22`, la TEA que el libro obtiene sumando la tabla de tramos."""
+
+    regalia_sobre_margen: float
+    """`23`."""
+
+    regalia_sobre_ventas: float
+    """`24`."""
+
     regalia: float
+    """`25`, la mayor de las dos anteriores."""
+
+    tasa_efectiva_iem: float
+    """`26`."""
+
     impuesto_especial_mineria: float
+    """`27`."""
+
     utilidad_imponible: float
+    """`47`."""
+
     deduccion_perdidas: float
+    """`48`, negativa, y también la fila `66` con el signo del libro."""
+
+    utilidad_luego_de_deduccion: float
+    """`49`, y la fila `56`, que es la misma celda."""
+
     fondo_jubilacion_minera: float
+    """`51`. Es lo único que realimenta: la fila `19` lo descuenta."""
+
     participacion_trabajadores: float
+    """`53`."""
+
+    utilidad_luego_de_participaciones: float
+    """`59`."""
+
     impuesto_renta: float
+    """`61`."""
+
+    aportes_de_regalia: tuple[float, ...]
+    """Las 16 filas `72:87`, una por tramo de la escala."""
+
+    aportes_de_iem: tuple[float, ...]
+    """Las 17 filas `92:108`."""
 
 
 def resolver(entradas: EntradasTributarias) -> ResultadoTributario:
@@ -278,6 +358,11 @@ def _armar(entradas: EntradasTributarias, utilidad_operativa: float) -> Resultad
     ventas = entradas.ventas_totales
     margen = utilidad_operativa / ventas if ventas else 0.0
 
+    # El libro escribe la regalia como TEA por utilidad operativa, y el motor
+    # como suma de tramos por ventas. Son la misma cantidad -el margen se
+    # cancela contra si mismo, ver el encabezado- y aqui se conserva la segunda,
+    # que es la forma con que se derivo la solucion cerrada. La TEA se informa
+    # como la escribe la hoja, y `test_la_tea_reconstruye_la_regalia` ata las dos.
     regalia_por_margen = entradas.escala_regalia.suma_de_tramos(margen) * ventas
     regalia_por_ventas = entradas.tasa_regalia_ventas * ventas
     regalia = max(regalia_por_margen, regalia_por_ventas)
@@ -297,13 +382,21 @@ def _armar(entradas: EntradasTributarias, utilidad_operativa: float) -> Resultad
     return ResultadoTributario(
         utilidad_operativa=utilidad_operativa,
         margen_operativo=margen,
+        tasa_efectiva_regalia=entradas.escala_regalia.tasa_efectiva(margen),
+        regalia_sobre_margen=regalia_por_margen,
+        regalia_sobre_ventas=regalia_por_ventas,
         regalia=regalia,
+        tasa_efectiva_iem=entradas.escala_iem.tasa_efectiva(margen),
         impuesto_especial_mineria=iem,
         utilidad_imponible=imponible,
         deduccion_perdidas=deduccion,
+        utilidad_luego_de_deduccion=neta,
         fondo_jubilacion_minera=fondo,
         participacion_trabajadores=participacion,
+        utilidad_luego_de_participaciones=neta - fondo - participacion,
         impuesto_renta=renta,
+        aportes_de_regalia=entradas.escala_regalia.aportes(margen),
+        aportes_de_iem=entradas.escala_iem.aportes(margen),
     )
 
 
@@ -334,13 +427,21 @@ def _sin_actividad(entradas: EntradasTributarias) -> ResultadoTributario:
     return ResultadoTributario(
         utilidad_operativa=entradas.base_operativa - fondo,
         margen_operativo=0.0,
+        tasa_efectiva_regalia=0.0,
+        regalia_sobre_margen=0.0,
+        regalia_sobre_ventas=0.0,
         regalia=0.0,
+        tasa_efectiva_iem=0.0,
         impuesto_especial_mineria=0.0,
         utilidad_imponible=neta,
         deduccion_perdidas=0.0,
+        utilidad_luego_de_deduccion=neta,
         fondo_jubilacion_minera=fondo,
         participacion_trabajadores=participacion,
+        utilidad_luego_de_participaciones=neta - fondo - participacion,
         impuesto_renta=max((neta - fondo - participacion) * entradas.tasa_impuesto_renta, 0.0),
+        aportes_de_regalia=tuple(0.0 for _ in entradas.escala_regalia.tramos),
+        aportes_de_iem=tuple(0.0 for _ in entradas.escala_iem.tramos),
     )
 
 
@@ -362,3 +463,396 @@ def resolver_por_punto_fijo(
             return _armar(entradas, candidata)
         utilidad = candidata
     raise ErrorTributos("El punto fijo de verificacion no convergio.")
+
+
+# ---------------------------------------------------------------------------
+# La hoja entera
+# ---------------------------------------------------------------------------
+#
+# Lo de arriba resuelve un ano. Lo que sigue arma la hoja `Impuestos` completa
+# a partir de los bloques anteriores del motor, con una serie por fila y con el
+# signo del libro: las ventas positivas y los gastos negativos, de modo que la
+# utilidad operativa es literalmente la suma de las filas que tiene encima.
+#
+# La auditoria fila a fila esta en
+# `docs/modelo-economico/brechas-hoja-impuestos.md`.
+
+
+@dataclass(frozen=True)
+class AporteDeTramo:
+    """Una fila de las tablas `Impuestos!72:87` y `!92:108`."""
+
+    limite_inferior: float
+    limite_superior: float
+    tasa: float
+    aporte: Serie
+
+
+@dataclass(frozen=True)
+class BloqueDeRegalias:
+    """`Impuestos!8:27`, la base sobre la que se calculan regalia e IEM."""
+
+    ventas_totales: Serie
+    costo_de_produccion: Serie
+    fletes: Serie
+    gastos_de_ventas: Serie
+    gastos_administrativos: Serie
+    gasto_estudios: Serie
+    depreciacion_financiera: Serie
+    gestion_social_deducible: Serie
+    otros_gastos: Serie
+    osinergmin: Serie
+    oefa: Serie
+    fondo_de_jubilacion: Serie
+    """`19`, que es la fila `57` y cierra el unico lazo de la hoja."""
+
+    utilidad_operativa: Serie
+    margen_operativo: Serie
+    tasa_efectiva_regalia: Serie
+    regalia_sobre_margen: Serie
+    regalia_sobre_ventas: Serie
+    regalia_mayor: Serie
+    tasa_efectiva_iem: Serie
+    impuesto_especial: Serie
+
+    @property
+    def conceptos(self) -> tuple[Serie, ...]:
+        """Las doce filas `8:19` que la `20` suma, en el orden del libro."""
+        return (
+            self.ventas_totales,
+            self.costo_de_produccion,
+            self.fletes,
+            self.gastos_de_ventas,
+            self.gastos_administrativos,
+            self.gasto_estudios,
+            self.depreciacion_financiera,
+            self.gestion_social_deducible,
+            self.otros_gastos,
+            self.osinergmin,
+            self.oefa,
+            self.fondo_de_jubilacion,
+        )
+
+
+@dataclass(frozen=True)
+class BloqueDeRenta:
+    """`Impuestos!30:53`, la base imponible y lo que cuelga de ella.
+
+    Se parece al bloque de regalias y no es el mismo: cambia la via de la
+    depreciacion, no descuenta el fondo de jubilacion, y suma tres conceptos
+    que aquel no tiene -la regalia, la exploracion y el IEM-.
+    """
+
+    ventas_netas: Serie
+    """`30`. Es la misma celda que la `8` pese a la etiqueta: regla `057`."""
+
+    costo_de_produccion: Serie
+    fletes: Serie
+    gastos_de_ventas: Serie
+    gastos_administrativos: Serie
+    gasto_estudios: Serie
+    depreciacion_tributaria: Serie
+    gestion_social_deducible: Serie
+    otros_gastos: Serie
+    osinergmin: Serie
+    oefa: Serie
+    utilidad_operativa: Serie
+    regalias_mineras: Serie
+    gastos_de_exploracion: Serie
+    ingresos_financieros: Serie
+    """`44`, vacia en el libro. Se declara y vale cero: ver la nota 2 de `mapa-n1.md`."""
+
+    gastos_financieros: Serie
+    """`45`, vacia por el mismo motivo."""
+
+    impuesto_especial: Serie
+    utilidad_imponible: Serie
+    deduccion_por_perdidas: Serie
+    utilidad_luego_de_deduccion: Serie
+    tasa_fondo_de_jubilacion: Serie
+    fondo_de_jubilacion: Serie
+    tasa_participacion: Serie
+    participacion_trabajadores: Serie
+
+    @property
+    def conceptos(self) -> tuple[Serie, ...]:
+        """Las once filas `30:40` que la `41` suma."""
+        return (
+            self.ventas_netas,
+            self.costo_de_produccion,
+            self.fletes,
+            self.gastos_de_ventas,
+            self.gastos_administrativos,
+            self.gasto_estudios,
+            self.depreciacion_tributaria,
+            self.gestion_social_deducible,
+            self.otros_gastos,
+            self.osinergmin,
+            self.oefa,
+        )
+
+    @property
+    def sumandos_de_la_imponible(self) -> tuple[Serie, ...]:
+        """Las seis filas `41:46` que la `47` suma."""
+        return (
+            self.utilidad_operativa,
+            self.regalias_mineras,
+            self.gastos_de_exploracion,
+            self.ingresos_financieros,
+            self.gastos_financieros,
+            self.impuesto_especial,
+        )
+
+
+@dataclass(frozen=True)
+class BloqueDeImpuestoALaRenta:
+    """`Impuestos!56:61`."""
+
+    utilidad_imponible: Serie
+    fondo_de_jubilacion: Serie
+    participacion_trabajadores: Serie
+    utilidad_luego_de_participaciones: Serie
+    tasa_impuesto_renta: Serie
+    impuesto_a_la_renta: Serie
+
+    @property
+    def sumandos(self) -> tuple[Serie, ...]:
+        """Las tres filas `56:58` que la `59` suma."""
+        return (
+            self.utilidad_imponible,
+            self.fondo_de_jubilacion,
+            self.participacion_trabajadores,
+        )
+
+
+@dataclass(frozen=True)
+class BloqueDePerdidaTributaria:
+    """`Impuestos!64:67`, el arrastre de las perdidas de ejercicios anteriores."""
+
+    saldo_inicial: Serie
+    perdida_de_ejercicio: Serie
+    """`65`, medida sobre la fila `56` y no sobre la `47`. Coinciden siempre,
+    porque la deduccion vale cero cuando el ejercicio es perdida."""
+
+    perdida_a_amortizar: Serie
+    """`66`. Es la fila `48` escrita al reves, y da el mismo numero."""
+
+    saldo_final: Serie
+
+
+@dataclass(frozen=True)
+class BloqueDeImpuestos:
+    """La hoja `Impuestos` entera, bloque a bloque."""
+
+    regalias: BloqueDeRegalias
+    renta: BloqueDeRenta
+    impuesto_a_la_renta: BloqueDeImpuestoALaRenta
+    perdida_tributaria: BloqueDePerdidaTributaria
+    tramos_de_regalia: tuple[AporteDeTramo, ...]
+    tramos_de_iem: tuple[AporteDeTramo, ...]
+    por_ano: tuple[ResultadoTributario, ...]
+    """La solucion de cada ejercicio, para quien necesite el ano y no la fila."""
+
+
+def calcular(
+    horizonte: Horizonte,
+    *,
+    ventas: Serie,
+    cash_cost: Serie,
+    fletes: Serie,
+    gasto_de_ventas: Serie,
+    administrativos: Serie,
+    estudios_deducibles: Serie,
+    gestion_social_deducible: Serie,
+    otros_gastos: Serie,
+    tasa_osinergmin: Serie,
+    tasa_oefa: Serie,
+    depreciacion_financiera: Serie,
+    depreciacion_tributaria: Serie,
+    exploraciones: Serie,
+    escala_regalia: EscalaProgresiva,
+    escala_iem: EscalaProgresiva,
+    tasa_regalia_ventas: float,
+    tasa_fondo_jubilacion: float,
+    tasa_participacion: float,
+    tasa_impuesto_renta: float,
+    saldo_inicial_de_perdidas: float,
+) -> BloqueDeImpuestos:
+    """Reproduce la hoja `Impuestos` desde los bloques anteriores del motor.
+
+    Recibe los gastos en positivo, que es como los lleva el resto del motor, y
+    los escribe con el signo del libro. Las dos bases no se arman sumando
+    conceptos en un escalar: se construyen las filas, y **la utilidad operativa
+    es la suma de sus filas**, que es lo que hace contrastable el bloque en N1.
+
+    Los gastos entran por su parte deducible, no por su importe. La gestion
+    social y los estudios salen enteros del flujo y solo en parte de la base: la
+    fraccion deducible de la primera la declara cada unidad, y de los segundos
+    solo deduce el que es gasto, porque el capitalizable se deprecia.
+
+    Las dos bases difieren en tres cosas, no en una: la via de la depreciacion,
+    el fondo de jubilacion -que solo descuenta la de regalias- y los tres
+    conceptos que solo tiene la de renta. Confundirlas desplaza los tributos sin
+    que el flujo economico lo delate.
+    """
+    costo_de_produccion = _negada(cash_cost)
+    fletes_negados = _negada(fletes)
+    gastos_de_ventas = _negada(gasto_de_ventas)
+    gastos_administrativos = _negada(administrativos)
+    gasto_estudios = _negada(estudios_deducibles)
+    gestion_social = _negada(gestion_social_deducible)
+    otros = _negada(otros_gastos)
+    osinergmin = tuple(-ventas[i] * tasa_osinergmin[i] for i in range(horizonte.anos))
+    oefa = tuple(-ventas[i] * tasa_oefa[i] for i in range(horizonte.anos))
+    depreciacion_financiera_negada = _negada(depreciacion_financiera)
+    depreciacion_tributaria_negada = _negada(depreciacion_tributaria)
+    exploracion_negada = _negada(exploraciones)
+    ceros = horizonte.ceros()
+
+    # Los nueve conceptos que las dos bases comparten. Es la unica suma que se
+    # hace fuera de las filas, y existe porque las dos bases la repiten igual.
+    comunes = tuple(
+        ventas[i]
+        + costo_de_produccion[i]
+        + fletes_negados[i]
+        + gastos_de_ventas[i]
+        + gastos_administrativos[i]
+        + gasto_estudios[i]
+        + gestion_social[i]
+        + otros[i]
+        + osinergmin[i]
+        + oefa[i]
+        for i in range(horizonte.anos)
+    )
+
+    resultados: list[ResultadoTributario] = []
+    saldos_iniciales: list[float] = []
+    saldo = saldo_inicial_de_perdidas
+
+    for i in range(horizonte.anos):
+        entradas = EntradasTributarias(
+            ventas_totales=ventas[i],
+            # La fila `20` sin la `19`, que es la incognita del sistema.
+            base_operativa=comunes[i] + depreciacion_financiera_negada[i],
+            # La fila `41` mas la `43`; la regalia y el IEM los descuenta el
+            # solucionador, porque dependen de la incognita.
+            base_imponible=(comunes[i] + depreciacion_tributaria_negada[i] + exploracion_negada[i]),
+            saldo_perdidas=saldo,
+            escala_regalia=escala_regalia,
+            escala_iem=escala_iem,
+            tasa_regalia_ventas=tasa_regalia_ventas,
+            tasa_fondo_jubilacion=tasa_fondo_jubilacion,
+            tasa_participacion=tasa_participacion,
+            tasa_impuesto_renta=tasa_impuesto_renta,
+        )
+        resultado = resolver(entradas)
+        resultados.append(resultado)
+        saldos_iniciales.append(saldo)
+
+        # La fila `65` mide sobre la `56` y la `66` es la `48` con su signo.
+        saldo = (
+            saldo + max(-resultado.utilidad_luego_de_deduccion, 0.0) + resultado.deduccion_perdidas
+        )
+
+    def linea(campo: str) -> Serie:
+        return tuple(getattr(r, campo) for r in resultados)
+
+    perdidas_del_ejercicio = tuple(max(-r.utilidad_luego_de_deduccion, 0.0) for r in resultados)
+    return BloqueDeImpuestos(
+        regalias=BloqueDeRegalias(
+            ventas_totales=ventas,
+            costo_de_produccion=costo_de_produccion,
+            fletes=fletes_negados,
+            gastos_de_ventas=gastos_de_ventas,
+            gastos_administrativos=gastos_administrativos,
+            gasto_estudios=gasto_estudios,
+            depreciacion_financiera=depreciacion_financiera_negada,
+            gestion_social_deducible=gestion_social,
+            otros_gastos=otros,
+            osinergmin=osinergmin,
+            oefa=oefa,
+            fondo_de_jubilacion=_negada(linea("fondo_jubilacion_minera")),
+            utilidad_operativa=linea("utilidad_operativa"),
+            margen_operativo=linea("margen_operativo"),
+            tasa_efectiva_regalia=linea("tasa_efectiva_regalia"),
+            regalia_sobre_margen=linea("regalia_sobre_margen"),
+            regalia_sobre_ventas=linea("regalia_sobre_ventas"),
+            regalia_mayor=linea("regalia"),
+            tasa_efectiva_iem=linea("tasa_efectiva_iem"),
+            impuesto_especial=linea("impuesto_especial_mineria"),
+        ),
+        renta=BloqueDeRenta(
+            ventas_netas=ventas,
+            costo_de_produccion=costo_de_produccion,
+            fletes=fletes_negados,
+            gastos_de_ventas=gastos_de_ventas,
+            gastos_administrativos=gastos_administrativos,
+            gasto_estudios=gasto_estudios,
+            depreciacion_tributaria=depreciacion_tributaria_negada,
+            gestion_social_deducible=gestion_social,
+            otros_gastos=otros,
+            osinergmin=osinergmin,
+            oefa=oefa,
+            utilidad_operativa=tuple(
+                comunes[i] + depreciacion_tributaria_negada[i] for i in range(horizonte.anos)
+            ),
+            regalias_mineras=_negada(linea("regalia")),
+            gastos_de_exploracion=exploracion_negada,
+            ingresos_financieros=ceros,
+            gastos_financieros=ceros,
+            impuesto_especial=_negada(linea("impuesto_especial_mineria")),
+            utilidad_imponible=linea("utilidad_imponible"),
+            deduccion_por_perdidas=linea("deduccion_perdidas"),
+            utilidad_luego_de_deduccion=linea("utilidad_luego_de_deduccion"),
+            tasa_fondo_de_jubilacion=_constante(tasa_fondo_jubilacion, horizonte),
+            fondo_de_jubilacion=linea("fondo_jubilacion_minera"),
+            tasa_participacion=_constante(tasa_participacion, horizonte),
+            participacion_trabajadores=linea("participacion_trabajadores"),
+        ),
+        impuesto_a_la_renta=BloqueDeImpuestoALaRenta(
+            utilidad_imponible=linea("utilidad_luego_de_deduccion"),
+            fondo_de_jubilacion=_negada(linea("fondo_jubilacion_minera")),
+            participacion_trabajadores=_negada(linea("participacion_trabajadores")),
+            utilidad_luego_de_participaciones=linea("utilidad_luego_de_participaciones"),
+            tasa_impuesto_renta=_constante(tasa_impuesto_renta, horizonte),
+            impuesto_a_la_renta=linea("impuesto_renta"),
+        ),
+        perdida_tributaria=BloqueDePerdidaTributaria(
+            saldo_inicial=tuple(saldos_iniciales),
+            perdida_de_ejercicio=perdidas_del_ejercicio,
+            perdida_a_amortizar=linea("deduccion_perdidas"),
+            saldo_final=tuple(
+                saldos_iniciales[i] + perdidas_del_ejercicio[i] + resultados[i].deduccion_perdidas
+                for i in range(horizonte.anos)
+            ),
+        ),
+        tramos_de_regalia=_tabla(escala_regalia, resultados, "aportes_de_regalia"),
+        tramos_de_iem=_tabla(escala_iem, resultados, "aportes_de_iem"),
+        por_ano=tuple(resultados),
+    )
+
+
+def _negada(serie: Serie) -> Serie:
+    """El resto del motor lleva los gastos en positivo; la hoja, en negativo."""
+    return tuple(-valor for valor in serie)
+
+
+def _constante(valor: float, horizonte: Horizonte) -> Serie:
+    """Una tasa que el libro repite en las 36 columnas."""
+    return tuple(valor for _ in range(horizonte.anos))
+
+
+def _tabla(
+    escala: EscalaProgresiva, resultados: Sequence[ResultadoTributario], campo: str
+) -> tuple[AporteDeTramo, ...]:
+    """Una fila por tramo de la escala, con su aporte ano a ano."""
+    aportes: tuple[tuple[float, ...], ...] = tuple(getattr(r, campo) for r in resultados)
+    return tuple(
+        AporteDeTramo(
+            limite_inferior=tramo.limite_inferior,
+            limite_superior=tramo.limite_superior,
+            tasa=tramo.tasa,
+            aporte=tuple(fila[posicion] for fila in aportes),
+        )
+        for posicion, tramo in enumerate(escala.tramos)
+    )

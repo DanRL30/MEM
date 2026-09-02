@@ -420,10 +420,71 @@ class TestN1:
     def test_impuesto_a_la_renta(self, simple: Corrida) -> None:
         contrastar(simple.impuesto_renta, (0.0, 78_278.25, 213_240.75), "impuesto a la renta")
 
+    def test_las_sumas_de_la_hoja_de_impuestos_cierran(self, combinado: Corrida) -> None:
+        # `Impuestos!20`, `!41`, `!47`, `!59` y `!67` son sumas de las filas que
+        # tienen encima. Es la comprobacion estructural del bloque: una fila que
+        # se caiga, o que entre con el signo cambiado, aparece aqui y no en el
+        # NPV, donde se compensa con otra.
+        bloque = combinado.impuestos
+        for ano in range(len(bloque.regalias.ventas_totales)):
+            comprobaciones = (
+                (
+                    "utilidad operativa",
+                    bloque.regalias.utilidad_operativa[ano],
+                    bloque.regalias.conceptos,
+                ),
+                (
+                    "utilidad operativa de renta",
+                    bloque.renta.utilidad_operativa[ano],
+                    bloque.renta.conceptos,
+                ),
+                (
+                    "utilidad imponible",
+                    bloque.renta.utilidad_imponible[ano],
+                    bloque.renta.sumandos_de_la_imponible,
+                ),
+                (
+                    "utilidad tras participaciones",
+                    bloque.impuesto_a_la_renta.utilidad_luego_de_participaciones[ano],
+                    bloque.impuesto_a_la_renta.sumandos,
+                ),
+            )
+            for linea, total, filas in comprobaciones:
+                assert coincide(total, sum(fila[ano] for fila in filas)), (
+                    f"{linea}, ano {ano}: la suma de sus filas no cuadra"
+                )
+
+    def test_el_saldo_de_perdidas_rueda_entre_ejercicios(self, combinado: Corrida) -> None:
+        # `Impuestos!64` de un ejercicio es la `67` del anterior, y la `67` es la
+        # suma de sus tres filas.
+        perdidas = combinado.impuestos.perdida_tributaria
+        for ano in range(len(perdidas.saldo_inicial)):
+            esperado = (
+                perdidas.saldo_inicial[ano]
+                + perdidas.perdida_de_ejercicio[ano]
+                + perdidas.perdida_a_amortizar[ano]
+            )
+            assert coincide(perdidas.saldo_final[ano], esperado), f"saldo final del ano {ano}"
+            if ano:
+                assert coincide(perdidas.saldo_inicial[ano], perdidas.saldo_final[ano - 1]), (
+                    f"el saldo no rueda del ano {ano - 1} al {ano}"
+                )
+
+    def test_los_aportes_por_tramo_reconstruyen_la_tasa_efectiva(self, combinado: Corrida) -> None:
+        # `Impuestos!22 = SUM(72:87) / 21`. Sin las filas de tramo, una TEA que
+        # no cuadre no se puede atribuir a un tramo de la escala.
+        bloque = combinado.impuestos
+        for ano, margen in enumerate(bloque.regalias.margen_operativo):
+            aportado = sum(fila.aporte[ano] for fila in bloque.tramos_de_regalia)
+            esperado = 0.0 if margen == 0.0 else aportado / margen
+            assert coincide(bloque.regalias.tasa_efectiva_regalia[ano], esperado), (
+                f"tasa efectiva de regalia, ano {ano}"
+            )
+
     def test_la_utilidad_operativa_cierra_el_lazo_del_fondo(self, simple: Corrida) -> None:
         # El fondo de jubilacion es gasto de la utilidad operativa que lo
         # determina. Si el lazo no cierra, la solucion cerrada esta mal.
-        for ano, resultado in enumerate(simple.tributos_por_ano):
+        for ano, resultado in enumerate(simple.impuestos.por_ano):
             esperada = 1_000_000.0 - 200_000.0 if ano else 0.0
             base = esperada - (500_000.0 if ano == 1 else 0.0)
             assert coincide(
@@ -533,7 +594,7 @@ class TestN2:
         cash_cost = 1_400_000.0
         ventas = polimetalico.ventas[1]
         participacion = polimetalico.participacion_trabajadores[1]
-        fondo = polimetalico.tributos_por_ano[1].fondo_jubilacion_minera
+        fondo = polimetalico.impuestos.por_ano[1].fondo_jubilacion_minera
         esperado = ventas - cash_cost - participacion - fondo
         contrastar(polimetalico.flujo.ebitda_ajustado[1:2], (esperado,), "EBITDA del polimetalico")
 

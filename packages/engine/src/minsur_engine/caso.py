@@ -2,7 +2,7 @@
 
 Es la entrada del motor. Reúne las estructuras que cada bloque definió por su
 cuenta —el capital de `capex`, los costos de `cash_cost`, los metales de
-`ventas`, las escalas de `tributos`— y añade lo que ninguno necesitaba solo: el
+`ventas`, las escalas de `impuestos`— y añade lo que ninguno necesitaba solo: el
 horizonte común, las unidades productivas y los datos del caso.
 
 **Un caso no nombra proyectos.** Declara unidades productivas con su tipo y sus

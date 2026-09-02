@@ -13,9 +13,15 @@ modulo responsable, de modo que una discrepancia se localiza en un archivo.
 | EBITDA ajustado | `flujos.py` | `::test_ebitda` |
 | Depreciacion tributaria y financiera, por mina | `depreciacion.py` | `::test_depreciacion` |
 | EBIT | `flujos.py` | `::test_ebit` |
-| Base imponible | `impuestos.py` | `::test_base_imponible` |
-| Impuestos | `impuestos.py` | `::test_impuestos` |
-| Regalias y aportes | `impuestos.py` | `::test_regalias_aportes` |
+| Base de regalias, fila a fila (`8:19`) | `impuestos.py` | `test_n0_a_n3.py::TestN1::test_las_sumas_de_la_hoja_de_impuestos_cierran` |
+| Margen operativo y las dos TEA (`21`, `22`, `26`) | `impuestos.py` | `::test_los_aportes_por_tramo_reconstruyen_la_tasa_efectiva` |
+| Aporte de cada tramo de las dos escalas (`72:87`, `92:108`) | `impuestos.py` | `::test_los_aportes_por_tramo_reconstruyen_la_tasa_efectiva` |
+| Las tres regalias y el IEM (`23:25`, `27`) | `impuestos.py` | `test_impuestos.py::TestRegalia` |
+| Base imponible, fila a fila (`30:47`) | `impuestos.py` | `::test_las_sumas_de_la_hoja_de_impuestos_cierran` |
+| Deduccion por perdidas y su arrastre (`48`, `64:67`) | `impuestos.py` | `::test_el_saldo_de_perdidas_rueda_entre_ejercicios` |
+| Fondo de jubilacion y participacion (`51`, `53`) | `impuestos.py` | `::test_participacion_de_trabajadores` |
+| Impuesto a la renta (`56:61`) | `impuestos.py` | `::test_impuesto_a_la_renta` |
+| Osinergmin y OEFA (`17`, `18`) | `impuestos.py` | `::test_las_sumas_de_la_hoja_de_impuestos_cierran` |
 | Utilidad neta | `flujos.py` | `::test_utilidad_neta` |
 | CAPEX inicial por clasificacion | `capex.py` | `::test_capex_inicial` |
 | CAPEX diferido y de sostenimiento | `capex.py` | `::test_capex_diferido` |
@@ -23,9 +29,15 @@ modulo responsable, de modo que una discrepancia se localiza en un archivo.
 | Valor residual | **No aplica.** Ver la nota 3 | |
 | Capital de trabajo | `capital_trabajo.py` | `test_n0_a_n3.py::TestN1::test_capital_de_trabajo` |
 
-Las dos filas de ventas citan las pruebas que existen. Las trece restantes apuntan a un
-`test_n1_bloques.py` que nunca se escribio: el contraste vive hoy en
+Las filas de ventas, las nueve de la hoja `Impuestos` y la de capital de trabajo citan pruebas que
+existen. Las demas apuntan a un `test_n1_bloques.py` que nunca se escribio: el contraste vive hoy en
 `tests/fidelidad/niveles/test_n0_a_n3.py`. Queda registrado y se corrige al cerrar cada bloque.
+
+**Las nueve filas de `Impuestos` sustituyen a las tres que habia** -base imponible, impuestos y
+regalias y aportes-, que resumian en tres lineas una hoja de 109 filas. La auditoria que las abrio
+esta en [brechas-hoja-impuestos.md](brechas-hoja-impuestos.md). Las filas `44` y `45` del libro,
+`Ingresos Financieros` y `Gastos Financieros`, estan declaradas en el bloque y valen cero: el libro
+las deja vacias y sin la confirmacion de Finanzas no se implementan, por la nota 2.
 
 Tolerancia N1: diferencia relativa hasta 0,1 % o absoluta hasta US$ 10 000 por linea y ano.
 Valor provisional hasta que Finanzas cierre `R-31`. El estandar `DM-STD-PE-27` no fija tolerancias:

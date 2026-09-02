@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
-from minsur_engine import capital_trabajo, impuestos, refineria
+from minsur_engine import capital_trabajo, impuestos as impuestos_, refineria
 from minsur_engine.capex import (
     CapitalDeUnidad,
     capex_de_etapa,
@@ -242,22 +242,24 @@ class Corrida:
     depreciacion que llega sumada no se puede volver a separar. Lleva ademas la
     proyeccion ya contabilizada, que no sale de ninguna inversion del caso.
     """
-    tributos_por_ano: tuple[impuestos.ResultadoTributario, ...]
+    impuestos: impuestos_.BloqueDeImpuestos
+    """La hoja `Impuestos` entera, fila a fila y con el signo del libro."""
+
     variacion_capital_trabajo: Serie
     flujo: FlujoDelCaso
     indicadores: Indicadores
 
     @property
     def regalias(self) -> Serie:
-        return tuple(t.regalia for t in self.tributos_por_ano)
+        return self.impuestos.regalias.regalia_mayor
 
     @property
     def impuesto_renta(self) -> Serie:
-        return tuple(t.impuesto_renta for t in self.tributos_por_ano)
+        return self.impuestos.impuesto_a_la_renta.impuesto_a_la_renta
 
     @property
     def participacion_trabajadores(self) -> Serie:
-        return tuple(t.participacion_trabajadores for t in self.tributos_por_ano)
+        return self.impuestos.renta.participacion_trabajadores
 
 
 def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
@@ -341,23 +343,33 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     predios = gastos.predios
     intereses = _serie(comunes.intereses, horizonte, "intereses")
     otros_flujo = _serie(comunes.otros_flujo, horizonte, "otros")
-    reguladores = _reguladores(caso, parametros)
+    tasa_osinergmin, tasa_oefa = _reguladores_por_aporte(caso, parametros)
+    reguladores = tuple(tasa_osinergmin[i] + tasa_oefa[i] for i in range(horizonte.anos))
 
-    resultados = _resolver_tributos(
-        caso,
-        maestros,
+    bloque_de_impuestos = impuestos_.calcular(
+        horizonte,
         ventas=ventas,
         cash_cost=cash_cost,
         fletes=fletes,
         gasto_de_ventas=gasto_de_ventas,
         administrativos=administrativos,
+        estudios_deducibles=gastos.estudios_deducibles,
         gestion_social_deducible=gastos.gestion_social_deducible,
         otros_gastos=otros_gastos,
-        estudios_deducibles=gastos.estudios_deducibles,
-        exploraciones=exploraciones,
-        depreciacion_tributaria=total_depreciado(horizonte, depreciacion_tributaria),
+        tasa_osinergmin=tasa_osinergmin,
+        tasa_oefa=tasa_oefa,
         depreciacion_financiera=total_depreciado(horizonte, depreciacion_financiera),
+        depreciacion_tributaria=total_depreciado(horizonte, depreciacion_tributaria),
+        exploraciones=exploraciones,
+        escala_regalia=maestros.escala_regalia,
+        escala_iem=maestros.escala_iem,
+        tasa_regalia_ventas=parametros.regalia_minima,
+        tasa_fondo_jubilacion=parametros.fondo_jubilacion_minera,
+        tasa_participacion=parametros.participacion_trabajadores,
+        tasa_impuesto_renta=parametros.impuesto_renta,
+        saldo_inicial_de_perdidas=comunes.saldo_inicial_de_perdidas,
     )
+    resultados = bloque_de_impuestos.por_ano
 
     total_capex = capex_total(horizonte, capital)
     bolsa = _bolsa_de_egresos(
@@ -447,7 +459,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         depreciacion_financiera_por_mina=depreciacion_financiera,
         depreciacion_tributaria_por_componente=detalle_tributario,
         depreciacion_financiera_por_componente=detalle_financiero,
-        tributos_por_ano=resultados,
+        impuestos=bloque_de_impuestos,
         variacion_capital_trabajo=variacion_wk,
         flujo=flujo,
         indicadores=_indicadores(caso, parametros.tasa_descuento, flujo, total_capex),
@@ -736,23 +748,30 @@ def _ley_del_concentrado(unidad: UnidadProductiva, metal: str) -> Serie:
     return ()
 
 
-def _reguladores(caso: Caso, parametros: ParametrosCorporativos) -> Serie:
-    """Aporte a Osinergmin y OEFA de cada año, en tanto por uno sobre la venta.
+def _reguladores_por_aporte(caso: Caso, parametros: ParametrosCorporativos) -> tuple[Serie, Serie]:
+    """Osinergmin y OEFA de cada año, en tanto por uno sobre la venta.
 
     El libro no los lleva como tasa fija: van decrecientes los primeros
     ejercicios y después se estabilizan. MINSUR confirmó el 01/09/2026 que es
     deliberado, porque tienen mejor información sobre los años próximos. Si el
     caso no los declara se usa la tasa de los parámetros corporativos, que es la
     de referencia.
+
+    **Van separados porque el libro los separa**: son las filas `Impuestos!17` y
+    `!18`, cada una con su tasa de `Supuestos`. Sumarlos antes de tiempo deja el
+    bloque con una fila donde la hoja tiene dos.
     """
     horizonte = caso.horizonte
     comunes = caso.datos_comunes
-    de_referencia = parametros.osinergmin + parametros.oefa
     if not comunes.osinergmin and not comunes.oefa:
-        return tuple(de_referencia for _ in range(horizonte.anos))
-    osinergmin = _serie(comunes.osinergmin, horizonte, "osinergmin")
-    oefa = _serie(comunes.oefa, horizonte, "oefa")
-    return tuple(osinergmin[i] + oefa[i] for i in range(horizonte.anos))
+        return (
+            tuple(parametros.osinergmin for _ in range(horizonte.anos)),
+            tuple(parametros.oefa for _ in range(horizonte.anos)),
+        )
+    return (
+        _serie(comunes.osinergmin, horizonte, "osinergmin"),
+        _serie(comunes.oefa, horizonte, "oefa"),
+    )
 
 
 def _cash_cost(caso: Caso) -> _CashCost:
@@ -915,73 +934,6 @@ def _fraccion(serie: Serie, horizonte: Horizonte) -> Serie:
     if not serie:
         return tuple(1.0 for _ in range(horizonte.anos))
     return _serie(serie, horizonte, "fraccion deducible")
-
-
-def _resolver_tributos(
-    caso: Caso,
-    maestros: DatosMaestros,
-    *,
-    ventas: Serie,
-    cash_cost: Serie,
-    fletes: Serie,
-    gasto_de_ventas: Serie,
-    administrativos: Serie,
-    gestion_social_deducible: Serie,
-    otros_gastos: Serie,
-    estudios_deducibles: Serie,
-    exploraciones: Serie,
-    depreciacion_tributaria: Serie,
-    depreciacion_financiera: Serie,
-) -> tuple[impuestos.ResultadoTributario, ...]:
-    """Resuelve el bloque tributario de cada año, arrastrando las pérdidas.
-
-    Las dos bases difieren en una sola línea, igual que en el libro: la de
-    regalías descuenta la depreciación financiera y la de renta la tributaria.
-    Confundirlas desplaza los tributos sin que el flujo económico lo delate.
-
-    **Los gastos entran por su parte deducible, no por su importe.** La gestión
-    social y los estudios salen enteros del flujo y solo en parte de la base: la
-    fracción deducible de la primera la declara cada unidad, y de los segundos
-    solo deduce el que es gasto, porque el capitalizable se deprecia.
-    """
-    parametros = maestros.parametros
-    resultados: list[impuestos.ResultadoTributario] = []
-    saldo = caso.datos_comunes.saldo_inicial_de_perdidas
-
-    for i in range(caso.horizonte.anos):
-        gastos_comunes = (
-            cash_cost[i]
-            + fletes[i]
-            + gasto_de_ventas[i]
-            + administrativos[i]
-            + gestion_social_deducible[i]
-            + otros_gastos[i]
-            + estudios_deducibles[i]
-            + ventas[i] * _reguladores(caso, parametros)[i]
-        )
-        entradas = impuestos.EntradasTributarias(
-            ventas_totales=ventas[i],
-            base_operativa=ventas[i] - gastos_comunes - depreciacion_financiera[i],
-            base_imponible=(
-                ventas[i] - gastos_comunes - depreciacion_tributaria[i] - exploraciones[i]
-            ),
-            saldo_perdidas=saldo,
-            escala_regalia=maestros.escala_regalia,
-            escala_iem=maestros.escala_iem,
-            tasa_regalia_ventas=parametros.regalia_minima,
-            tasa_fondo_jubilacion=parametros.fondo_jubilacion_minera,
-            tasa_participacion=parametros.participacion_trabajadores,
-            tasa_impuesto_renta=parametros.impuesto_renta,
-        )
-        resultado = impuestos.resolver(entradas)
-        resultados.append(resultado)
-
-        # El saldo de perdidas crece con la del ejercicio y baja con lo
-        # amortizado, que llega como deduccion negativa.
-        perdida = max(-resultado.utilidad_imponible, 0.0)
-        saldo = saldo + perdida + resultado.deduccion_perdidas
-
-    return tuple(resultados)
 
 
 def _bolsa_de_egresos(
