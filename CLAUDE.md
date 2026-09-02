@@ -147,6 +147,13 @@ Las pruebas de extremo a extremo estan declaradas y sin poblar. `pnpm test:e2e` 
 `tests/e2e/playwright.config.ts`, que todavia no existe; el directorio solo tiene su `.gitkeep`.
 Son PT7.2 y llegan detras de las vistas.
 
+`tests/rendimiento/` esta en la misma situacion y con una consecuencia mas inmediata: el trabajo
+`rendimiento` de [cd.yml](infra/pipelines/cd.yml) ya invoca `k6 run tests/rendimiento/tablero.js`
+contra QA, y ese archivo tampoco existe. El primer despliegue a QA falla ahi hasta que se escriba.
+El umbral de apertura del tablero es de 5 s; el de la evaluacion estandar lo fija MINSUR (`R-51`),
+de modo que el guion no se puede cerrar del todo antes de esa respuesta. Corre con k6, no con
+pytest ni con vitest.
+
 ### El puente entre ambos
 
 `packages/contracts` es la costura: el esquema OpenAPI que emite la API se convierte en los tipos
@@ -210,8 +217,10 @@ minsur_domain   casos, corridas, versionado, estados, sellado, auditoria
 minsur_api      routers FastAPI, seguridad, esquemas
 ```
 
-`minsur_ingest`, `minsur_risk` y `minsur_reporting` cuelgan del mismo tronco y los consume la API.
-La direccion no se invierte nunca. Que el motor no importe nada de dominio ni de infraestructura es
+`minsur_ingest` cuelga del mismo tronco y lo consume la API. `minsur_risk` y `minsur_reporting`
+estan declarados en el workspace y hoy son cascaras: solo tienen su `__init__.py` y nadie los
+importa todavia. Estan ahi para que sensibilidad, Montecarlo y exportacion entren por su sitio
+cuando lleguen, no porque ya aporten algo. La direccion no se invierte nunca. Que el motor no importe nada de dominio ni de infraestructura es
 lo que permite ejecutarlo contra el modelo de referencia sin levantar la plataforma, y es la
 condicion del contraste N0-N3.
 
@@ -222,9 +231,10 @@ Los modulos de `packages/engine/src/minsur_engine/` mapean 1:1 con las filas de
 estetica: cuando una corrida difiere del modelo corporativo, la tabla de ese documento traduce la
 linea discrepante a un archivo y a una prueba. Fusionar dos bloques rompe esa propiedad.
 
-Once modulos derivados de las formulas del libro, mas `caso.py` y `corrida.py`, que son el
-ensamblaje: `corrida.calcular()` es el unico sitio que conoce el orden del calculo y los demas
-resuelven su linea sin saber quien los llama. El contraste N0-N3 vive en `tests/fidelidad/` y corre
+Un modulo por bloque del libro, mas `caso.py` y `corrida.py`, que son el ensamblaje:
+`corrida.calcular()` es el unico sitio que conoce el orden del calculo y los demas resuelven su
+linea sin saber quien los llama. **El inventario no se lleva aqui**: son las filas de `mapa-n1.md`,
+y repetir su cuenta en este archivo solo produce un numero que envejece. El contraste N0-N3 vive en `tests/fidelidad/` y corre
 en cada integracion.
 
 Un detalle del arnes que conviene entender antes de tocarlo: **el contraste sintetico es exacto, no
@@ -430,6 +440,15 @@ decisiones que se repiten en todo el modulo:
 El perfil del usuario se deriva de la reclamacion `groups` del token; la plataforma no consulta
 Microsoft Graph. El mapeo vive en [seguridad.py](apps/api/src/minsur_api/seguridad.py) con una
 precedencia explicita para usuarios que pertenecen a varios grupos.
+
+**Hoy no hay persistencia y conviene saberlo antes de probar nada.**
+[repositorio.py](apps/api/src/minsur_api/repositorio.py) define el puerto `RepositorioDeCasos` y lo
+sirve con un almacen en memoria: lo que se guarda se pierde al reiniciar el proceso. El destino es
+Azure SQL y aprovisionarlo depende de `R-23`. Lo definitivo es el puerto — el adaptador de Azure SQL
+entra por ahi sin tocar un router—, de modo que un caso que "desaparece" entre dos corridas del
+servicio no es un fallo.
+[evaluacion.py](apps/api/src/minsur_api/evaluacion.py) es la otra costura: mide el tiempo, calcula
+la huella de los insumos y arma la terna de versiones. No reproduce ni una linea del motor.
 
 ### Las pruebas de contrato detectan deriva, no comportamiento
 
