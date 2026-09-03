@@ -289,6 +289,12 @@ class BloqueDeCorrida(Base):
     """Un bloque del cálculo, correspondiente a una hoja del libro."""
 
     clave: str
+    etiqueta: str = Field(
+        description=(
+            "Rótulo corto de la pestaña. Es el nombre de la hoja salvo cuando dos "
+            "bloques salen de la misma, que es el caso del complejo"
+        )
+    )
     titulo: str
     hoja: str = Field(description="Hoja del libro corporativo que reproduce este bloque")
     series: list[SerieAnual]

@@ -59,6 +59,11 @@
             "title": "Clave",
             "type": "string"
           },
+          "etiqueta": {
+            "description": "Rótulo corto de la pestaña. Es el nombre de la hoja salvo cuando dos bloques salen de la misma, que es el caso del complejo",
+            "title": "Etiqueta",
+            "type": "string"
+          },
           "hoja": {
             "description": "Hoja del libro corporativo que reproduce este bloque",
             "title": "Hoja",
@@ -78,6 +83,7 @@
         },
         "required": [
           "clave",
+          "etiqueta",
           "titulo",
           "hoja",
           "series"

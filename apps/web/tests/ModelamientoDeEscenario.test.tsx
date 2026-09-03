@@ -141,8 +141,8 @@ describe("La tabla anual", () => {
 
 describe("Las pestanas", () => {
   const pestanas = [
-    { clave: "produccion", titulo: "Producción", hoja: "InputsProd" },
-    { clave: "ventas", titulo: "Ventas", hoja: "Ventas" },
+    { clave: "produccion", etiqueta: "InputsProd", titulo: "Producción por unidad" },
+    { clave: "ventas", etiqueta: "Ventas", titulo: "Los tres caminos de ingreso" },
   ];
 
   it("cambia de hoja con las flechas, como el propio Excel", () => {
@@ -158,6 +158,15 @@ describe("Las pestanas", () => {
     );
     fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowRight" });
     expect(activa).toBe("ventas");
+  });
+
+  it("rotula con el nombre de la hoja y deja la descripcion en el title", () => {
+    // Una pestana de Excel no lleva descripcion. Con dos lineas la tira ocupaba
+    // tres filas y dejaba de leerse como lo que imita.
+    render(<Pestanas activa="produccion" alCambiar={() => undefined} pestanas={pestanas} />);
+    const primera = screen.getAllByRole("tab")[0];
+    expect(primera?.textContent).toBe("InputsProd");
+    expect(primera?.getAttribute("title")).toBe("Producción por unidad");
   });
 
   it("deja una sola parada de tabulacion en el grupo", () => {

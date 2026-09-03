@@ -13,6 +13,11 @@ Dos propiedades que conviene no romper:
 **El orden es el del libro, no el de la cadena de cálculo.** `Depreciacion` va
 antes que `Ventas` porque así está en el libro, aunque el cálculo no lo exija.
 
+**La etiqueta de la pestaña se decide aquí y no en la pantalla.** Es el nombre
+de la hoja, salvo el complejo: sale de `InputsProd` igual que la producción, y
+dos pestañas con el mismo rótulo no se distinguen. Resolverlo en la interfaz
+obligaría a repetir allí qué bloque sale de qué hoja.
+
 **Qué se oculta lo decide el motor.** `campos_con_dato_por_unidad` viaja tal
 cual hasta la pantalla. Si cada vista resolviera por su cuenta qué filas están
 vacías, dos pantallas mostrarían cosas distintas del mismo caso.
@@ -104,6 +109,7 @@ def _bloque_de_produccion(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorr
             )
     return BloqueDeCorrida(
         clave="produccion",
+        etiqueta="InputsProd",
         titulo="Producción por unidad",
         hoja="InputsProd",
         series=series,
@@ -123,6 +129,7 @@ def _bloque_de_refineria(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
             series.append(_serie(nombre, valores, unidad=aporte.unidad))
     return BloqueDeCorrida(
         clave="refineria",
+        etiqueta="Complejo",
         titulo="El complejo, calculado desde las minas",
         hoja="InputsProd",
         series=series,
@@ -139,6 +146,7 @@ def _bloque_de_opex(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
             series.append(_serie(concepto, valores, unidad=unidad, origen="dato"))
     return BloqueDeCorrida(
         clave="opex",
+        etiqueta="InputsOpex",
         titulo="Cash cost y gastos",
         hoja="InputsOpex",
         series=series,
@@ -148,6 +156,7 @@ def _bloque_de_opex(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
 def _bloque_de_capex(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
     return BloqueDeCorrida(
         clave="capex",
+        etiqueta="InputsCapex",
         titulo="Capital",
         hoja="InputsCapex",
         series=[_serie("capex", corrida.resultado.capex)],
@@ -177,6 +186,7 @@ def _bloque_de_depreciacion(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
                 series.append(_serie(f"{etiqueta}· {componente}", valores, unidad=unidad))
     return BloqueDeCorrida(
         clave="depreciacion",
+        etiqueta="Depreciacion",
         titulo="Depreciación tributaria y financiera",
         hoja="Depreciacion",
         series=series,
@@ -197,6 +207,7 @@ def _bloque_de_ventas(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
             series.append(_serie(f"volumen_pagable· {metal}", valores, unidad=unidad))
     return BloqueDeCorrida(
         clave="ventas",
+        etiqueta="Ventas",
         titulo="Los tres caminos de ingreso",
         hoja="Ventas",
         series=series,
@@ -218,6 +229,7 @@ def _bloque_de_otros(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
     )
     return BloqueDeCorrida(
         clave="otros",
+        etiqueta="Otros",
         titulo="Bolsa de egresos, IGV y capital de trabajo",
         hoja="Otros",
         series=series,
@@ -242,6 +254,7 @@ def _bloque_de_impuestos(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
             series.append(_serie(f"{etiqueta}· {nombre}", valores))
     return BloqueDeCorrida(
         clave="impuestos",
+        etiqueta="Impuestos",
         titulo="Regalías, renta e impuesto",
         hoja="Impuestos",
         series=series,
@@ -252,6 +265,7 @@ def _bloque_de_flujo(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
     flujo = corrida.resultado.flujo
     return BloqueDeCorrida(
         clave="flujo",
+        etiqueta="FC NZ",
         titulo="Flujo operativo, de inversiones y económico",
         hoja="FC NZ",
         series=[

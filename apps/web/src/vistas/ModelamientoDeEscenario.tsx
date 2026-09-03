@@ -142,13 +142,15 @@ export function ModelamientoDeEscenario() {
   }
 
   const pestanas: Pestana[] = [
-    { clave: CONTROL, titulo: "Control", hoja: "Control" },
+    { clave: CONTROL, etiqueta: "Control", titulo: "Caso, plantillas y control de calidad" },
     ...(bloques?.bloques ?? []).map((bloque) => ({
       clave: bloque.clave,
+      etiqueta: bloque.etiqueta,
       titulo: bloque.titulo,
-      hoja: bloque.hoja,
     })),
-    ...(indicadores ? [{ clave: RESUMEN, titulo: "Indicadores del caso", hoja: "Resumen" }] : []),
+    ...(indicadores
+      ? [{ clave: RESUMEN, etiqueta: "Resumen", titulo: "Indicadores del caso" }]
+      : []),
   ];
 
   const bloqueActivo = bloques?.bloques.find((b) => b.clave === activa);

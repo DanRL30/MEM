@@ -229,6 +229,47 @@ fieldset legend {
   margin-bottom: var(--espacio-2);
 }
 
+/* --- La tira de pestanas --------------------------------------------------
+ * Una sola fila. `flex-wrap: nowrap` es lo que lo garantiza, y el desbordamiento
+ * se resuelve desplazando, no envolviendo: una tira que salta a una segunda fila
+ * mueve las hojas de sitio cada vez que cambia el ancho de la ventana, y quien
+ * las busca por posicion las pierde.
+ */
+
+.tira-de-pestanas {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--espacio-1);
+  overflow-x: auto;
+  padding: var(--espacio-2);
+  scrollbar-width: thin;
+}
+
+.pestana {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radio-control);
+  color: var(--texto-principal);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: inherit;
+  font-weight: var(--peso-encabezado);
+  min-height: var(--fila-media);
+  padding: 0 var(--espacio-4);
+  white-space: nowrap;
+}
+
+.pestana:hover {
+  background: var(--fondo-contenedor);
+}
+
+.pestana-activa,
+.pestana-activa:hover {
+  background: var(--texto-enfasis);
+  border-color: var(--texto-enfasis);
+  color: var(--marca-blanco);
+}
+
 /* --- Piezas de cromo ------------------------------------------------------ */
 
 .pildora {

@@ -496,6 +496,11 @@ export interface components {
             /** Clave */
             clave: string;
             /**
+             * Etiqueta
+             * @description Rótulo corto de la pestaña. Es el nombre de la hoja salvo cuando dos bloques salen de la misma, que es el caso del complejo
+             */
+            etiqueta: string;
+            /**
              * Hoja
              * @description Hoja del libro corporativo que reproduce este bloque
              */
