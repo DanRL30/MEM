@@ -45,20 +45,28 @@ interface Props {
 
 // Las escrituras que el libro alterna para lo mismo. `plantilla.py` las reconoce
 // todas al leer, así que la pantalla también.
-const TONELAJES = new Set(["t", "tmf", "kt"]);
+const TONELAJES = new Set(["t", "tt", "tmf"]);
 const MONEDAS = new Set([
   "$",
   "$/t",
+  "$/tt",
   "$/oz",
   "$/lb",
   "$/t conc",
   "$/tmf",
-  "$k",
-  "k$",
   "us$",
   "us$/t",
-  "mus$",
-  "miles de us$",
+]);
+
+// El motor guarda dolares porque la ingesta multiplica al leer: la hoja de opex
+// del libro viene en miles. Al mostrarla se deshace esa conversion, para que la
+// columna de unidad diga `$k` y la cifra sea la que el usuario tecleo.
+const MILES = new Map([
+  ["$k", 1000],
+  ["k$", 1000],
+  ["mus$", 1000],
+  ["miles de us$", 1000],
+  ["kt", 1000],
 ]);
 const CON_DECIMALES = new Set(["oz/t", "g/t"]);
 
@@ -70,8 +78,9 @@ const CON_DECIMALES = new Set(["oz/t", "g/t"]);
  * un decimal y su signo, y ahí el cero sí se escribe, `0.0%`, porque su formato
  * no declara sección de cero.
  *
- * El motor guarda las fracciones en tanto por uno. El por ciento es de
- * presentación: se multiplica aquí y no en el cálculo.
+ * El motor guarda las fracciones en tanto por uno y los importes en dólares. El
+ * por ciento y los miles son de presentación: se convierten aquí y no en el
+ * cálculo, deshaciendo lo que la ingesta hizo al leer la plantilla.
  */
 function formatear(valor: number | undefined, medida: string): string {
   if (valor === undefined || !Number.isFinite(valor)) return "";
@@ -84,6 +93,11 @@ function formatear(valor: number | undefined, medida: string): string {
     })}%`;
   }
   if (valor === 0) return "-";
+
+  const escala = MILES.get(unidad);
+  if (escala !== undefined) {
+    return (valor / escala).toLocaleString("es-PE", { maximumFractionDigits: 0 });
+  }
   if (CON_DECIMALES.has(unidad)) {
     return valor.toLocaleString("es-PE", {
       maximumFractionDigits: 3,

@@ -197,6 +197,27 @@ describe("La hoja del libro", () => {
     expect(ley).toContain("0.0%");
   });
 
+  it("muestra los miles como el libro, no como los guarda el motor", () => {
+    // La ingesta multiplica por mil al leer la hoja de opex, que viene en `$k`.
+    // La pantalla lo deshace: la columna dice `$k` y la cifra es la que el
+    // usuario tecleo.
+    render(
+      <TablaDelLibro
+        anios={anios}
+        grupos={grupo([
+          {
+            etiqueta: "Mina",
+            medida: "$k",
+            concepto: "",
+            origen: "dato",
+            valores: [90_000_000, 0, 0],
+          },
+        ])}
+      />,
+    );
+    expect(screen.getByText("90,000")).toBeDefined();
+  });
+
   it("lleva la unidad de medida en su propia columna", () => {
     render(
       <TablaDelLibro

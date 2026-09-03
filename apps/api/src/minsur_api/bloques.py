@@ -19,7 +19,7 @@ sitios que actualizar y uno que se olvidaría.
 **El orden es el del libro, no el de la cadena de cálculo.** `Depreciacion` va
 antes que `Ventas` porque así está en el libro, aunque el cálculo no lo exija.
 
-**El complejo no es una hoja.** Vive dentro de `InputsProd`, después de las
+**La refinería no es una hoja.** Vive dentro de `InputsProd`, después de las
 unidades mineras, y la hoja no termina ahí: cierra con `Venta Sn Spot`.
 
 **Qué se oculta lo decide el motor.** `campos_con_dato_por_unidad` viaja tal cual
@@ -29,11 +29,20 @@ dos pantallas mostrarían cosas distintas del mismo caso.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import fields as campos_de
 from typing import Any
 
+from minsur_engine.cash_cost import cash_cost_unitario
 from minsur_engine.corroboracion import series_calculadas
 from minsur_engine.refineria import BloqueDeLaRefineria
+from minsur_ingest.opex import (
+    CON_DATO_DE_CASH_COST,
+    FILAS_DE_CASH_COST,
+    FILAS_DE_GASTOS,
+    FILAS_DE_OPEX,
+    MEDIDA as MEDIDA_OPEX,
+)
 from minsur_ingest.produccion import FILAS_DE_PRODUCCION
 
 from .esquemas import (
@@ -66,6 +75,36 @@ NOTA_DEL_CHECK = (
 # al salir: la pantalla muestra la unidad en la que el dato realmente está.
 DOLARES = "US$"
 
+# Los diez conceptos que MINSUR pide ver siempre, aunque la unidad los tenga en
+# cero: son la estructura base de un bloque de cash cost, y con ellos fijos los
+# conceptos caen en la misma linea en todas las unidades. Los que vienen detras
+# -los propios de la refineria y los de una unidad concreta- se ocultan si estan
+# en cero todo el horizonte.
+#
+# Se toman del catalogo y no se escriben aqui, de modo que la etiqueta sea
+# exactamente la de la plantilla. `test_la_estructura_base_del_cash_cost` fija
+# cuales son: si el catalogo se reordena, esa prueba falla en vez de cambiar en
+# silencio lo que se ve.
+BASE_DEL_CASH_COST = tuple(fila.etiqueta for fila in CON_DATO_DE_CASH_COST[:10])
+
+
+def _rotulo_de_refineria(nombre: str) -> str:
+    """`Refinería Pisco` a partir de una unidad llamada `Pisco`.
+
+    El nombre de la unidad lo pone el caso y aquí no se incrusta ninguno: el
+    motor, la ingesta y la API no mencionan una sola unidad de MINSUR, y esta
+    pantalla tampoco. Si el caso ya la llama refinería, el rótulo es el suyo y
+    no se le antepone nada.
+    """
+    if "refiner" in nombre.casefold():
+        return nombre
+    return f"Refinería {nombre}"
+
+
+def _tiene_dato(valores: Sequence[float] | None) -> bool:
+    """Una fila entera en cero no se muestra, como en el resto de la hoja."""
+    return valores is not None and any(valores)
+
 
 def _bonito(nombre: str) -> str:
     """Etiqueta legible para los bloques que todavía no tienen catálogo.
@@ -94,7 +133,7 @@ def _series_de(fuente: Any) -> dict[str, tuple[float, ...]]:
 
 def _serie(
     etiqueta: str,
-    valores: tuple[float, ...] | list[float],
+    valores: Sequence[float],
     *,
     medida: str = "",
     concepto: str = "",
@@ -169,7 +208,7 @@ def _grupos_de_unidades(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDelB
     return grupos
 
 
-def _grupo_del_complejo(refineria: BloqueDeLaRefineria, nombre: str) -> GrupoDelBloque:
+def _grupo_de_la_refineria(refineria: BloqueDeLaRefineria, nombre: str) -> GrupoDelBloque:
     """El bloque de la refinería, en el orden de las filas 90 a 106 del libro.
 
     Ninguna fila es un dato: la refinería no lleva pestaña de producción porque
@@ -235,12 +274,14 @@ def _bloque_de_produccion(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorr
     grupos = _grupos_de_unidades(corrida, anos)
     refineria = resultado.caso.refineria
     if refineria is not None:
-        grupos.append(_grupo_del_complejo(resultado.refineria, refineria.nombre))
+        grupos.append(
+            _grupo_de_la_refineria(resultado.refineria, _rotulo_de_refineria(refineria.nombre))
+        )
         grupos.append(_grupo_de_venta_spot(resultado.refineria))
     return BloqueDeCorrida(
         clave="produccion",
         etiqueta="InputsProd",
-        titulo="Producción, complejo y venta spot",
+        titulo="Producción, refinería y venta spot",
         hoja="InputsProd",
         grupos=grupos,
     )
@@ -249,50 +290,190 @@ def _bloque_de_produccion(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorr
 # --- El resto de las hojas ----------------------------------------------------
 
 
-def _bloque_de_opex(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
-    """Cash cost y gastos. Las etiquetas ya son las del libro.
+def _serie_unitaria(costo: Sequence[float], base: Sequence[float]) -> list[float]:
+    """Costo por tonelada, ejercicio a ejercicio.
 
-    El catálogo de la ingesta usa la etiqueta como clave del diccionario del
-    motor, así que aquí no hay nada que traducir.
+    Divide con la función del motor y no con un operador: con cero toneladas
+    devuelve cero, que es lo que hace el libro con su `IFERROR`.
+    """
+    return [
+        cash_cost_unitario(valor, base[i] if i < len(base) else 0.0)
+        for i, valor in enumerate(costo)
+    ]
+
+
+def _se_muestra(etiqueta: str, valores: Sequence[float] | None) -> bool:
+    """Los diez de la base siempre; el resto solo si la unidad los usa."""
+    return etiqueta in BASE_DEL_CASH_COST or _tiene_dato(valores)
+
+
+def _o_en_ceros(valores: Sequence[float] | None, anos: int) -> Sequence[float]:
+    """Una fila de la base sin dato se dibuja igual, con su guion en cada año."""
+    return valores if valores else (0.0,) * anos
+
+
+def _grupos_de_cash_cost(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDelBloque]:
+    """Un bloque por unidad, con la estructura completa del libro.
+
+    Los diez conceptos de `BASE_DEL_CASH_COST` aparecen siempre, con su guion si
+    están en cero: son la estructura que MINSUR quiere ver en todos los bloques.
+
+    **Los demás se ocultan si están en cero todo el horizonte**, y eso es lo que
+    hace que cada unidad muestre los suyos. El libro tiene bloques de distinta
+    altura —una mina lleva diez filas y la refinería otras nueve, distintas— y
+    la plantilla no puede: emite la misma estructura para todas, porque tiene
+    que servir a un proyecto que hoy no existe. Ocultar lo vacío recupera esa
+    lista por unidad sin decidir aquí qué concepto es de quién.
     """
     resultado = corrida.resultado
+    del_catalogo = {fila.etiqueta for fila in FILAS_DE_OPEX if not fila.es_seccion}
     grupos: list[GrupoDelBloque] = []
-    for unidad in resultado.caso.unidades:
-        secciones: list[SeccionDelBloque] = []
-        costos = [
-            _serie(concepto, valores, medida=DOLARES) for concepto, valores in unidad.costos.items()
-        ]
-        if unidad.nombre in resultado.cash_cost_por_unidad:
-            costos.insert(
-                0,
-                _serie("Cash cost", resultado.cash_cost_por_unidad[unidad.nombre], medida=DOLARES),
-            )
-        if costos:
-            secciones.append(SeccionDelBloque(titulo="Cash Cost", series=costos))
-        gastos = [
-            _serie(concepto, valores, medida=DOLARES, origen="dato")
-            for concepto, valores in unidad.gastos.items()
-        ]
-        if gastos:
-            secciones.append(SeccionDelBloque(titulo="Gastos", series=gastos))
-        if secciones:
-            grupos.append(GrupoDelBloque(titulo=unidad.nombre, secciones=secciones))
 
-    grupos.insert(
-        0,
-        GrupoDelBloque(
-            titulo="",
-            secciones=_una_seccion(
-                [_serie("Cash cost del caso", resultado.cash_cost, medida=DOLARES)]
-            ),
-        ),
-    )
+    for unidad in resultado.caso.unidades:
+        series = [
+            _serie(
+                fila.etiqueta,
+                _o_en_ceros(unidad.costos.get(fila.etiqueta), anos),
+                medida=fila.medida or "",
+                origen="dato",
+            )
+            for fila in FILAS_DE_CASH_COST
+            if not fila.es_seccion and _se_muestra(fila.etiqueta, unidad.costos.get(fila.etiqueta))
+        ]
+        series.extend(
+            _serie(concepto, valores, medida=MEDIDA_OPEX, origen="dato")
+            for concepto, valores in unidad.costos.items()
+            if concepto not in del_catalogo and _tiene_dato(valores)
+        )
+        total = resultado.cash_cost_por_unidad.get(unidad.nombre)
+        if total is not None:
+            series.append(_serie(f"Total {unidad.nombre}", total, medida=MEDIDA_OPEX))
+        grupos.append(
+            GrupoDelBloque(titulo=f"Cash Cost - {unidad.nombre}", secciones=_una_seccion(series))
+        )
+
+    return grupos
+
+
+def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDelBloque]:
+    """Lo que el libro calcula debajo de los bloques: producción y costo unitario.
+
+    Ninguna de estas filas es un dato. Salen de dividir lo que ya está arriba
+    entre lo que la unidad trata o produce, con la función del motor.
+    """
+    resultado = corrida.resultado
+    tratado = resultado.mineral_tratado_por_unidad
+
+    produccion = [
+        _serie("Total Cash Cost", resultado.cash_cost, medida=MEDIDA_OPEX),
+    ]
+    for unidad in resultado.caso.unidades:
+        if unidad.nombre in tratado:
+            produccion.append(
+                _serie(f"Toneladas Tratadas {unidad.nombre}", tratado[unidad.nombre], medida="tt")
+            )
+    for unidad in resultado.caso.unidades:
+        finas = unidad.produccion.toneladas_finas
+        if _tiene_dato(finas):
+            produccion.append(_serie(f"Producción {unidad.nombre}", finas, medida="tmf"))
+
+    unitarios: list[SeccionDelBloque] = []
+    for unidad in resultado.caso.unidades:
+        base = tratado.get(unidad.nombre)
+        if not _tiene_dato(base):
+            continue
+        filas = [
+            _serie(
+                fila.etiqueta,
+                _serie_unitaria(_o_en_ceros(unidad.costos.get(fila.etiqueta), anos), base or ()),
+                medida="$/tt",
+            )
+            for fila in FILAS_DE_CASH_COST
+            if not fila.es_seccion and _se_muestra(fila.etiqueta, unidad.costos.get(fila.etiqueta))
+        ]
+        total = resultado.cash_cost_por_unidad.get(unidad.nombre)
+        if total is not None:
+            filas.append(
+                _serie(
+                    f"Total {unidad.nombre} / tt",
+                    _serie_unitaria(total, base or ()),
+                    medida="$/tt",
+                )
+            )
+        unitarios.append(SeccionDelBloque(titulo=unidad.nombre, series=filas))
+
+    por_fina = []
+    for unidad in resultado.caso.unidades:
+        finas = unidad.produccion.toneladas_finas
+        total = resultado.cash_cost_por_unidad.get(unidad.nombre)
+        if total is None or not _tiene_dato(finas):
+            continue
+        por_fina.append(
+            _serie(
+                f"Cash Cost {unidad.nombre} / tmf",
+                _serie_unitaria(total, finas),
+                medida="$/tmf",
+            )
+        )
+
+    grupos = [GrupoDelBloque(titulo="Producción", secciones=_una_seccion(produccion))]
+    if unitarios:
+        grupos.append(GrupoDelBloque(titulo="Cash cost por tonelada tratada", secciones=unitarios))
+    if por_fina:
+        grupos.append(
+            GrupoDelBloque(titulo="Cash cost por tonelada fina", secciones=_una_seccion(por_fina))
+        )
+    return grupos
+
+
+def _grupos_de_gastos(corrida: CorridaAlmacenada) -> list[GrupoDelBloque]:
+    """Los gastos, al cierre de la hoja.
+
+    Van al final y no dentro del bloque de cada unidad, que es donde los pone el
+    libro: no son cash cost, viven en `UnidadProductiva.gastos` aparte de
+    `costos`, y cada fila va a un sitio distinto del flujo.
+    """
+    grupos: list[GrupoDelBloque] = []
+    for unidad in corrida.resultado.caso.unidades:
+        series = [
+            _serie(
+                fila.etiqueta,
+                unidad.gastos[fila.etiqueta],
+                medida=fila.medida or "",
+                origen="dato",
+            )
+            for fila in FILAS_DE_GASTOS
+            if not fila.es_seccion and _tiene_dato(unidad.gastos.get(fila.etiqueta))
+        ]
+        if series:
+            grupos.append(
+                GrupoDelBloque(titulo=f"Gastos - {unidad.nombre}", secciones=_una_seccion(series))
+            )
+    return grupos
+
+
+def _bloque_de_opex(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorrida:
+    """La hoja de opex, en el orden del libro.
+
+    Primero el cash cost de cada unidad con su total, después lo que el libro
+    calcula debajo —producción, costo por tonelada tratada y por tonelada fina—
+    y al final los gastos.
+
+    **Falta el bloque `Supuestos Pisco`**, con el costo por tonelada fina de la
+    refinería y sus subtotales por origen. La plataforma no lo modela: reparte
+    el costo de la refinería como el de cualquier otra unidad, y los subtotales
+    por origen del libro no tienen contraparte.
+    """
     return BloqueDeCorrida(
         clave="opex",
         etiqueta="InputsOpex",
-        titulo="Cash cost y gastos",
+        titulo="Cash cost, costo unitario y gastos",
         hoja="InputsOpex",
-        grupos=grupos,
+        grupos=[
+            *_grupos_de_cash_cost(corrida, anos),
+            *_grupo_de_produccion_y_unitarios(corrida, anos),
+            *_grupos_de_gastos(corrida),
+        ],
     )
 
 
@@ -482,7 +663,7 @@ def bloques_de(corrida: CorridaAlmacenada) -> BloquesDeCorrida:
         unidades=[unidad.nombre for unidad in resultado.caso.unidades],
         bloques=[
             _bloque_de_produccion(corrida, len(anios)),
-            _bloque_de_opex(corrida),
+            _bloque_de_opex(corrida, len(anios)),
             _bloque_de_capex(corrida),
             _bloque_de_depreciacion(corrida),
             _bloque_de_ventas(corrida),

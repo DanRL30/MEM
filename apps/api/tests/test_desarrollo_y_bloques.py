@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
 from minsur_api import maestros_desarrollo
+from minsur_api.bloques import BASE_DEL_CASH_COST
 from minsur_api.dependencias import datos_maestros, repositorio
 from minsur_api.main import crear_app
 from minsur_api.repositorio import RepositorioEnMemoria
@@ -115,6 +116,25 @@ def plantilla(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def plantilla_opex(tmp_path: Path) -> Path:
+    """El libro de opex, con una pestaña por unidad y dos conceptos llenos."""
+    generador = _generador()
+    ruta = tmp_path / "opex.xlsx"
+    libro = generador.Workbook()  # type: ignore[attr-defined]
+    libro.remove(libro.active)
+    for nombre in ("Mina Alfa", "Refineria"):
+        generador.hoja_opex_de_unidad(libro, nombre, 2027, 3)  # type: ignore[attr-defined]
+    libro.save(ruta)
+
+    libro = load_workbook(ruta)
+    for nombre in ("Mina Alfa", "Refineria"):
+        _escribir(libro[nombre], "Mina", [0.0, 90_000.0, 90_000.0])
+        _escribir(libro[nombre], "Gastos administrativos", [0.0, 12_000.0, 12_000.0])
+    libro.save(ruta)
+    return ruta
+
+
+@pytest.fixture
 def repo() -> RepositorioEnMemoria:
     return RepositorioEnMemoria()
 
@@ -143,13 +163,21 @@ def _crear_caso(cliente: TestClient) -> str:
     return str(respuesta.json()["id_caso"])
 
 
-def _subir(cliente: TestClient, id_caso: str, ruta: Path) -> dict[str, object]:
-    with ruta.open("rb") as archivo:
+def _subir(
+    cliente: TestClient, id_caso: str, ruta: Path, opex: Path | None = None
+) -> dict[str, object]:
+    abiertos = [ruta.open("rb")]
+    archivos = {"caso": (ruta.name, abiertos[0], "application/vnd.ms-excel")}
+    if opex is not None:
+        abiertos.append(opex.open("rb"))
+        archivos["opex"] = (opex.name, abiertos[1], "application/vnd.ms-excel")
+    try:
         respuesta = cliente.post(
-            f"/api/desarrollo/casos/{id_caso}/insumos",
-            files={"caso": (ruta.name, archivo, "application/vnd.ms-excel")},
-            headers=CABECERAS,
+            f"/api/desarrollo/casos/{id_caso}/insumos", files=archivos, headers=CABECERAS
         )
+    finally:
+        for archivo in abiertos:
+            archivo.close()
     assert respuesta.status_code == 200, respuesta.text
     resultado: dict[str, object] = respuesta.json()
     return resultado
@@ -253,9 +281,11 @@ class TestCargaDeInsumos:
 
 
 class TestBloquesIntermedios:
-    def _bloques(self, cliente: TestClient, plantilla: Path) -> dict[str, Any]:
+    def _bloques(
+        self, cliente: TestClient, plantilla: Path, opex: Path | None = None
+    ) -> dict[str, Any]:
         id_caso = _crear_caso(cliente)
-        _subir(cliente, id_caso, plantilla)
+        _subir(cliente, id_caso, plantilla, opex)
         cliente.post(f"/api/casos/{id_caso}/evaluar", headers=CABECERAS)
         respuesta = cliente.get(f"/api/casos/{id_caso}/corrida/bloques", headers=CABECERAS)
         assert respuesta.status_code == 200, respuesta.text
@@ -325,6 +355,80 @@ class TestBloquesIntermedios:
 
         leyes = [s for s in mina["secciones"][1]["series"] if s["etiqueta"].startswith("Ley")]
         assert leyes and all(s["medida"] in {"%", "oz/t"} for s in leyes)
+
+    def test_opex_sigue_el_orden_de_la_hoja(
+        self, cliente: TestClient, plantilla: Path, plantilla_opex: Path
+    ) -> None:
+        # Primero el cash cost de cada unidad con su total, despues lo que el
+        # libro calcula debajo, y los gastos al final. Los gastos no van dentro
+        # del bloque de la unidad: no son cash cost y cada fila va a un sitio
+        # distinto del flujo.
+        cuerpo = self._bloques(cliente, plantilla, plantilla_opex)
+        opex = next(b for b in cuerpo["bloques"] if b["clave"] == "opex")
+        titulos = [g["titulo"] for g in opex["grupos"]]
+
+        assert titulos[0].startswith("Cash Cost - ")
+        assert "Producción" in titulos
+        assert titulos[-1].startswith("Gastos - ")
+        assert titulos.index("Producción") > max(
+            i for i, t in enumerate(titulos) if t.startswith("Cash Cost - ")
+        )
+
+    def test_la_estructura_base_del_cash_cost(self) -> None:
+        # Los diez conceptos que MINSUR quiere ver en todos los bloques, en su
+        # orden. Se toman del catalogo por posicion, asi que esta prueba es la
+        # que avisa si alguien lo reordena: sin ella el cambio pasaria en
+        # silencio y la hoja mostraria otra cosa.
+        assert BASE_DEL_CASH_COST == (
+            "Exploraciones",
+            "Geología",
+            "Mina",
+            "Planta Preconcentración",
+            "Planta Concentradora",
+            "Mantenimiento",
+            "Energía",
+            "Apoyo",
+            "Estudios y optimizaciones",
+            "Relavera",
+        )
+
+    def test_la_base_aparece_aunque_este_en_cero(
+        self, cliente: TestClient, plantilla: Path, plantilla_opex: Path
+    ) -> None:
+        # La plantilla de la prueba solo llena `Mina`. Las otras nueve de la
+        # base tienen que salir igual, con su guion.
+        cuerpo = self._bloques(cliente, plantilla, plantilla_opex)
+        opex = next(b for b in cuerpo["bloques"] if b["clave"] == "opex")
+        primero = next(g for g in opex["grupos"] if g["titulo"].startswith("Cash Cost - "))
+        etiquetas = [s["etiqueta"] for s in primero["secciones"][0]["series"]]
+
+        assert etiquetas[: len(BASE_DEL_CASH_COST)] == list(BASE_DEL_CASH_COST)
+        assert etiquetas[-1].startswith("Total ")
+
+    def test_lo_que_no_es_de_la_base_se_oculta_si_esta_vacio(
+        self, cliente: TestClient, plantilla: Path, plantilla_opex: Path
+    ) -> None:
+        # Es lo que devuelve la lista de conceptos de cada unidad: el bloque de
+        # una mina no lleva las filas de la refineria.
+        cuerpo = self._bloques(cliente, plantilla, plantilla_opex)
+        opex = next(b for b in cuerpo["bloques"] if b["clave"] == "opex")
+        primero = next(g for g in opex["grupos"] if g["titulo"].startswith("Cash Cost - "))
+        etiquetas = {s["etiqueta"] for s in primero["secciones"][0]["series"]}
+
+        assert "Fundición" not in etiquetas
+        assert "Línea de transmisión" not in etiquetas
+
+    def test_el_costo_unitario_sale_de_dividir_lo_de_arriba(
+        self, cliente: TestClient, plantilla: Path, plantilla_opex: Path
+    ) -> None:
+        cuerpo = self._bloques(cliente, plantilla, plantilla_opex)
+        opex = next(b for b in cuerpo["bloques"] if b["clave"] == "opex")
+        unitario = next(
+            g for g in opex["grupos"] if g["titulo"] == "Cash cost por tonelada tratada"
+        )
+        series = [s for seccion in unitario["secciones"] for s in seccion["series"]]
+        assert all(s["medida"] == "$/tt" for s in series)
+        assert any(s["etiqueta"].startswith("Total ") for s in series)
 
     def test_cada_serie_tiene_un_valor_por_ano(self, cliente: TestClient, plantilla: Path) -> None:
         cuerpo = self._bloques(cliente, plantilla)
