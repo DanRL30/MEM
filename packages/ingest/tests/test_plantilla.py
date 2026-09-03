@@ -14,6 +14,7 @@ directo son 400 t al 3,2 % por balance; el tratado total, 700 t al 2,857 %; y co
 from __future__ import annotations
 
 import importlib.util
+import math
 import sys
 from pathlib import Path
 
@@ -26,7 +27,14 @@ from minsur_engine.depreciacion import TasasDeDepreciacion
 from minsur_engine.impuestos import EscalaProgresiva, Tramo
 from minsur_engine.parametros import ParametrosCorporativos
 from minsur_ingest.incidencias import ErrorDePlantilla
-from minsur_ingest.plantilla import Lectura, leer_o_fallar, leer_plantilla, leer_produccion
+from minsur_ingest.plantilla import (
+    Lectura,
+    leer_comite_de_precios,
+    leer_o_fallar,
+    leer_plantilla,
+    leer_produccion,
+    leer_supuestos,
+)
 from minsur_ingest.produccion import (
     FILAS_CON_DATO,
     UNIDADES_PROVISIONALES,
@@ -34,6 +42,7 @@ from minsur_ingest.produccion import (
     asociar_por_orden,
 )
 from minsur_ingest.sinonimos import canonizar
+from minsur_ingest.supuestos import aplicar as aplicar_supuestos
 
 RAIZ = Path(__file__).resolve().parents[3]
 
@@ -462,3 +471,142 @@ class TestSinonimos:
 def test_la_lectura_declara_si_es_valida(plantilla_llena: Path) -> None:
     assert Lectura(None, ()).valida is False
     assert leer_plantilla(plantilla_llena).valida is True
+
+
+def _libro_de_supuestos(generador: object, carpeta: Path, nombres: list[str], anos: int) -> Path:
+    """La segunda plantilla: sin ella la produccion se lee y no se puede vender."""
+    ruta = carpeta / "supuestos.xlsx"
+    libro = generador.Workbook()  # type: ignore[attr-defined]
+    libro.remove(libro.active)
+    generador.hoja_supuestos(libro, 2030, anos)  # type: ignore[attr-defined]
+    for nombre in nombres:
+        generador.hoja_supuestos_de_unidad(libro, nombre, 2030, anos)  # type: ignore[attr-defined]
+    libro.save(ruta)
+
+    libro = load_workbook(ruta)
+    _escribir(libro["Comunes"], "Capacidad Maxima de la Refineria", [100_000.0] * anos)
+    _escribir(libro["Comunes"], "Premio Sn", [0.0] * anos)
+    for nombre in nombres:
+        _escribir(libro[nombre], "Recuperacion de Sn en la refineria", [0.95] * anos)
+    libro.save(ruta)
+    return ruta
+
+
+def _libro_de_precios(
+    generador: object, carpeta: Path, anos: int, precio: float = 30_000.0
+) -> Path:
+    ruta = carpeta / "precios.xlsx"
+    libro = generador.Workbook()  # type: ignore[attr-defined]
+    libro.remove(libro.active)
+    generador.hoja_comite_de_precios(libro, 2030, anos)  # type: ignore[attr-defined]
+    libro.save(ruta)
+
+    libro = load_workbook(ruta)
+    hoja = libro["Comite de Precios"]
+    hoja["B2"] = "Comite de prueba"
+    hoja["D2"] = "01/01/2030"
+    _escribir(hoja, "Sn", [precio] * anos)
+    libro.save(ruta)
+    return ruta
+
+
+class TestUnProyectoCualquieraLlegaAlIndicador:
+    """La plantilla no sabe de que proyecto se trata, y el motor tampoco.
+
+    Es la propiedad que sostiene el alcance: la plataforma evalua un proyecto
+    que hoy no existe con la misma estructura y el mismo motor que las unidades
+    en marcha. Aqui se ejercita de punta a punta -generar, llenar, leer, aplicar
+    los supuestos y calcular- sobre nombres que no son de nadie.
+    """
+
+    def test_tres_proyectos_inventados_recorren_la_cadena_hasta_el_npv(
+        self, tmp_path: Path
+    ) -> None:
+        generador = _generador()
+        anos = 3
+        nombres = ["Proyecto X", "Proyecto Y", "Proyecto Z"]
+        unidades = generador._encadenar(  # type: ignore[attr-defined]
+            [
+                generador.Unidad.desde_texto(f"{n}:mina:Sn")  # type: ignore[attr-defined]
+                for n in nombres
+            ]
+            + [generador.Unidad.desde_texto("Refineria:refineria:Sn")]  # type: ignore[attr-defined]
+        )
+        ruta = tmp_path / "caso.xlsx"
+        libro = generador.Workbook()  # type: ignore[attr-defined]
+        generador.hoja_caso(libro, unidades, 2030, anos)  # type: ignore[attr-defined]
+        for nombre in nombres:
+            generador.hoja_produccion_de_unidad(libro, nombre, 2030, anos)  # type: ignore[attr-defined]
+        generador.hoja_precios(libro, unidades, 2030, anos)  # type: ignore[attr-defined]
+        libro.save(ruta)
+
+        libro = load_workbook(ruta)
+        libro["Caso"]["B3"] = "Cartera inventada"
+        libro["Caso"]["B9"] = "CP-PRUEBA"
+        for nombre in nombres:
+            _llenar_cadena(libro[nombre])
+        _escribir(libro["Precios"], "Precio, escenario Base", [30_000.0] * anos)
+        _escribir(libro["Precios"], "Factor de metal pagable", [0.9] * anos)
+        libro.save(ruta)
+
+        caso = leer_o_fallar(ruta)
+        assert [u.nombre for u in caso.unidades] == [*nombres, "Refineria"]
+
+        supuestos = leer_supuestos(_libro_de_supuestos(generador, tmp_path, nombres, anos))
+        comite = leer_comite_de_precios(_libro_de_precios(generador, tmp_path, anos))
+        assert supuestos.valida, [str(i) for i in supuestos.incidencias]
+        assert comite.valida, [str(i) for i in comite.incidencias]
+        assert supuestos.supuestos is not None
+
+        corrida = calcular(aplicar_supuestos(caso, supuestos.supuestos, comite.comite), MAESTROS)
+
+        # Los tres aportan, y el motor los lleva sin agrupar.
+        for nombre in nombres:
+            assert corrida.mineral_tratado_por_unidad[nombre] == (0.0, 1_000.0, 1_000.0)
+        # La cadena llega al final: hay venta, hay flujo y hay indicador.
+        assert sum(corrida.ventas) > 0.0, "la produccion no llego a venderse"
+        assert math.isfinite(corrida.indicadores.npv)
+        assert corrida.indicadores.npv != 0.0
+        # Y el horizonte es el que declara la plantilla, no uno fijado en el codigo.
+        assert caso.horizonte.primer_ano == 2030
+        assert len(corrida.flujo.flujo_economico) == anos
+
+    def test_el_indicador_lo_mueve_el_comite_y_no_una_constante(self, tmp_path: Path) -> None:
+        # Dos cosas a la vez. Que el NPV se mueva al cambiar el precio prueba que
+        # sale de la plantilla y no del codigo; que se mueva con el **comite** y
+        # no con la hoja del caso prueba que el dato maestro manda, que es la
+        # regla que impide cambiar un precio aprobado sin que nadie lo advierta.
+        def npv_con(precio: float) -> float:
+            generador = _generador()
+            carpeta = tmp_path / f"p{int(precio)}"
+            carpeta.mkdir()
+            unidades = generador._encadenar(  # type: ignore[attr-defined]
+                [
+                    generador.Unidad.desde_texto("Proyecto X:mina:Sn"),  # type: ignore[attr-defined]
+                    generador.Unidad.desde_texto("Refineria:refineria:Sn"),  # type: ignore[attr-defined]
+                ]
+            )
+            ruta = carpeta / "caso.xlsx"
+            libro = generador.Workbook()  # type: ignore[attr-defined]
+            generador.hoja_caso(libro, unidades, 2030, 3)  # type: ignore[attr-defined]
+            generador.hoja_produccion_de_unidad(libro, "Proyecto X", 2030, 3)  # type: ignore[attr-defined]
+            generador.hoja_precios(libro, unidades, 2030, 3)  # type: ignore[attr-defined]
+            libro.save(ruta)
+            libro = load_workbook(ruta)
+            libro["Caso"]["B3"] = "Un proyecto"
+            libro["Caso"]["B9"] = "CP-PRUEBA"
+            _llenar_cadena(libro["Proyecto X"])
+            # La hoja del caso queda fija: la que se mueve es la del comite.
+            _escribir(libro["Precios"], "Precio, escenario Base", [30_000.0] * 3)
+            _escribir(libro["Precios"], "Factor de metal pagable", [0.9] * 3)
+            libro.save(ruta)
+
+            supuestos = leer_supuestos(_libro_de_supuestos(generador, carpeta, ["Proyecto X"], 3))
+            comite = leer_comite_de_precios(_libro_de_precios(generador, carpeta, 3, precio))
+            assert supuestos.supuestos is not None
+            caso = aplicar_supuestos(leer_o_fallar(ruta), supuestos.supuestos, comite.comite)
+            return calcular(caso, MAESTROS).indicadores.npv
+
+        barato, caro = npv_con(30_000.0), npv_con(60_000.0)
+        assert caro > barato, "el NPV no reacciona al precio del comite"
+        assert barato != 0.0

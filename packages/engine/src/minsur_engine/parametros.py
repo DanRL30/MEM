@@ -41,6 +41,16 @@ class ParametrosCorporativos:
     oefa: float
     fondo_jubilacion_minera: float
 
+    limite_arrastre_de_perdidas: float = 0.5
+    """Fraccion de la utilidad imponible que puede absorber el arrastre.
+
+    El libro la lleva incrustada en las formulas de `Impuestos!48` y `!66`, y el
+    estandar corporativo no la menciona. Aqui es dato maestro como las demas
+    tasas: si la norma la cambia, la corrida nueva usa la version nueva y las
+    anteriores conservan la suya. Es la regla `013` del catalogo de parametros y
+    la consulta abierta de `brechas-hoja-impuestos.md`.
+    """
+
     def __post_init__(self) -> None:
         if not self.version_datos_maestros.strip():
             raise ErrorParametros(

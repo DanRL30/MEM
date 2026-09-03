@@ -387,6 +387,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         tasa_fondo_jubilacion=parametros.fondo_jubilacion_minera,
         tasa_participacion=parametros.participacion_trabajadores,
         tasa_impuesto_renta=parametros.impuesto_renta,
+        limite_arrastre_de_perdidas=parametros.limite_arrastre_de_perdidas,
         saldo_inicial_de_perdidas=comunes.saldo_inicial_de_perdidas,
     )
     resultados = bloque_de_impuestos.por_ano

@@ -181,6 +181,8 @@ class EntradasTributarias:
     tasa_fondo_jubilacion: float
     tasa_participacion: float
     tasa_impuesto_renta: float
+    limite_arrastre_de_perdidas: float = 0.5
+    """Fraccion de la utilidad imponible que el arrastre puede absorber."""
 
 
 @dataclass(frozen=True)
@@ -346,8 +348,9 @@ def _ramas_de_deduccion(
     rama del 50 % escala la utilidad imponible entera, y tratarla como una
     constante aditiva deja el sistema sin solución consistente.
     """
+    limite = entradas.limite_arrastre_de_perdidas
     return (
-        (0.5 * ui_const, 0.5 * ui_pend),
+        ((1.0 - limite) * ui_const, (1.0 - limite) * ui_pend),
         (ui_const - entradas.saldo_perdidas, ui_pend),
         (ui_const, ui_pend),
     )
@@ -370,7 +373,7 @@ def _armar(entradas: EntradasTributarias, utilidad_operativa: float) -> Resultad
 
     imponible = entradas.base_imponible - regalia - iem
     if imponible > 0.0:
-        deduccion = -min(imponible * 0.5, entradas.saldo_perdidas)
+        deduccion = -min(imponible * entradas.limite_arrastre_de_perdidas, entradas.saldo_perdidas)
     else:
         deduccion = 0.0
     neta = imponible + deduccion
@@ -676,6 +679,7 @@ def calcular(
     tasa_fondo_jubilacion: float,
     tasa_participacion: float,
     tasa_impuesto_renta: float,
+    limite_arrastre_de_perdidas: float,
     saldo_inicial_de_perdidas: float,
 ) -> BloqueDeImpuestos:
     """Reproduce la hoja `Impuestos` desde los bloques anteriores del motor.
@@ -744,6 +748,7 @@ def calcular(
             tasa_fondo_jubilacion=tasa_fondo_jubilacion,
             tasa_participacion=tasa_participacion,
             tasa_impuesto_renta=tasa_impuesto_renta,
+            limite_arrastre_de_perdidas=limite_arrastre_de_perdidas,
         )
         resultado = resolver(entradas)
         resultados.append(resultado)

@@ -255,6 +255,7 @@ def bloque(**cambios: object) -> BloqueDeImpuestos:
         "tasa_fondo_jubilacion": 0.005,
         "tasa_participacion": 0.08,
         "tasa_impuesto_renta": 0.295,
+        "limite_arrastre_de_perdidas": 0.5,
         "saldo_inicial_de_perdidas": 0.0,
     }
     argumentos.update(cambios)

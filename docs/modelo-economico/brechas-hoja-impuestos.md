@@ -179,5 +179,8 @@ asimetria del libro y se reproduce.
 
 1. **Si `Ingresos Financieros` y `Gastos Financieros` entran al alcance.** Hoy el libro las deja
    vacias y el estandar las nombra. Ver la nota 2 de [mapa-n1.md](mapa-n1.md) y `R-32`.
-2. **Si el limite del 50 % de arrastre de perdidas es el vigente.** Esta incrustado en las filas 48
-   y 66 y no aparece en ningun parametro; el estandar corporativo no lo menciona.
+2. **Si el limite del 50 % de arrastre de perdidas es el vigente.** El libro lo lleva incrustado en
+   las formulas de las filas 48 y 66 y el estandar corporativo no lo menciona. En la plataforma
+   **no esta incrustado**: es `ParametrosCorporativos.limite_arrastre_de_perdidas`, dato maestro
+   versionado como las demas tasas, con el 0,5 del libro por defecto. Si la norma lo cambia, basta
+   una version nueva de datos maestros y las corridas anteriores conservan la suya.
