@@ -1092,8 +1092,9 @@ def _indicadores(caso: Caso, tasa: float, flujo: FlujoDelCaso, capex: Serie) -> 
     try:
         tasa_interna: float | None = tir(economico)
     except ValueError:
-        # Un flujo sin cambio de signo no tiene TIR. No es un fallo del caso:
-        # un proyecto sin desembolso o sin retorno simplemente no la define.
+        # No todo caso tiene TIR: un flujo sin cambio de signo, uno que abre en
+        # positivo -operacion en marcha, no inversion- y uno cuya unica raiz
+        # queda por debajo de cero no la definen. No es un fallo del caso.
         tasa_interna = None
 
     capacidad = caso.datos_comunes.capacidad_para_intensidad

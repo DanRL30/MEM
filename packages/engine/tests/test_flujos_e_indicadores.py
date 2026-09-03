@@ -18,6 +18,8 @@ from minsur_engine.flujos import (
 )
 from minsur_engine.horizonte import Horizonte
 from minsur_engine.indicadores import (
+    TASA_MAXIMA_BUSCADA,
+    TASA_MINIMA_BUSCADA,
     ErrorIndicadores,
     capital_intensity,
     factores_de_descuento,
@@ -94,6 +96,30 @@ class TestIndicadores:
     def test_un_flujo_sin_cambio_de_signo_no_tiene_tir(self) -> None:
         with pytest.raises(ErrorIndicadores, match="no cambia de signo"):
             tir([100.0, 200.0, 300.0])
+
+    def test_la_tir_aparece_aunque_los_extremos_no_la_encierren(self) -> None:
+        # Perfil de un proyecto con desembolso inicial y ejercicio de cierre: el
+        # NPV queda negativo en los dos extremos del intervalo buscado y positivo
+        # en medio. Corcheteando con los bordes, la TIR existia y no se hallaba.
+        flujo = [0.0, -100.0, -300.0, -500.0, 200.0, 300.0, 300.0, 300.0, 300.0, -50.0]
+        assert npv(flujo, TASA_MINIMA_BUSCADA) < 0.0
+        assert npv(flujo, TASA_MAXIMA_BUSCADA) < 0.0
+        tasa = tir(flujo)
+        assert tasa > 0.0
+        assert npv(flujo, tasa) == pytest.approx(0.0, abs=1e-6)
+
+    def test_un_flujo_que_abre_en_positivo_no_tiene_tir(self) -> None:
+        # Operacion en marcha que solo baja de cero en los ejercicios de cierre:
+        # su unica raiz es negativa y no es una rentabilidad. El libro responde
+        # lo mismo con el guion de su `IFERROR`.
+        with pytest.raises(ErrorIndicadores, match="operacion en marcha"):
+            tir([100.0, 100.0, 100.0, -5.0])
+
+    def test_una_inversion_que_no_se_recupera_no_tiene_tir(self) -> None:
+        # Hay desembolso inicial, pero el NPV no cruza cero en ninguna tasa no
+        # negativa. Se dice, en vez de entregar una tasa por debajo de cero.
+        with pytest.raises(ErrorIndicadores, match="tasa no negativa"):
+            tir([-1_000.0, 100.0, 100.0])
 
     def test_el_payback_interpola_dentro_del_ano(self) -> None:
         # Se recuperan 100 el primer ano y quedan 100 por recuperar de un flujo

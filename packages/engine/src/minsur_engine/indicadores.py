@@ -10,12 +10,14 @@ estándar corporativo pide mitad de año y el modelo no lo hace; Finanzas
 confirmó el 01/09/2026 que se reproduce el modelo y que la diferencia queda
 reportada. Es la regla 005.
 
-**La TIR se calcula por bisección y no con la iteración de Excel.** Excel
-resuelve la TIR partiendo de una semilla y puede converger a raíces distintas
-según esa semilla. La bisección sobre un intervalo con cambio de signo es
-determinista: dos corridas de la misma serie dan el mismo número, que es la
-condición del sellado. Si la serie no tiene cambio de signo, no hay TIR y el
-módulo lo dice en lugar de devolver un valor.
+**La TIR se calcula por barrido y bisección, no con la iteración de Excel.**
+Excel parte de una semilla y puede converger a raíces distintas según cuál sea.
+Aquí el intervalo se recorre entero en pasos fijos, se detecta cada cambio de
+signo del NPV y cada uno se reduce por bisección: dos corridas de la misma serie
+dan el mismo número, que es la condición del sellado. Y se entrega **solo cuando
+el caso tiene desembolso inicial y la raíz es no negativa**; en cualquier otro
+supuesto el módulo dice que no hay TIR en lugar de devolver un número que no
+describe una rentabilidad.
 """
 
 from __future__ import annotations
@@ -25,7 +27,12 @@ from dataclasses import dataclass
 
 TOLERANCIA_TIR = 1e-12
 ITERACIONES_MAXIMAS = 200
+TASA_MINIMA_BUSCADA = -0.9999
 TASA_MAXIMA_BUSCADA = 10.0
+# Ancho del paso con que se recorre el intervalo buscando cambios de signo.
+# Dos raices separadas por menos de medio punto porcentual quedan fuera de su
+# resolucion, y ninguna evaluacion del servicio las produce.
+PASO_DEL_BARRIDO = 0.005
 
 
 class ErrorIndicadores(ValueError):
@@ -59,10 +66,23 @@ def npv(flujo: Sequence[float], tasa: float) -> float:
 
 
 def tir(flujo: Sequence[float]) -> float:
-    """Tasa interna de retorno, por bisección sobre el NPV.
+    """Tasa interna de retorno, por barrido y bisección sobre el NPV.
 
-    Busca el cambio de signo en un intervalo amplio y lo reduce hasta la
-    tolerancia. Es más lento que el método de Excel y no depende de una semilla.
+    Se entrega **solo cuando el caso abre con desembolso y la raíz es no
+    negativa**. Un flujo que abre en positivo describe una operación en marcha y
+    no una inversión: cruza el eje únicamente en el tramo profundamente
+    negativo, y esa raíz no es una rentabilidad. El libro llega a lo mismo por
+    otro camino —su `IRR` no converge y el `IFERROR` escribe un guion—, de modo
+    que ahí las dos herramientas coinciden en no dar el indicador. Lo decidió el
+    Project Manager el 03/09/2026, y lo registra el ADR 0011.
+
+    El intervalo se recorre entero en vez de corchetearse con sus extremos:
+    mirar solo los bordes deja fuera la raíz de un proyecto que abre con
+    desembolso y cierra con un ejercicio negativo, donde el NPV es negativo en
+    los dos extremos y positivo en medio.
+
+    Entre varias raíces no negativas se entrega la menor, que es la primera tasa
+    a la que el proyecto deja de crear valor.
     """
     if not flujo:
         raise ErrorIndicadores("El flujo esta vacio.")
@@ -72,24 +92,19 @@ def tir(flujo: Sequence[float]) -> float:
             "retorno no la define."
         )
 
-    inferior, superior = -0.9999, TASA_MAXIMA_BUSCADA
-    npv_inferior, npv_superior = npv(flujo, inferior), npv(flujo, superior)
-    if npv_inferior * npv_superior > 0.0:
+    if not _abre_con_desembolso(flujo):
         raise ErrorIndicadores(
-            "No se encontro cambio de signo del NPV entre -99,99 % y 1000 %. La serie puede tener "
-            "varias raices o ninguna en ese rango."
+            "El flujo abre en positivo: es una operacion en marcha y no una inversion, de modo que "
+            "no tiene TIR. Es lo mismo que responde el libro con el guion de su `IFERROR`."
         )
 
-    for _ in range(ITERACIONES_MAXIMAS):
-        medio = (inferior + superior) / 2.0
-        npv_medio = npv(flujo, medio)
-        if abs(npv_medio) < TOLERANCIA_TIR or (superior - inferior) < TOLERANCIA_TIR:
-            return medio
-        if npv_inferior * npv_medio < 0.0:
-            superior = medio
-        else:
-            inferior, npv_inferior = medio, npv_medio
-    return (inferior + superior) / 2.0
+    no_negativas = [raiz for raiz in _raices_del_npv(flujo) if raiz >= 0.0]
+    if not no_negativas:
+        raise ErrorIndicadores(
+            "El NPV no cruza cero en ninguna tasa no negativa entre 0 % y 1000 %. La raiz quedaria "
+            "por debajo de cero y no describe una rentabilidad: lo que vale el caso lo dice el NPV."
+        )
+    return no_negativas[0]
 
 
 def payback(flujo: Sequence[float]) -> Payback:
@@ -117,6 +132,54 @@ def capital_intensity(capex_total: float, capacidad_anual: float) -> float:
             "capital que calcular."
         )
     return capex_total / capacidad_anual
+
+
+def _abre_con_desembolso(flujo: Sequence[float]) -> bool:
+    """Si el primer ejercicio con movimiento es una salida de caja."""
+    return next((valor for valor in flujo if valor != 0.0), 0.0) < 0.0
+
+
+def _raices_del_npv(flujo: Sequence[float]) -> list[float]:
+    """Raíces del NPV dentro del intervalo buscado, de menor a mayor."""
+    pasos = int((TASA_MAXIMA_BUSCADA - TASA_MINIMA_BUSCADA) / PASO_DEL_BARRIDO)
+    raices: list[float] = []
+    # Cada tasa se reconstruye desde su indice en vez de acumular el paso:
+    # acumularlo arrastra el error de coma flotante y mueve la rejilla, con lo
+    # que dos corridas de la misma serie podrian no dar el mismo numero.
+    tasa = TASA_MINIMA_BUSCADA
+    valor = npv(flujo, tasa)
+    for i in range(1, pasos + 1):
+        siguiente = min(TASA_MINIMA_BUSCADA + i * PASO_DEL_BARRIDO, TASA_MAXIMA_BUSCADA)
+        valor_siguiente = npv(flujo, siguiente)
+        if valor == 0.0:
+            raices.append(tasa)
+        elif _cambian_de_signo(valor, valor_siguiente):
+            raices.append(_raiz_en(flujo, tasa, siguiente))
+        tasa, valor = siguiente, valor_siguiente
+    if valor == 0.0:
+        raices.append(tasa)
+    return raices
+
+
+def _cambian_de_signo(anterior: float, siguiente: float) -> bool:
+    # Se comparan los signos y no el producto: cerca del -100 % el NPV alcanza
+    # magnitudes que al multiplicarse desbordan y dejan el producto en inf.
+    return (anterior > 0.0) != (siguiente > 0.0)
+
+
+def _raiz_en(flujo: Sequence[float], inferior: float, superior: float) -> float:
+    """Reduce por bisección un intervalo que ya encierra un cambio de signo."""
+    npv_inferior = npv(flujo, inferior)
+    for _ in range(ITERACIONES_MAXIMAS):
+        medio = (inferior + superior) / 2.0
+        npv_medio = npv(flujo, medio)
+        if abs(npv_medio) < TOLERANCIA_TIR or (superior - inferior) < TOLERANCIA_TIR:
+            return medio
+        if _cambian_de_signo(npv_inferior, npv_medio):
+            superior = medio
+        else:
+            inferior, npv_inferior = medio, npv_medio
+    return (inferior + superior) / 2.0
 
 
 def _payback_sobre(flujo: list[float]) -> Payback:
