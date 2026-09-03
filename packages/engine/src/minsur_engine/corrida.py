@@ -30,6 +30,7 @@ from minsur_engine.capex import (
     capex_de_etapa,
     capex_de_sostenimiento,
     capex_total,
+    desglosar_por_etapa_y_naturaleza,
 )
 from minsur_engine.cash_cost import (
     DONACIONES,
@@ -57,11 +58,16 @@ from minsur_engine.caso import (
 )
 from minsur_engine.corroboracion import Discrepancia, corroborar
 from minsur_engine.depreciacion import (
+    COMPONENTES_POR_AGOTAMIENTO,
     Agotamiento,
+    DetalleDeDepreciacionDeUnidad,
     TasasDeDepreciacion,
+    cosechas_por_etapa_y_componente,
+    depreciacion_por_etapa_y_componente,
     depreciacion_por_mina,
     por_unidad,
     total_depreciado,
+    trazar_agotamiento,
 )
 from minsur_engine.flujos import (
     ComponentesDeInversion,
@@ -248,6 +254,23 @@ class Corrida:
     depreciacion_tributaria_por_mina: dict[str, Serie]
     depreciacion_financiera_por_mina: dict[str, Serie]
 
+    capital_cruzado_por_unidad: dict[str, dict[str, dict[str, Serie]]]
+    """El capital ajustado, cruzado etapa por naturaleza, unidad a unidad.
+
+    Es el corte con que el libro abre tanto el bloque derivado de `InputsCapex`
+    como el resumen de cada bloque de `Depreciacion`. Se guarda una vez porque lo
+    consumen las dos hojas, y derivarlo dos veces las deja mostrando cortes
+    distintos del mismo dinero en cuanto una de las dos derivaciones cambie.
+    """
+
+    detalle_de_depreciacion: dict[str, DetalleDeDepreciacionDeUnidad]
+    """La hoja `Depreciacion` entera, unidad a unidad y con las dos vias.
+
+    Lleva el resumen por etapa, el triangulo de cosechas de cada linea y la tabla
+    con que la via financiera deriva su cuota. No se puede recomponer desde el
+    total, que es la misma razon por la que la depreciacion va separada por mina.
+    """
+
     depreciacion_tributaria_por_componente: dict[str, dict[str, Serie]]
     depreciacion_financiera_por_componente: dict[str, dict[str, Serie]]
     """La misma depreciacion, abierta por componente contable.
@@ -309,6 +332,19 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     }
     tributarias = _con_lo_declarado(maestros.tasas_tributarias, caso.datos_comunes.tasas_declaradas)
     financieras = _con_lo_declarado(maestros.tasas_financieras, caso.datos_comunes.tasas_declaradas)
+    # El cruce etapa por naturaleza del capital que de verdad se deprecia. La
+    # etapa la decide el ano, de modo que las cosechas de dos etapas son
+    # disjuntas y depreciarlas por separado da el mismo total.
+    umbrales = {u.nombre: u.umbral_de_capital_inicial for u in caso.unidades}
+    cruces = {
+        unidad.unidad: desglosar_por_etapa_y_naturaleza(
+            horizonte,
+            unidad.por_naturaleza,
+            anos_activos=anos_con_dato(produccion_por_unidad.get(unidad.unidad, ())),
+            umbral_inicial=umbrales.get(unidad.unidad),
+        )
+        for unidad in capital
+    }
     detalle_tributario = depreciacion_por_mina(
         horizonte,
         capital,
@@ -316,6 +352,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         produccion=con_produccion,
         proyecciones={u.nombre: u.proyeccion_tributaria for u in caso.unidades},
         estudios=capitalizados,
+        cruces=cruces,
     )
     # La via financiera agota contra las reservas en vez de depreciar lineal, y
     # por eso lleva el agotamiento que la tributaria no necesita.
@@ -327,9 +364,23 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         agotamientos={u.nombre: _agotamiento(u, horizonte) for u in caso.unidades},
         proyecciones={u.nombre: u.proyeccion_financiera for u in caso.unidades},
         estudios=capitalizados,
+        cruces=cruces,
     )
     depreciacion_tributaria = por_unidad(horizonte, detalle_tributario)
     depreciacion_financiera = por_unidad(horizonte, detalle_financiero)
+    agotamientos = {u.nombre: _agotamiento(u, horizonte) for u in caso.unidades}
+    detalle_de_la_hoja = _detalle_de_depreciacion(
+        horizonte,
+        capital,
+        cruces,
+        tributarias,
+        financieras,
+        con_produccion,
+        agotamientos,
+        capitalizados,
+        {u.nombre: u.proyeccion_tributaria for u in caso.unidades},
+        {u.nombre: u.proyeccion_financiera for u in caso.unidades},
+    )
 
     comunes = caso.datos_comunes
     # El libro calcula el flete y el gasto de venta de los proyectos con una
@@ -490,6 +541,8 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         capital_por_unidad=tuple(capital),
         depreciacion_tributaria_por_mina=depreciacion_tributaria,
         depreciacion_financiera_por_mina=depreciacion_financiera,
+        capital_cruzado_por_unidad=cruces,
+        detalle_de_depreciacion=detalle_de_la_hoja,
         depreciacion_tributaria_por_componente=detalle_tributario,
         depreciacion_financiera_por_componente=detalle_financiero,
         impuestos=bloque_de_impuestos,
@@ -833,6 +886,88 @@ def _cash_cost(caso: Caso) -> _CashCost:
         for nombre, costo in cash_cost_por_unidad(unidades).items():
             por_unidad[nombre][i] = costo
     return _CashCost(tuple(total), {n: tuple(v) for n, v in por_unidad.items()})
+
+
+def _detalle_de_depreciacion(
+    horizonte: Horizonte,
+    capital: Sequence[CapitalDeUnidad],
+    cruces: Mapping[str, Mapping[str, Mapping[str, Serie]]],
+    tributarias: TasasDeDepreciacion,
+    financieras: TasasDeDepreciacion,
+    produccion: Mapping[str, Serie],
+    agotamientos: Mapping[str, Agotamiento],
+    estudios: Mapping[str, Serie],
+    proyeccion_tributaria: Mapping[str, Serie],
+    proyeccion_financiera: Mapping[str, Serie],
+) -> dict[str, DetalleDeDepreciacionDeUnidad]:
+    """Arma lo que la hoja del libro muestra de cada unidad, las dos vias.
+
+    La bandera `Periodo con Produccion` sale de la propia produccion de la unidad
+    y no de un campo aparte: es lo que la hoja escribe al cerrar cada bloque, y
+    es la que separa las dos puertas -la tributaria acumula, la financiera no-.
+    """
+    detalle: dict[str, DetalleDeDepreciacionDeUnidad] = {}
+    for unidad in capital:
+        nombre = unidad.unidad
+        cruce = cruces.get(nombre, {})
+        propia = produccion.get(nombre)
+        agotamiento = agotamientos.get(nombre)
+        capitalizados = estudios.get(nombre, ())
+        detalle[nombre] = DetalleDeDepreciacionDeUnidad(
+            tributaria=depreciacion_por_etapa_y_componente(
+                horizonte,
+                cruce,
+                tributarias,
+                produccion=propia,
+                estudios=capitalizados,
+                proyeccion=proyeccion_tributaria.get(nombre, ()),
+            ),
+            financiera=depreciacion_por_etapa_y_componente(
+                horizonte,
+                cruce,
+                financieras,
+                produccion=propia,
+                agotamiento=agotamiento,
+                estudios=capitalizados,
+                proyeccion=proyeccion_financiera.get(nombre, ()),
+            ),
+            cosechas_tributarias=cosechas_por_etapa_y_componente(
+                horizonte, cruce, tributarias, produccion=propia, estudios=capitalizados
+            ),
+            cosechas_financieras=cosechas_por_etapa_y_componente(
+                horizonte,
+                cruce,
+                financieras,
+                produccion=propia,
+                agotamiento=agotamiento,
+                estudios=capitalizados,
+            ),
+            agotamiento=(
+                trazar_agotamiento(horizonte, _agotable(horizonte, cruce), agotamiento)
+                if agotamiento is not None and propia is not None
+                else None
+            ),
+            periodo_con_produccion=tuple(
+                1.0 if valor else 0.0 for valor in (propia or horizonte.ceros())
+            ),
+        )
+    return detalle
+
+
+def _agotable(horizonte: Horizonte, cruce: Mapping[str, Mapping[str, Serie]]) -> Serie:
+    """El capital que la via financiera agota, sumado sobre las etapas.
+
+    Es lo que el libro rotula `Capex (sin maquinarias)`: el capital de la unidad
+    menos lo que se deprecia lineal. Aqui sale por la via contraria, sumando los
+    componentes que si se agotan, que da lo mismo y no depende de que la resta
+    del libro reste las filas correctas.
+    """
+    total = [0.0] * horizonte.anos
+    for naturalezas in cruce.values():
+        for componente in COMPONENTES_POR_AGOTAMIENTO:
+            for i, valor in enumerate(naturalezas.get(componente, ())[: horizonte.anos]):
+                total[i] += valor
+    return tuple(total)
 
 
 def _agotamiento(unidad: UnidadProductiva, horizonte: Horizonte) -> Agotamiento:

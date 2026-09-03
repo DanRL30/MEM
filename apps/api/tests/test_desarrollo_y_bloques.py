@@ -724,6 +724,166 @@ class TestBloquesIntermedios:
         titulos = [g["titulo"] for g in self._capex(cliente, plantilla, plantilla_capex)["grupos"]]
         assert [t for t in titulos if t.startswith("Capex por Naturaleza - ")] == []
 
+    def _depreciacion(self, cliente: TestClient, plantilla: Path, capex: Path) -> dict[str, Any]:
+        cuerpo = self._bloques(cliente, plantilla, capex=capex)
+        bloque: dict[str, Any] = next(b for b in cuerpo["bloques"] if b["clave"] == "depreciacion")
+        return bloque
+
+    def test_depreciacion_sigue_el_orden_de_la_hoja(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # El libro lleva las dos vias seguidas y no intercaladas: primero toda la
+        # tributaria con su consolidado, despues toda la financiera, y al final
+        # el capital que queda sin depreciar.
+        titulos = [
+            g["titulo"] for g in self._depreciacion(cliente, plantilla, plantilla_capex)["grupos"]
+        ]
+
+        assert titulos[0].startswith("Depreciación Tributaria - ")
+        assert titulos[-1] == "Capital y depreciación acumulada"
+        tributario = titulos.index("Total Depreciación Tributaria")
+        financiero = titulos.index("Total Depreciación Financiera")
+        assert tributario < financiero
+        assert all(
+            tributario < titulos.index(t) < financiero
+            for t in titulos
+            if t.startswith("Depreciación Financiera - ")
+        )
+
+    def test_el_resumen_tributario_lleva_las_lineas_del_libro(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # El resumen del libro va **por etapa** y no por naturaleza contable: dice
+        # cuanto viene del capital inicial y cuanto del de sostenimiento.
+        bloque = self._depreciacion(cliente, plantilla, plantilla_capex)
+        grupo = next(
+            g for g in bloque["grupos"] if g["titulo"].startswith("Depreciación Tributaria - ")
+        )
+        resumen = grupo["secciones"][0]
+
+        assert resumen["titulo"] is None
+        assert [s["etiqueta"] for s in resumen["series"]] == [
+            "Proyección SAP",
+            "Depreciación - Capex Inicial",
+            "Depreciación - Sostenimiento",
+            "Escudo Fiscal - Cierre de Mina",
+            "Depreciación Estudios",
+            "Total Depreciación",
+            "Periodo con Producción",
+        ]
+        assert resumen["series"][5]["total"] is True
+
+    def test_los_triangulos_de_cosechas_vienen_plegados(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # Son tres cuartas partes de la hoja: una fila por ano de inversion. El
+        # resumen no se pliega, porque es lo que se lee primero.
+        bloque = self._depreciacion(cliente, plantilla, plantilla_capex)
+        grupo = next(
+            g for g in bloque["grupos"] if g["titulo"].startswith("Depreciación Tributaria - ")
+        )
+        plegables = [s for s in grupo["secciones"] if s["plegable"]]
+
+        assert grupo["secciones"][0]["plegable"] is False
+        assert plegables, "el bloque abre al menos un triangulo"
+        for seccion in plegables:
+            assert " · " in (seccion["titulo"] or ""), "el rotulo es etapa y componente"
+            assert seccion["series"][-1]["etiqueta"] == "Total"
+            assert seccion["series"][-1]["total"] is True
+
+    def test_la_via_financiera_lleva_su_tabla_de_agotamiento(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # Sin ella la cuota financiera es un numero sin derivacion, y es justo
+        # donde el contraste contra el modelo no cierra.
+        bloque = self._depreciacion(cliente, plantilla, plantilla_capex)
+        grupo = next(
+            g for g in bloque["grupos"] if g["titulo"].startswith("Depreciación Financiera - ")
+        )
+        agotamiento = next(s for s in grupo["secciones"] if s["titulo"] == "Agotamiento")
+
+        assert [s["etiqueta"] for s in agotamiento["series"]] == [
+            "Reservas",
+            "Mineral Extraído",
+            "Conversión Recursos",
+            "Reservas Finales",
+            "Tasa Depreciación Capex",
+            "Capex (sin maquinarias)",
+            "Saldo Inicial",
+            "Depreciación Capex",
+            "Saldo Final",
+        ]
+
+    def test_un_saldo_no_lleva_total_del_horizonte(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # La unidad de medida no basta para decidirlo: un saldo va en las mismas
+        # unidades que el flujo que lo mueve. Sumar los saldos de apertura de
+        # treinta y seis ejercicios da una cifra que no significa nada, y en la
+        # pantalla se veia tres veces el capital del caso.
+        bloque = self._depreciacion(cliente, plantilla, plantilla_capex)
+        series = {
+            serie["etiqueta"]: serie
+            for grupo in bloque["grupos"]
+            for seccion in grupo["secciones"]
+            for serie in seccion["series"]
+        }
+
+        for etiqueta in (
+            "Reservas",
+            "Reservas Finales",
+            "Saldo Inicial",
+            "Saldo Final",
+            "Acum. Capex no depreciado",
+        ):
+            assert series[etiqueta]["acumulado"] is None, etiqueta
+        # Los flujos de la misma tabla sí lo llevan.
+        assert series["Depreciación Capex"]["acumulado"] is not None
+        assert series["Mineral Extraído"]["acumulado"] is not None
+
+    def test_el_consolidado_financiero_cuadra_con_las_unidades(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # `Nuevo Capex` no es una linea del desglose sino las tres etapas juntas,
+        # y sin ella el consolidado salia en cero teniendo cada unidad su cuota.
+        bloque = self._depreciacion(cliente, plantilla, plantilla_capex)
+        por_unidad = [
+            serie["valores"]
+            for grupo in bloque["grupos"]
+            if grupo["titulo"].startswith("Depreciación Financiera - ")
+            for serie in grupo["secciones"][0]["series"]
+            if serie["etiqueta"] == "Total Depreciación Financiera"
+        ]
+        consolidado = next(
+            g for g in bloque["grupos"] if g["titulo"] == "Total Depreciación Financiera"
+        )
+        total = next(
+            s
+            for s in consolidado["secciones"][0]["series"]
+            if s["etiqueta"] == "Total Depreciación Financiera"
+        )
+
+        assert por_unidad, "hay al menos una unidad con depreciacion financiera"
+        sumado = [sum(v[i] for v in por_unidad) for i in range(len(total["valores"]))]
+        assert total["valores"] == pytest.approx(sumado)
+
+    def test_la_depreciacion_se_muestra_en_miles(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # Como el libro y como las otras dos hojas de dinero. Antes iba en `US$` y
+        # se veia mil veces mas grande que el capital que la origina.
+        bloque = self._depreciacion(cliente, plantilla, plantilla_capex)
+        medidas = {
+            serie["medida"]
+            for grupo in bloque["grupos"]
+            for seccion in grupo["secciones"]
+            for serie in seccion["series"]
+        }
+        # La bandera del periodo no lleva unidad, y la tabla de agotamiento
+        # ademas tonelaje y una tasa.
+        assert medidas <= {"$k", "t", "%", ""}
+        assert "$k" in medidas
+
     def test_la_ley_se_totaliza_ponderada_por_su_tonelaje(
         self, cliente: TestClient, plantilla: Path
     ) -> None:

@@ -113,7 +113,7 @@ describe("La hoja del libro", () => {
   const anios = [2027, 2028, 2029];
 
   const grupo = (series: SerieAnual[]) => [
-    { titulo: "San Rafael", secciones: [{ titulo: "Mina", series }] },
+    { titulo: "San Rafael", secciones: [{ titulo: "Mina", plegable: false, series }] },
   ];
 
   it("no intercala el recalculo salvo que se pida", () => {
@@ -250,6 +250,52 @@ describe("La hoja del libro", () => {
     );
     expect(screen.getByRole("columnheader", { name: "Unidad" })).toBeDefined();
     expect(screen.getByText("oz/t")).toBeDefined();
+  });
+
+  it("abre plegada la seccion que lo declara y la despliega al pulsarla", () => {
+    // Los triangulos de cosechas de la depreciacion son tres cuartas partes de
+    // esa hoja. Plegada se queda la fila que cierra el bloque, que es la que el
+    // resumen consume: esconderla dejaria la seccion muda.
+    const fila = (etiqueta: string, total: boolean) => ({
+      etiqueta,
+      medida: "$k",
+      concepto: "",
+      codigo: "",
+      origen: "calculada" as const,
+      total,
+      valores: [1, 1, 1],
+    });
+    render(
+      <TablaDelLibro
+        anios={anios}
+        grupos={[
+          {
+            titulo: "Depreciación Tributaria - Mina Alfa",
+            secciones: [
+              {
+                titulo: "Depreciación Capex Inicial · Maquinaria",
+                plegable: true,
+                series: [fila("2027", false), fila("2028", false), fila("Total", true)],
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    // Por su rol de fila: `2027` es tambien una cabecera de columna, y buscarlo
+    // por texto encuentra el ano del encabezado en vez de la cosecha.
+    expect(screen.queryByRole("rowheader", { name: "2027" })).toBeNull();
+    expect(screen.getByRole("rowheader", { name: "Total" })).toBeDefined();
+
+    const banda = screen.getByRole("button", {
+      name: /Depreciación Capex Inicial · Maquinaria/,
+    });
+    expect(banda.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(banda);
+
+    expect(screen.getByRole("rowheader", { name: "2027" })).toBeDefined();
+    expect(banda.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("solo abre la columna del codigo contable si la hoja lo trae", () => {

@@ -30,11 +30,18 @@
 // pase por debajo al desplazarse, y un contraste que depende del scroll no es
 // un contraste.
 //
+// **Una sección puede venir plegada.** La API las marca, y hoy son los triángulos
+// de cosechas de la depreciación: una fila por año de inversión, tres cuartas
+// partes de esa hoja. Plegada muestra solo la fila que cierra el bloque, que es
+// la que el resumen consume; el detalle está a un clic. Qué triángulo estaba
+// abierto no se guarda: no es una preferencia que valga la pena recordar, y
+// guardarla abriría la hoja distinta en cada navegador.
+//
 // Donde la plataforma se aparta del libro, la fila lo dice en su `title` y no en
 // una nota al pie: la hoja es para leer cifras, y un párrafo debajo de sesenta
 // filas no lo lee nadie.
 
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 
 import type { GrupoDelBloque, SerieAnual } from "../api/cliente";
 
@@ -132,9 +139,18 @@ function totalDeLaFila(serie: SerieAnual): string {
 }
 
 export function TablaDelLibro({ anios, grupos, mostrarRecalculo = false }: Props) {
+  const [desplegadas, setDesplegadas] = useState<ReadonlySet<string>>(new Set());
   const conFilas = grupos.filter((grupo) =>
     grupo.secciones.some((seccion) => seccion.series.length > 0),
   );
+
+  function alternar(clave: string) {
+    setDesplegadas((abiertas) => {
+      const siguiente = new Set(abiertas);
+      if (!siguiente.delete(clave)) siguiente.add(clave);
+      return siguiente;
+    });
+  }
   if (conFilas.length === 0) {
     return <p>Este bloque no tiene ninguna línea con dato en el caso cargado.</p>;
   }
@@ -190,18 +206,40 @@ export function TablaDelLibro({ anios, grupos, mostrarRecalculo = false }: Props
 
               {grupo.secciones
                 .filter((seccion) => seccion.series.length > 0)
-                .map((seccion) => (
-                  <Fragment key={`${grupo.titulo}-${seccion.titulo ?? ""}`}>
+                .map((seccion) => {
+                  const clave = `${grupo.titulo}-${seccion.titulo ?? ""}`;
+                  const abierta = !seccion.plegable || desplegadas.has(clave);
+                  // Plegada se queda la fila que cierra el bloque: es la que el
+                  // resumen consume, y esconderla dejaria la seccion muda.
+                  const visibles = abierta
+                    ? seccion.series
+                    : seccion.series.filter((serie) => serie.total);
+                  return (
+                  <Fragment key={clave}>
                     {seccion.titulo ? (
                       <tr className="banda-seccion">
                         <th className="banda-rotulo" colSpan={fijas} scope="colgroup">
-                          {seccion.titulo}
+                          {seccion.plegable ? (
+                            <button
+                              aria-expanded={abierta}
+                              className="pliegue"
+                              onClick={() => {
+                                alternar(clave);
+                              }}
+                              type="button"
+                            >
+                              <span aria-hidden="true">{abierta ? "\u2212" : "+"}</span>
+                              {seccion.titulo}
+                            </button>
+                          ) : (
+                            seccion.titulo
+                          )}
                         </th>
                         <td colSpan={columnas - fijas} />
                       </tr>
                     ) : null}
 
-                    {seccion.series.map((serie, indice) => (
+                    {visibles.map((serie, indice) => (
                       <Fragment key={`${serie.etiqueta}-${String(indice)}`}>
                         <tr className={serie.total ? "fila-total" : undefined}>
                           {hayCodigo ? (
@@ -237,7 +275,8 @@ export function TablaDelLibro({ anios, grupos, mostrarRecalculo = false }: Props
                       </Fragment>
                     ))}
                   </Fragment>
-                ))}
+                  );
+                })}
             </Fragment>
           ))}
         </tbody>

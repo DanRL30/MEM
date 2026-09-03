@@ -120,10 +120,15 @@ Cerrado el 02/09/2026: la plantilla por unidad con los cinco conceptos, la deriv
 el tipo de unidad `deposito`, el ajuste de capex cableado y el desglose de la depreciacion por
 unidad, que ya existia.
 
-**No se implemento, por depender de una respuesta:** la tasa propia de los equipos de computo, el
-tratamiento de lo no depreciable como deduccion entera, y el metodo de la depreciacion financiera,
-que en el libro es por unidades de produccion sobre reservas y en el motor es lineal. Los tres estan
-en `reglas-no-documentadas.md`.
+El mismo dia se cerraron tambien las dos que esta seccion daba por pendientes. El **metodo de la
+depreciacion financiera** dejo de ser lineal: agota contra las reservas, que es la regla `035`. Y
+**lo no depreciable se deduce entero en su ano**, con tasa uno, que es la `034`. Las dos figuran
+implementadas en `depreciacion.py`.
+
+**Sigue sin implementar, por depender de una respuesta:** la tasa propia de los equipos de computo.
+Hoy se deprecian con la de su clase contable, la de la maquinaria, en las dos vias; el dia que
+Finanzas confirme una propia, se le da sin volver a pedir los datos. Esta en
+`reglas-no-documentadas.md` como la consulta 1 de la seccion 6.
 
 ## 9. Lo que la plantilla no pide, y no es un olvido
 

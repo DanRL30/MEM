@@ -964,6 +964,12 @@
       "SeccionDelBloque": {
         "description": "Un sub-bloque dentro de un grupo: `Mina`, `Planta`, `Concentrado de Cu`.\n\nSin título cuando el grupo no se subdivide, que es el caso del complejo y de\nla venta spot.",
         "properties": {
+          "plegable": {
+            "default": false,
+            "description": "Si la sección se puede plegar, y se abre plegada. Lo llevan los triángulos de cosechas de la depreciación, que son una fila por año de inversión y ocupan tres cuartas partes de esa hoja",
+            "title": "Plegable",
+            "type": "boolean"
+          },
           "series": {
             "items": {
               "$ref": "#/components/schemas/SerieAnual"

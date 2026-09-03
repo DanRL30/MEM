@@ -22,6 +22,7 @@ from minsur_engine.capex import (
     desglosar_por_etapa_y_naturaleza,
 )
 from minsur_engine.depreciacion import (
+    COHORTE_UNICA,
     ESTUDIOS,
     PROYECCION_SAP,
     Agotamiento,
@@ -29,15 +30,18 @@ from minsur_engine.depreciacion import (
     TasasDeDepreciacion,
     agotar,
     cronograma_de_inversion,
+    cronograma_por_cosecha,
     cuota,
     depreciacion_de_unidad,
     depreciacion_por_componente,
+    depreciacion_por_etapa_y_componente,
     depreciacion_por_mina,
     depreciar,
     por_unidad,
     saldo_de_reservas,
     tasas_de_agotamiento,
     total_depreciado,
+    trazar_agotamiento,
 )
 from minsur_engine.horizonte import Horizonte, Serie
 
@@ -446,3 +450,138 @@ class TestElCruceDeLasDosClasificaciones:
         inicial = desglose["inicial"]
         assert sum(inicial["equipos_de_computo"]) > 0.0
         assert inicial["equipos_de_computo"] != inicial["maquinaria"]
+
+
+class TestLaCosechaEsLaUnidadDeDepreciacion:
+    """Partir la depreciacion por etapa no cambia ningun total.
+
+    Es la condicion que hace legitimo el resumen del libro, que va por etapa
+    mientras el motor abre por naturaleza. Si esta clase falla, las dos vistas
+    del mismo dinero dejaron de ser el mismo dinero.
+    """
+
+    def _cruce(self) -> dict[str, dict[str, Serie]]:
+        # Dos cosechas disjuntas por ano, que es como la etapa las reparte.
+        return {
+            "inicial": {
+                "maquinaria": (100.0, 200.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                "instalaciones": (50.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+            },
+            "sostenimiento": {
+                "maquinaria": (0.0, 0.0, 300.0, 0.0, 40.0, 0.0, 0.0, 0.0),
+                "edificaciones": (0.0, 0.0, 80.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+            },
+            "cierre": {"no_depreciable": (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 90.0)},
+        }
+
+    def _entero(self, cruce: dict[str, dict[str, Serie]], anos: int) -> dict[str, Serie]:
+        """El mismo capital sin repartir por etapa: una sola cosecha."""
+        junto: dict[str, list[float]] = {}
+        for naturalezas in cruce.values():
+            for componente, serie in naturalezas.items():
+                acumulada = junto.setdefault(componente, [0.0] * anos)
+                for i, valor in enumerate(serie):
+                    acumulada[i] += valor
+        return {c: tuple(s) for c, s in junto.items()}
+
+    def test_las_etapas_suman_lo_que_da_el_capital_entero(self, horizonte: Horizonte) -> None:
+        cruce = self._cruce()
+        entero = {COHORTE_UNICA: self._entero(cruce, horizonte.anos)}
+        produccion = (0.0, 0.0, 100.0, 100.0, 0.0, 100.0, 100.0, 100.0)
+        agotamiento = Agotamiento(extraido=produccion, reservas=1_000.0)
+
+        for con_puerta in (None, produccion):
+            for agota in (None, agotamiento):
+                partido = depreciacion_por_etapa_y_componente(
+                    horizonte, cruce, TASAS, produccion=con_puerta, agotamiento=agota
+                )
+                junto = depreciacion_por_etapa_y_componente(
+                    horizonte, entero, TASAS, produccion=con_puerta, agotamiento=agota
+                )
+                for componente in ("maquinaria", "instalaciones", "edificaciones"):
+                    de_las_etapas = tuple(
+                        sum(d.get(componente, horizonte.ceros())[i] for d in partido.values())
+                        for i in range(horizonte.anos)
+                    )
+                    esperada = junto[COHORTE_UNICA].get(componente, horizonte.ceros())
+                    assert de_las_etapas == pytest.approx(esperada), componente
+
+    def test_consolidar_por_componente_da_lo_mismo_con_y_sin_etapas(
+        self, horizonte: Horizonte
+    ) -> None:
+        # `depreciacion_por_componente` se deriva del reparto por etapa, de modo
+        # que pasarle el cruce o no pasarselo tiene que dar el mismo resultado.
+        cruce = self._cruce()
+        capital = CapitalDeUnidad(
+            unidad="Mina Alfa",
+            por_naturaleza=self._entero(cruce, horizonte.anos),
+            por_etapa=clasificar_por_etapa(
+                horizonte, self._entero(cruce, horizonte.anos), anos_activos=(2,), umbral_inicial=1
+            ),
+        )
+        sin_etapas = depreciacion_por_componente(horizonte, capital, TASAS)
+        con_etapas = depreciacion_por_componente(
+            horizonte, capital, TASAS, por_etapa_y_naturaleza=cruce
+        )
+        assert set(sin_etapas) == set(con_etapas)
+        for componente, serie in sin_etapas.items():
+            assert con_etapas[componente] == pytest.approx(serie), componente
+
+    def test_el_triangulo_superpuesto_reproduce_la_depreciacion(self, horizonte: Horizonte) -> None:
+        inversiones = (100.0, 0.0, 250.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        cosechas = cronograma_por_cosecha(horizonte, inversiones, 0.20)
+
+        assert list(cosechas) == [0, 2], "solo los anos con inversion abren fila"
+        superpuesto = tuple(
+            sum(fila[i] for fila in cosechas.values()) for i in range(horizonte.anos)
+        )
+        assert superpuesto == pytest.approx(depreciar(horizonte, inversiones, 0.20))
+
+    def test_la_cosecha_no_deprecia_antes_de_su_ano(self, horizonte: Horizonte) -> None:
+        cosechas = cronograma_por_cosecha(
+            horizonte, (0.0, 0.0, 250.0, 0.0, 0.0, 0.0, 0.0, 0.0), 0.20
+        )
+        assert cosechas[2][:2] == (0.0, 0.0)
+        assert cosechas[2][2] > 0.0
+
+
+class TestLaTrazaDelAgotamiento:
+    """La tabla con que el libro deriva la cuota financiera."""
+
+    def _agotamiento(self) -> Agotamiento:
+        return Agotamiento(extraido=(100.0,) * 8, reservas=1_000.0)
+
+    def test_la_cuota_de_la_traza_es_la_que_deprecia(self, horizonte: Horizonte) -> None:
+        agotamiento = self._agotamiento()
+        inversiones = (1_000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        traza = trazar_agotamiento(horizonte, inversiones, agotamiento)
+        tasas = tasas_de_agotamiento(horizonte, agotamiento)
+
+        assert traza.depreciacion == pytest.approx(agotar(horizonte, inversiones, tasas))
+        assert traza.tasa == pytest.approx(tasas)
+
+    def test_el_saldo_encadena_y_las_reservas_ruedan(self, horizonte: Horizonte) -> None:
+        agotamiento = self._agotamiento()
+        traza = trazar_agotamiento(
+            horizonte, (1_000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0), agotamiento
+        )
+
+        # El saldo de un ejercicio abre con el cierre del anterior.
+        assert traza.saldo_inicial[0] == pytest.approx(1_000.0)
+        for i in range(1, horizonte.anos):
+            assert traza.saldo_inicial[i] == pytest.approx(traza.saldo_final[i - 1])
+            assert traza.reservas_iniciales[i] == pytest.approx(traza.reservas_finales[i - 1])
+        assert traza.reservas_iniciales[0] == pytest.approx(1_000.0)
+        assert traza.reservas_finales[0] == pytest.approx(900.0)
+
+    def test_agotar_del_todo_deja_el_saldo_en_cero(self, horizonte: Horizonte) -> None:
+        # Con lo extraido igual a las reservas, la tasa llega a uno y no queda
+        # capital sin depreciar: es el tope de la regla `039` en su limite.
+        traza = trazar_agotamiento(
+            horizonte,
+            (800.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+            Agotamiento(extraido=(1_000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0), reservas=1_000.0),
+        )
+        assert traza.tasa[0] == pytest.approx(1.0)
+        assert traza.saldo_final[0] == pytest.approx(0.0)
+        assert sum(traza.depreciacion) == pytest.approx(800.0)

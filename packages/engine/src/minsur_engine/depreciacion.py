@@ -195,27 +195,47 @@ def cronograma_de_inversion(base: float, tasa: float, ejercicios: int) -> Serie:
     return tuple(cuotas)
 
 
-def depreciar(horizonte: Horizonte, inversiones: Serie, tasa: float) -> Serie:
-    """Depreciación anual lineal de una serie de inversiones.
+def cronograma_por_cosecha(
+    horizonte: Horizonte, inversiones: Serie, tasa: float
+) -> dict[int, Serie]:
+    """El triángulo del libro: una serie por año de inversión.
 
-    Cada año de inversión abre su cronograma y los cronogramas se superponen,
-    que es exactamente la forma triangular que tiene la hoja: una fila por año
-    de inversión y una suma en diagonal.
+    La hoja abre cada componente en tantas filas como ejercicios tiene el
+    horizonte —una por **cosecha**, el año en que se invierte— y cierra con la
+    suma en diagonal. Cada cosecha empieza a depreciar en su propio año y no
+    interactúa con las demás, que es lo que hace legible la hoja: una cuota fuera
+    de sitio se atribuye al año que la generó.
+
+    Solo se emiten las cosechas con inversión. Un año sin capital no abre fila en
+    el libro tampoco, y treinta y seis filas en cero no dicen nada.
     """
     if len(inversiones) != horizonte.anos:
         raise ErrorDepreciacion(
             f"La serie de inversiones trae {len(inversiones)} valores y el horizonte tiene "
             f"{horizonte.anos} anos."
         )
-    total = [0.0] * horizonte.anos
+    cosechas: dict[int, Serie] = {}
     for ano, base in enumerate(inversiones):
         if base == 0.0:
             continue
+        fila = [0.0] * horizonte.anos
         for desplazamiento, valor in enumerate(
             cronograma_de_inversion(base, tasa, horizonte.anos - ano)
         ):
-            total[ano + desplazamiento] += valor
-    return tuple(total)
+            fila[ano + desplazamiento] = valor
+        cosechas[ano] = tuple(fila)
+    return cosechas
+
+
+def depreciar(horizonte: Horizonte, inversiones: Serie, tasa: float) -> Serie:
+    """Depreciación anual lineal de una serie de inversiones.
+
+    Es la suma en diagonal de `cronograma_por_cosecha`, que es la fila con que el
+    libro cierra cada triángulo. Se deriva de él y no al revés, para que la
+    cuota se calcule en un solo sitio.
+    """
+    cosechas = cronograma_por_cosecha(horizonte, inversiones, tasa)
+    return tuple(sum(fila[i] for fila in cosechas.values()) for i in range(horizonte.anos))
 
 
 def saldo_de_reservas(horizonte: Horizonte, agotamiento: Agotamiento) -> Serie:
@@ -259,6 +279,29 @@ def tasas_de_agotamiento(horizonte: Horizonte, agotamiento: Agotamiento) -> Seri
     return tuple(tasas)
 
 
+def _rodar_saldo(
+    horizonte: Horizonte, inversiones: Serie, tasas: Serie
+) -> tuple[Serie, Serie, Serie]:
+    """La recurrencia del agotamiento: saldo inicial, cuota y saldo final.
+
+    Un solo sitio calcula el saldo, y de él salen tanto la cuota que consume el
+    cálculo como la tabla que se muestra. Escrita dos veces, la tabla podría
+    mostrar un saldo que no es el que dio la cuota.
+    """
+    saldo = 0.0
+    iniciales: list[float] = []
+    cuotas: list[float] = []
+    finales: list[float] = []
+    for i in range(horizonte.anos):
+        saldo += _en(inversiones, i)
+        iniciales.append(saldo)
+        del_ano = saldo * _en(tasas, i)
+        cuotas.append(del_ano)
+        saldo -= del_ano
+        finales.append(saldo)
+    return tuple(iniciales), tuple(cuotas), tuple(finales)
+
+
 def agotar(horizonte: Horizonte, inversiones: Serie, tasas: Serie) -> Serie:
     """Deprecia un saldo de capital al ritmo al que se vacía el yacimiento.
 
@@ -267,14 +310,129 @@ def agotar(horizonte: Horizonte, inversiones: Serie, tasas: Serie) -> Serie:
     del año. Es la forma que tiene la hoja, con su saldo inicial, su cuota y su
     saldo final encadenados.
     """
-    saldo = 0.0
-    cuotas: list[float] = []
-    for i in range(horizonte.anos):
-        saldo += _en(inversiones, i)
-        del_ano = saldo * _en(tasas, i)
-        cuotas.append(del_ano)
-        saldo -= del_ano
-    return tuple(cuotas)
+    _, cuotas, _ = _rodar_saldo(horizonte, inversiones, tasas)
+    return cuotas
+
+
+@dataclass(frozen=True)
+class TrazaDelAgotamiento:
+    """La tabla con que el libro deriva la cuota financiera de una unidad.
+
+    Son las once filas que la hoja escribe debajo de cada bloque financiero, y
+    valen porque sin ellas la cuota es un número sin derivación: no se puede
+    decir si una diferencia viene de las reservas, de lo extraído o del saldo.
+    """
+
+    reservas_iniciales: Serie
+    """Saldo con el que abre cada ejercicio: el de cierre del anterior."""
+
+    extraido: Serie
+    conversion_de_recursos: Serie
+    reservas_finales: Serie
+    tasa: Serie
+    """`MIN(extraído / reservas, 100 %)`. El tope se aplica siempre, regla `039`."""
+
+    capital: Serie
+    """Lo que entra al saldo agotable, que el libro rotula `Capex (sin maquinarias)`."""
+
+    saldo_inicial: Serie
+    depreciacion: Serie
+    saldo_final: Serie
+
+
+def trazar_agotamiento(
+    horizonte: Horizonte, inversiones: Serie, agotamiento: Agotamiento
+) -> TrazaDelAgotamiento:
+    """Arma la tabla del libro a partir de lo que ya calculan las tres primitivas."""
+    finales = saldo_de_reservas(horizonte, agotamiento)
+    iniciales = (agotamiento.reservas, *finales[:-1]) if horizonte.anos else ()
+    tasas = tasas_de_agotamiento(horizonte, agotamiento)
+    capital = _alineada(horizonte, inversiones)
+    saldo_inicial, cuotas, saldo_final = _rodar_saldo(horizonte, capital, tasas)
+    return TrazaDelAgotamiento(
+        reservas_iniciales=iniciales,
+        extraido=_alineada(horizonte, agotamiento.extraido),
+        conversion_de_recursos=_alineada(horizonte, agotamiento.conversion_de_recursos),
+        reservas_finales=finales,
+        tasa=tasas,
+        capital=capital,
+        saldo_inicial=saldo_inicial,
+        depreciacion=cuotas,
+        saldo_final=saldo_final,
+    )
+
+
+COHORTE_UNICA = ""
+"""Clave de la cosecha sin etapa, la que usa quien no separa por etapa."""
+
+
+def depreciacion_por_etapa_y_componente(
+    horizonte: Horizonte,
+    por_etapa_y_naturaleza: Mapping[str, Mapping[str, Serie]],
+    tasas: TasasDeDepreciacion,
+    *,
+    produccion: Serie | None = None,
+    agotamiento: Agotamiento | None = None,
+    proyeccion: Serie = (),
+    estudios: Serie = (),
+) -> dict[str, dict[str, Serie]]:
+    """Depreciación abierta por línea del libro y, dentro, por componente.
+
+    El resumen con que la hoja abre cada bloque no va por naturaleza contable
+    sino **por etapa**: capex inicial, sostenimiento y escudo de cierre, más los
+    estudios y la proyección ya contabilizada. Es otro corte del mismo dinero, y
+    esta función lo produce depreciando cada cosecha por separado.
+
+    **Partirlo no cambia ningún total, y esa es la condición que lo hace
+    legítimo.** La cuota lineal superpone un cronograma independiente por año de
+    inversión, y la etapa la decide el año, de modo que las cosechas de dos
+    etapas son disjuntas y sus cronogramas no se tocan. El agotamiento lleva un
+    saldo único con `cuota = saldo x tasa`, lineal en las inversiones, y su tasa
+    sale de las reservas y no del saldo. Las dos puertas de producción también
+    son lineales en la serie que reciben. Sumar las etapas devuelve exactamente
+    lo que sale de depreciar el conjunto, y `depreciacion_por_componente` lo
+    comprueba por construcción al derivarse de aquí.
+    """
+    ritmo = tasas_de_agotamiento(horizonte, agotamiento) if agotamiento is not None else ()
+    lineas: dict[str, dict[str, Serie]] = {}
+    for etapa, naturalezas in por_etapa_y_naturaleza.items():
+        detalle: dict[str, Serie] = {}
+        for componente in NATURALEZAS:
+            inversiones = _alineada(horizonte, naturalezas.get(componente, ()))
+            if not any(inversiones):
+                continue
+            if agotamiento is not None and componente in COMPONENTES_POR_AGOTAMIENTO:
+                detalle[componente] = agotar(horizonte, inversiones, ritmo)
+                continue
+            tasa = tasas.de(componente)
+            if tasa == 0.0:
+                continue
+            detalle[componente] = depreciar(horizonte, inversiones, tasa)
+        if detalle:
+            lineas[etapa] = detalle
+
+    if any(estudios):
+        lineas[ESTUDIOS] = {
+            ESTUDIOS: depreciar(horizonte, _alineada(horizonte, estudios), tasas.de_estudios)
+        }
+
+    if any(proyeccion):
+        lineas[PROYECCION_SAP] = {PROYECCION_SAP: _alineada(horizonte, proyeccion)}
+
+    if produccion is None:
+        return lineas
+    # La via financiera se identifica por traer agotamiento, y es la que el
+    # libro cierra ano a ano en vez de acumular.
+    puerta = (
+        _en_anos_con_produccion if agotamiento is not None else _sin_depreciar_antes_de_producir
+    )
+    return {
+        etapa: {
+            componente: puerta(horizonte, serie, produccion)
+            for componente, serie in detalle.items()
+        }
+        for etapa, detalle in lineas.items()
+    }
 
 
 def depreciacion_por_componente(
@@ -286,48 +444,118 @@ def depreciacion_por_componente(
     agotamiento: Agotamiento | None = None,
     proyeccion: Serie = (),
     estudios: Serie = (),
+    por_etapa_y_naturaleza: Mapping[str, Mapping[str, Serie]] | None = None,
 ) -> dict[str, Serie]:
     """Depreciación de cada componente contable de una unidad.
 
     Sin `agotamiento` todos los componentes se deprecian lineal, que es la vía
-    tributaria. Con él, los tres de `COMPONENTES_POR_AGOTAMIENTO` se agotan
-    contra las reservas y la maquinaria sigue lineal, que es la financiera.
+    tributaria. Con él, los de `COMPONENTES_POR_AGOTAMIENTO` se agotan contra las
+    reservas y la maquinaria sigue lineal, que es la financiera.
 
     Lo no depreciable se deduce entero en su año en las dos, y el estudio
     capitalizable se deprecia lineal en las dos: el libro no los distingue por
     vía.
+
+    **Es la consolidación de `depreciacion_por_etapa_y_componente`**, que es
+    donde vive la regla de la cuota. Sin `por_etapa_y_naturaleza` el capital
+    entero es una sola cosecha y el resultado es el de siempre; con él, la suma
+    de las etapas da exactamente lo mismo.
     """
-    ritmo = tasas_de_agotamiento(horizonte, agotamiento) if agotamiento is not None else ()
-    detalle: dict[str, Serie] = {}
-    if capital is not None:
+    if por_etapa_y_naturaleza is None:
+        por_naturaleza = (
+            {c: capital.naturaleza(c, horizonte) for c in NATURALEZAS}
+            if capital is not None
+            else {}
+        )
+        por_etapa_y_naturaleza = {COHORTE_UNICA: por_naturaleza}
+    lineas = depreciacion_por_etapa_y_componente(
+        horizonte,
+        por_etapa_y_naturaleza,
+        tasas,
+        produccion=produccion,
+        agotamiento=agotamiento,
+        proyeccion=proyeccion,
+        estudios=estudios,
+    )
+    detalle: dict[str, list[float]] = {}
+    for componentes in lineas.values():
+        for componente, serie in componentes.items():
+            acumulada = detalle.setdefault(componente, [0.0] * horizonte.anos)
+            for i, valor in enumerate(serie):
+                acumulada[i] += valor
+    # El orden es el del catalogo, con los estudios y la proyeccion detras: sin
+    # esto lo trae el de las etapas, que pone antes lo de la cosecha inicial.
+    orden = [*NATURALEZAS, ESTUDIOS, PROYECCION_SAP]
+    return {c: tuple(detalle[c]) for c in orden if c in detalle}
+
+
+def cosechas_por_etapa_y_componente(
+    horizonte: Horizonte,
+    por_etapa_y_naturaleza: Mapping[str, Mapping[str, Serie]],
+    tasas: TasasDeDepreciacion,
+    *,
+    produccion: Serie | None = None,
+    agotamiento: Agotamiento | None = None,
+    estudios: Serie = (),
+) -> dict[tuple[str, str], dict[int, Serie]]:
+    """Los triángulos del libro, uno por línea y componente.
+
+    Solo los tiene lo que se deprecia lineal. **El agotamiento no abre triángulo
+    y el libro tampoco se lo dibuja**: lleva un saldo único, de modo que no hay
+    cosecha a la que atribuir una cuota. Lo mismo vale para la proyección ya
+    contabilizada, que no sale de ninguna inversión de este caso.
+
+    La puerta de producción se aplica cosecha a cosecha, y sumarlas devuelve la
+    misma serie que aplicarla al total: las dos puertas son lineales.
+    """
+    puerta = (
+        _en_anos_con_produccion if agotamiento is not None else _sin_depreciar_antes_de_producir
+    )
+
+    def con_puerta(cosechas: dict[int, Serie]) -> dict[int, Serie]:
+        if produccion is None:
+            return cosechas
+        return {ano: puerta(horizonte, fila, produccion) for ano, fila in cosechas.items()}
+
+    triangulos: dict[tuple[str, str], dict[int, Serie]] = {}
+    for etapa, naturalezas in por_etapa_y_naturaleza.items():
         for componente in NATURALEZAS:
-            inversiones = capital.naturaleza(componente, horizonte)
+            inversiones = _alineada(horizonte, naturalezas.get(componente, ()))
             if not any(inversiones):
                 continue
             if agotamiento is not None and componente in COMPONENTES_POR_AGOTAMIENTO:
-                detalle[componente] = agotar(horizonte, inversiones, ritmo)
                 continue
             tasa = tasas.de(componente)
             if tasa == 0.0:
                 continue
-            detalle[componente] = depreciar(horizonte, inversiones, tasa)
+            triangulos[etapa, componente] = con_puerta(
+                cronograma_por_cosecha(horizonte, inversiones, tasa)
+            )
 
     if any(estudios):
-        detalle[ESTUDIOS] = depreciar(horizonte, _alineada(horizonte, estudios), tasas.de_estudios)
+        triangulos[ESTUDIOS, ESTUDIOS] = con_puerta(
+            cronograma_por_cosecha(horizonte, _alineada(horizonte, estudios), tasas.de_estudios)
+        )
+    return triangulos
 
-    if any(proyeccion):
-        detalle[PROYECCION_SAP] = _alineada(horizonte, proyeccion)
 
-    if produccion is None:
-        return detalle
-    # La via financiera se identifica por traer agotamiento, y es la que el
-    # libro cierra ano a ano en vez de acumular.
-    puerta = (
-        _en_anos_con_produccion if agotamiento is not None else _sin_depreciar_antes_de_producir
-    )
-    return {
-        componente: puerta(horizonte, serie, produccion) for componente, serie in detalle.items()
-    }
+@dataclass(frozen=True)
+class DetalleDeDepreciacionDeUnidad:
+    """Todo lo que la hoja del libro muestra de una unidad, las dos vías.
+
+    Se guarda entero porque la hoja lo muestra entero: el resumen por etapa, el
+    triángulo de cada línea y la tabla con que la vía financiera deriva su cuota.
+    Recomponerlo desde el total es imposible, que es la misma razón por la que la
+    depreciación se lleva separada por mina.
+    """
+
+    tributaria: dict[str, dict[str, Serie]]
+    financiera: dict[str, dict[str, Serie]]
+    cosechas_tributarias: dict[tuple[str, str], dict[int, Serie]]
+    cosechas_financieras: dict[tuple[str, str], dict[int, Serie]]
+    agotamiento: TrazaDelAgotamiento | None
+    periodo_con_produccion: Serie
+    """La bandera con que el libro cierra los dos bloques. Uno o cero por año."""
 
 
 def depreciacion_de_unidad(
@@ -362,6 +590,7 @@ def depreciacion_por_mina(
     agotamientos: Mapping[str, Agotamiento] | None = None,
     proyecciones: Mapping[str, Serie] | None = None,
     estudios: Mapping[str, Serie] | None = None,
+    cruces: Mapping[str, Mapping[str, Mapping[str, Serie]]] | None = None,
 ) -> dict[str, dict[str, Serie]]:
     """Depreciación separada por unidad y por componente, que es lo que exige `D-04`.
 
@@ -385,6 +614,7 @@ def depreciacion_por_mina(
         if nombre not in por_nombre
         and (any(capitalizados.get(nombre, ())) or any(proyectada.get(nombre, ())))
     ]
+    cruzados = cruces or {}
     return {
         nombre: depreciacion_por_componente(
             horizonte,
@@ -394,6 +624,7 @@ def depreciacion_por_mina(
             agotamiento=agota.get(nombre),
             proyeccion=proyectada.get(nombre, ()),
             estudios=capitalizados.get(nombre, ()),
+            por_etapa_y_naturaleza=cruzados.get(nombre),
         )
         for nombre in dict.fromkeys(nombres)
     }

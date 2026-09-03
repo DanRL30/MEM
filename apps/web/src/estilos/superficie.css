@@ -457,3 +457,24 @@ button.enlace {
   outline: 2px solid var(--texto-enfasis);
   outline-offset: 2px;
 }
+
+/* El control que pliega un triangulo de cosechas. Va dentro de la banda de
+ * seccion y hereda su fondo: es la banda entera la que responde, no un icono
+ * suelto que hay que acertar.
+ */
+.pliegue {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.pliegue span {
+  display: inline-block;
+  font-weight: var(--peso-encabezado);
+  width: 1.2em;
+}

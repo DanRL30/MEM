@@ -29,7 +29,7 @@ dos pantallas mostrarían cosas distintas del mismo caso.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import fields as campos_de
 from typing import Any
 
@@ -47,6 +47,13 @@ from minsur_engine.cash_cost import (
 )
 from minsur_engine.caso import UnidadProductiva
 from minsur_engine.corroboracion import series_calculadas
+from minsur_engine.depreciacion import (
+    COMPONENTES_POR_AGOTAMIENTO,
+    ESTUDIOS,
+    PROYECCION_SAP,
+    DetalleDeDepreciacionDeUnidad,
+    TrazaDelAgotamiento,
+)
 from minsur_engine.horizonte import Serie, anos_con_dato
 from minsur_engine.refineria import BloqueDeLaRefineria
 from minsur_ingest.capex import (
@@ -111,6 +118,11 @@ DOLARES = "US$"
 # Lo que tiene sentido sumar a lo largo del horizonte. Una ley no: se pondera
 # por el tonelaje de su fila, que es como el propio libro consolida las leyes de
 # dos corrientes. Un ratio -un costo por tonelada- no tiene total.
+#
+# **La unidad de medida no basta para decidirlo.** Un saldo va en las mismas
+# unidades que el flujo que lo mueve y no se suma igual: sumar los saldos de
+# apertura de treinta y seis ejercicios da una cifra que no significa nada. Esas
+# filas lo declaran con `sin_acumulado`.
 SUMABLES = frozenset({"t", "tt", "tmf", "kt", "$", "$k", "k$", "us$", "mus$", "miles de us$"})
 PONDERADAS = frozenset({"%", "oz/t", "g/t"})
 
@@ -205,10 +217,11 @@ def _serie(
     recalculada: list[float] | None = None,
     total: bool = False,
     peso: Sequence[float] | None = None,
+    sin_acumulado: bool = False,
     nota: str | None = None,
 ) -> SerieAnual:
     return SerieAnual(
-        acumulado=_acumulado(valores, medida, peso),
+        acumulado=None if sin_acumulado else _acumulado(valores, medida, peso),
         etiqueta=etiqueta,
         medida=medida,
         concepto=concepto,
@@ -1013,37 +1026,341 @@ def _bloque_de_capex(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorrida:
     )
 
 
-def _bloque_de_depreciacion(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
-    """Las dos vías, por mina y componente a componente.
+# Las cinco lineas con que el libro abre cada bloque de depreciacion. Van por
+# **etapa** y no por naturaleza contable, que es otro corte del mismo dinero: el
+# resumen dice cuanto viene del capital inicial y cuanto del de sostenimiento, y
+# el triangulo de mas abajo lo abre por componente.
+LINEAS_TRIBUTARIAS = (
+    (PROYECCION_SAP, "Proyección SAP"),
+    ("inicial", "Depreciación - Capex Inicial"),
+    ("sostenimiento", "Depreciación - Sostenimiento"),
+    ("cierre", "Escudo Fiscal - Cierre de Mina"),
+    (ESTUDIOS, "Depreciación Estudios"),
+)
 
-    Se informan separadas aunque el libro fusione el cómputo con la maquinaria:
-    una depreciación que llega sumada no se puede volver a separar.
+# Los rotulos con que el libro encabeza cada triangulo. La cuarta etapa, `xxx`,
+# no llega hasta aqui: la regla `032` la deja en cero desde `InputsCapex`.
+ROTULOS_DE_ETAPA = {
+    "inicial": "Depreciación Capex Inicial",
+    "sostenimiento": "Depreciación Capex Sostenimiento",
+    "cierre": "Escudo Fiscal Cierre de Mina",
+    ESTUDIOS: "Estudios",
+}
+
+ETIQUETAS_DE_COMPONENTE = {campo: etiqueta for etiqueta, campo, _c in NATURALEZAS_DEL_CAPITAL}
+CODIGOS_DE_COMPONENTE = {campo: codigo for _e, campo, codigo in NATURALEZAS_DEL_CAPITAL}
+
+# La bandera con que el libro cierra cada bloque: uno o cero por ejercicio. Es lo
+# que separa las dos vias -la tributaria acumula desde el primer ano productivo,
+# la financiera cierra ano a ano- y es la regla `041`.
+NOTA_DEL_PERIODO = (
+    "Uno en los ejercicios con producción. La vía financiera multiplica su total "
+    "por esta bandera; la tributaria solo la usa para arrancar."
+)
+
+
+def _linea(etapa: str, componentes: Mapping[str, Serie], anos: int) -> list[float]:
+    """La fila del resumen: sus componentes sumados."""
+    del etapa
+    return _suma(list(componentes.values()), anos)
+
+
+def _serie_de_componente(campo: str, valores: Sequence[float]) -> SerieAnual:
+    """Una fila de componente, con la etiqueta y el código del libro."""
+    return _serie(
+        ETIQUETAS_DE_COMPONENTE.get(campo, campo),
+        valores,
+        medida=MEDIDA_CAPEX,
+        concepto=campo,
+        codigo=CODIGOS_DE_COMPONENTE.get(campo, ""),
+        nota=NOTA_DEL_COMPUTO if campo == "equipos_de_computo" else None,
+    )
+
+
+def _secciones_de_cosechas(
+    cosechas: Mapping[tuple[str, str], Mapping[int, Serie]], primer_ano: int, anos: int
+) -> list[SeccionDelBloque]:
+    """Un triángulo por línea y componente, plegado.
+
+    El libro abre cada componente en tantas filas como ejercicios tiene el
+    horizonte, una por año de inversión, y cierra con la suma en diagonal. Son
+    tres cuartas partes de la hoja, así que la sección se abre plegada: se ve la
+    fila que el resumen consume y el detalle está a un clic.
+    """
+    secciones = []
+    for (etapa, componente), triangulo in cosechas.items():
+        rotulo = ROTULOS_DE_ETAPA.get(etapa, etapa)
+        etiqueta = ETIQUETAS_DE_COMPONENTE.get(componente, componente)
+        series = [
+            _serie(str(primer_ano + ano), fila, medida=MEDIDA_CAPEX)
+            for ano, fila in sorted(triangulo.items())
+        ]
+        secciones.append(
+            SeccionDelBloque(
+                titulo=f"{rotulo} · {etiqueta}",
+                plegable=True,
+                series=_con_su_total(series, anos),
+            )
+        )
+    return secciones
+
+
+def _grupo_tributario(
+    nombre: str, detalle: DetalleDeDepreciacionDeUnidad, primer_ano: int, anos: int
+) -> GrupoDelBloque:
+    """El bloque tributario de una unidad, con las siete filas del libro."""
+    series = [
+        _serie(
+            etiqueta, _linea(clave, detalle.tributaria.get(clave, {}), anos), medida=MEDIDA_CAPEX
+        )
+        for clave, etiqueta in LINEAS_TRIBUTARIAS
+    ]
+    series.append(
+        _serie(
+            "Total Depreciación",
+            _suma([s.valores for s in series], anos),
+            medida=MEDIDA_CAPEX,
+            total=True,
+        )
+    )
+    series.append(
+        _serie(
+            "Periodo con Producción",
+            detalle.periodo_con_produccion,
+            nota=NOTA_DEL_PERIODO,
+        )
+    )
+    return GrupoDelBloque(
+        titulo=f"Depreciación Tributaria - {nombre}",
+        secciones=[
+            SeccionDelBloque(titulo=None, series=series),
+            *_secciones_de_cosechas(detalle.cosechas_tributarias, primer_ano, anos),
+        ],
+    )
+
+
+def _seccion_del_agotamiento(traza: TrazaDelAgotamiento) -> SeccionDelBloque:
+    """La tabla con que la vía financiera deriva su cuota.
+
+    Sin ella la cuota es un número sin derivación, y es justo donde el contraste
+    contra el modelo no cierra: no se podría decir si la diferencia viene de las
+    reservas, de lo extraído o del saldo.
+    """
+    return SeccionDelBloque(
+        titulo="Agotamiento",
+        series=[
+            # Cuatro de las nueve son saldos, y un saldo no se suma: el total
+            # del horizonte de las reservas de apertura no es nada.
+            _serie("Reservas", traza.reservas_iniciales, medida="t", sin_acumulado=True),
+            _serie("Mineral Extraído", traza.extraido, medida="t"),
+            _serie("Conversión Recursos", traza.conversion_de_recursos, medida="t"),
+            _serie("Reservas Finales", traza.reservas_finales, medida="t", sin_acumulado=True),
+            _serie("Tasa Depreciación Capex", traza.tasa, medida="%", peso=traza.extraido),
+            _serie("Capex (sin maquinarias)", traza.capital, medida=MEDIDA_CAPEX),
+            _serie("Saldo Inicial", traza.saldo_inicial, medida=MEDIDA_CAPEX, sin_acumulado=True),
+            _serie("Depreciación Capex", traza.depreciacion, medida=MEDIDA_CAPEX),
+            _serie("Saldo Final", traza.saldo_final, medida=MEDIDA_CAPEX, sin_acumulado=True),
+        ],
+    )
+
+
+def _capital_depreciado(detalle: Mapping[str, Mapping[str, Serie]], anos: int) -> list[float]:
+    """Lo que se deprecia del capital de este caso, sin la proyección ni los estudios."""
+    return _suma(
+        [
+            serie
+            for linea, componentes in detalle.items()
+            if linea not in (PROYECCION_SAP, ESTUDIOS)
+            for serie in componentes.values()
+        ],
+        anos,
+    )
+
+
+def _grupo_financiero(
+    nombre: str, detalle: DetalleDeDepreciacionDeUnidad, primer_ano: int, anos: int
+) -> GrupoDelBloque:
+    """El bloque financiero de una unidad, con su tabla de agotamiento."""
+    financiera = detalle.financiera
+    series = [
+        _serie(
+            "Proyección SAP",
+            _linea(PROYECCION_SAP, financiera.get(PROYECCION_SAP, {}), anos),
+            medida=MEDIDA_CAPEX,
+        ),
+        _serie("Depreciación Capex", _capital_depreciado(financiera, anos), medida=MEDIDA_CAPEX),
+        _serie(
+            "Depreciación Estudios",
+            _linea(ESTUDIOS, financiera.get(ESTUDIOS, {}), anos),
+            medida=MEDIDA_CAPEX,
+        ),
+    ]
+    series.append(
+        _serie(
+            "Total Depreciación Financiera",
+            _suma([s.valores for s in series], anos),
+            medida=MEDIDA_CAPEX,
+            total=True,
+        )
+    )
+    series.append(
+        _serie("Periodo con Producción", detalle.periodo_con_produccion, nota=NOTA_DEL_PERIODO)
+    )
+
+    secciones = [
+        SeccionDelBloque(titulo=None, series=series),
+        *_secciones_de_cosechas(detalle.cosechas_financieras, primer_ano, anos),
+    ]
+    # Lo que se agota no abre triangulo: lleva un saldo unico, de modo que no hay
+    # cosecha a la que atribuir una cuota. Va en su propia seccion, con las filas
+    # que la derivan.
+    agotadas = [
+        _serie_de_componente(componente, valores)
+        for componentes in financiera.values()
+        for componente, valores in componentes.items()
+        if componente in COMPONENTES_POR_AGOTAMIENTO
+    ]
+    if agotadas:
+        secciones.append(SeccionDelBloque(titulo="Capital agotado", series=agotadas))
+    if detalle.agotamiento is not None:
+        secciones.append(_seccion_del_agotamiento(detalle.agotamiento))
+    return GrupoDelBloque(titulo=f"Depreciación Financiera - {nombre}", secciones=secciones)
+
+
+def _consolidada(
+    clave: str, detalles: Mapping[str, Mapping[str, Mapping[str, Serie]]], anos: int
+) -> list[float]:
+    """Una línea del resumen, sumada sobre las unidades."""
+    return _suma(
+        [valores for detalle in detalles.values() for valores in detalle.get(clave, {}).values()],
+        anos,
+    )
+
+
+def _cerrado_con_total(
+    titulo: str, series: list[SerieAnual], anos: int, etiqueta: str
+) -> GrupoDelBloque:
+    """Un grupo consolidado, con su fila de total sombreada."""
+    return GrupoDelBloque(
+        titulo=titulo,
+        secciones=_una_seccion(
+            [
+                *series,
+                _serie(
+                    etiqueta,
+                    _suma([s.valores for s in series], anos),
+                    medida=MEDIDA_CAPEX,
+                    total=True,
+                ),
+            ]
+        ),
+    )
+
+
+def _grupo_del_capital_sin_depreciar(
+    corrida: CorridaAlmacenada, detalles: Mapping[str, DetalleDeDepreciacionDeUnidad], anos: int
+) -> GrupoDelBloque:
+    """Las tres filas con que el libro cierra la hoja.
+
+    Responden cuánto capital queda sin depreciar al final del horizonte, que en
+    un caso de vida larga es la pregunta que se le hace a esta hoja. El acumulado
+    no puede bajar de cero: si lo hiciera, se estaría depreciando capital que
+    nunca se invirtió.
+    """
+    capital = _suma([corrida.resultado.capex], anos)
+    depreciado = _suma(
+        [_capital_depreciado(detalle.financiera, anos) for detalle in detalles.values()], anos
+    )
+
+    acumulado: list[float] = []
+    saldo = 0.0
+    for i in range(anos):
+        saldo += capital[i] - depreciado[i]
+        acumulado.append(saldo)
+    return GrupoDelBloque(
+        titulo="Capital y depreciación acumulada",
+        secciones=_una_seccion(
+            [
+                _serie("Total Nuevo Capex", capital, medida=MEDIDA_CAPEX),
+                _serie("Total Depreciación", depreciado, medida=MEDIDA_CAPEX),
+                _serie(
+                    "Acum. Capex no depreciado",
+                    acumulado,
+                    medida=MEDIDA_CAPEX,
+                    total=True,
+                    sin_acumulado=True,
+                ),
+            ]
+        ),
+    )
+
+
+def _bloque_de_depreciacion(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorrida:
+    """La hoja de la depreciación, en el orden del libro.
+
+    Primero la vía tributaria de cada unidad y su consolidado, después la
+    financiera con su tabla de agotamiento, y al final el capital que queda sin
+    depreciar. Las dos vías van seguidas y no intercaladas, que es como las lleva
+    el libro y como se comparan.
+
+    **La hoja no repite el capital.** El libro abre copiando la clasificación de
+    `InputsCapex` porque una hoja de Excel no puede referirse a otra sin
+    arrastrarla; aquí basta cambiar de pestaña, y repetirlo obligaría a mirar una
+    corrección en dos sitios.
+
+    **Tampoco lleva el segundo bloque tributario paralelo** que el libro abre
+    para uno de los proyectos —la regla `065`, la que hace que su fila de total
+    no sume lo que muestra—. Aquí todas las unidades van en el mismo bloque, que
+    es lo que pide la desviación `D-04`.
     """
     resultado = corrida.resultado
-    grupos: list[GrupoDelBloque] = []
-    for unidad in resultado.caso.unidades:
-        secciones: list[SeccionDelBloque] = []
-        for titulo, por_mina, por_componente in (
-            (
-                "Tributaria",
-                resultado.depreciacion_tributaria_por_mina,
-                resultado.depreciacion_tributaria_por_componente,
-            ),
-            (
-                "Financiera",
-                resultado.depreciacion_financiera_por_mina,
-                resultado.depreciacion_financiera_por_componente,
-            ),
-        ):
-            series: list[SerieAnual] = []
-            if unidad.nombre in por_mina:
-                series.append(_serie("Total de la unidad", por_mina[unidad.nombre], medida=DOLARES))
-            for componente, valores in por_componente.get(unidad.nombre, {}).items():
-                series.append(_serie(componente, valores, medida=DOLARES))
-            if series:
-                secciones.append(SeccionDelBloque(titulo=titulo, series=series))
-        if secciones:
-            grupos.append(GrupoDelBloque(titulo=unidad.nombre, secciones=secciones))
+    detalles = resultado.detalle_de_depreciacion
+    primer_ano = resultado.caso.horizonte.primer_ano
+    tributarias = {n: d.tributaria for n, d in detalles.items()}
+    financieras = {n: d.financiera for n, d in detalles.items()}
+    capital_financiero = _suma(
+        [_capital_depreciado(d.financiera, anos) for d in detalles.values()], anos
+    )
+    grupos = [
+        *(
+            _grupo_tributario(unidad.nombre, detalles[unidad.nombre], primer_ano, anos)
+            for unidad in resultado.caso.unidades
+            if unidad.nombre in detalles
+        ),
+        _cerrado_con_total(
+            "Total Depreciación Tributaria",
+            [
+                _serie(etiqueta, _consolidada(clave, tributarias, anos), medida=MEDIDA_CAPEX)
+                for clave, etiqueta in LINEAS_TRIBUTARIAS
+            ],
+            anos,
+            "Total Depreciación",
+        ),
+        *(
+            _grupo_financiero(unidad.nombre, detalles[unidad.nombre], primer_ano, anos)
+            for unidad in resultado.caso.unidades
+            if unidad.nombre in detalles
+        ),
+        _cerrado_con_total(
+            "Total Depreciación Financiera",
+            [
+                _serie(
+                    "Proyección SAP",
+                    _consolidada(PROYECCION_SAP, financieras, anos),
+                    medida=MEDIDA_CAPEX,
+                ),
+                # `Nuevo Capex` no es una linea del desglose: es lo que se
+                # deprecia del capital de este caso, que son las tres etapas
+                # juntas. El libro lo rotula asi para distinguirlo de la
+                # proyeccion, que viene de activos anteriores.
+                _serie("Nuevo Capex", capital_financiero, medida=MEDIDA_CAPEX),
+                _serie("Estudios", _consolidada(ESTUDIOS, financieras, anos), medida=MEDIDA_CAPEX),
+            ],
+            anos,
+            "Total Depreciación Financiera",
+        ),
+        _grupo_del_capital_sin_depreciar(corrida, detalles, anos),
+    ]
     return BloqueDeCorrida(
         clave="depreciacion",
         etiqueta="Depreciacion",
@@ -1191,7 +1508,7 @@ def bloques_de(corrida: CorridaAlmacenada) -> BloquesDeCorrida:
             _bloque_de_produccion(corrida, len(anios)),
             _bloque_de_opex(corrida, len(anios)),
             _bloque_de_capex(corrida, len(anios)),
-            _bloque_de_depreciacion(corrida),
+            _bloque_de_depreciacion(corrida, len(anios)),
             _bloque_de_ventas(corrida),
             _bloque_de_otros(corrida),
             _bloque_de_impuestos(corrida),

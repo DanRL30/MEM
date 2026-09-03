@@ -328,6 +328,14 @@ class SeccionDelBloque(Base):
     """
 
     titulo: str | None = None
+    plegable: bool = Field(
+        default=False,
+        description=(
+            "Si la sección se puede plegar, y se abre plegada. Lo llevan los "
+            "triángulos de cosechas de la depreciación, que son una fila por año "
+            "de inversión y ocupan tres cuartas partes de esa hoja"
+        ),
+    )
     series: list[SerieAnual]
 
 

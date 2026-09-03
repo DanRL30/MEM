@@ -951,6 +951,12 @@ export interface components {
          *     la venta spot.
          */
         SeccionDelBloque: {
+            /**
+             * Plegable
+             * @description Si la sección se puede plegar, y se abre plegada. Lo llevan los triángulos de cosechas de la depreciación, que son una fila por año de inversión y ocupan tres cuartas partes de esa hoja
+             * @default false
+             */
+            plegable: boolean;
             /** Series */
             series: components["schemas"]["SerieAnual"][];
             /** Titulo */
