@@ -593,10 +593,10 @@ def _grupos_de_gastos(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDelBlo
 def _grupo_del_total_de_gastos(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDelBloque]:
     """La tabla con la que el modelo cierra la hoja: los gastos consolidados.
 
-    No es la suma de los bloques de arriba y ya: lleva ademas las tres filas que
-    el motor deriva y la plantilla no pide —`Año con operación`, `Planilla` y
-    `Gestión Social Deducible`, las reglas `026` y `027`—, y el libro las muestra
-    en este bloque junto a lo cargado.
+    No es la suma de los bloques de arriba y ya: lleva ademas las dos filas que
+    el motor deriva y la plantilla no pide —`Planilla` y `Gestión Social
+    Deducible`, las reglas `026` y `027`—, y el libro las muestra en este bloque
+    junto a lo cargado.
 
     El orden es el del catálogo, con la planilla detrás de las servidumbres y la
     gestión social deducible al final, que es donde las pone el modelo.
@@ -610,16 +610,7 @@ def _grupo_del_total_de_gastos(corrida: CorridaAlmacenada, anos: int) -> list[Gr
             return None
         return [sum(s[i] for s in aportes if i < len(s)) for i in range(anos)]
 
-    activos = {
-        a for anos_de_unidad in resultado.anos_activos_por_unidad.values() for a in anos_de_unidad
-    }
-    series = [
-        _serie(
-            "Año con operación",
-            [1.0 if anio in activos else 0.0 for anio in resultado.caso.horizonte.anos_calendario],
-        )
-    ]
-
+    series: list[SerieAnual] = []
     conceptos = [fila.etiqueta for fila in FILAS_DE_GASTOS if not fila.es_seccion]
     if SERVIDUMBRES in conceptos:
         conceptos.insert(conceptos.index(SERVIDUMBRES) + 1, PLANILLA)

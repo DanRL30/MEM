@@ -507,14 +507,14 @@ class TestBloquesIntermedios:
         self, cliente: TestClient, plantilla: Path, plantilla_opex: Path
     ) -> None:
         # El modelo cierra con los gastos consolidados, y ese bloque lleva las
-        # tres filas que el motor deriva y la plantilla no pide: el ano con
-        # operacion, la planilla y la gestion social deducible. Reglas 026 y 027.
+        # dos filas que el motor deriva y la plantilla no pide: la planilla y la
+        # gestion social deducible. Reglas 026 y 027.
         cuerpo = self._bloques(cliente, plantilla, plantilla_opex)
         opex = next(b for b in cuerpo["bloques"] if b["clave"] == "opex")
 
         assert opex["grupos"][-1]["titulo"] == "Total Gastos"
         etiquetas = [s["etiqueta"] for s in opex["grupos"][-1]["secciones"][0]["series"]]
-        assert etiquetas[0] == "Año con operación"
+        assert "Año con operación" not in etiquetas
         assert "Planilla" in etiquetas
         assert etiquetas[-1] == "Gestión Social Deducible"
 
