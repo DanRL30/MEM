@@ -17,6 +17,12 @@
 // cliente describió el 25/08/2026. **Marcobre y Energías Renovables se muestran
 // y no se pueden elegir**: ocultarlos perdería la señal de que están previstos,
 // y habilitarlos produciría un caso que no calcula.
+//
+// La abreviatura va antes del nombre y es obligatoria. Es el rótulo con el que
+// el escenario aparece donde el nombre completo no cabe: la cabecera, la lista,
+// y sobre todo una comparación, que enfrenta dos escenarios columna contra
+// columna. Un campo opcional acabaría vacío en la mitad de los casos y esas
+// tablas tendrían que caer al nombre largo justo donde menos sitio hay.
 
 import { useState } from "react";
 
@@ -49,13 +55,19 @@ interface Props {
 }
 
 export function AsistenteDeEscenario({ creando, alCrear }: Props) {
+  const [abreviatura, setAbreviatura] = useState("");
   const [nombre, setNombre] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [tipo, setTipo] = useState<TipoDeCaso>("con-proyecto");
 
   function enviar(evento: React.FormEvent<HTMLFormElement>) {
     evento.preventDefault();
-    alCrear({ nombre: nombre.trim(), tipo, descripcion: descripcion.trim() });
+    alCrear({
+      abreviatura: abreviatura.trim(),
+      nombre: nombre.trim(),
+      tipo,
+      descripcion: descripcion.trim(),
+    });
   }
 
   return (
@@ -82,6 +94,20 @@ export function AsistenteDeEscenario({ creando, alCrear }: Props) {
           ))}
         </div>
       </fieldset>
+
+      <label style={{ display: "block", marginBottom: "var(--espacio-4)" }}>
+        <span>Abreviatura</span>
+        <input
+          maxLength={16}
+          onChange={(e) => {
+            setAbreviatura(e.target.value);
+          }}
+          placeholder="SD Fase III"
+          required
+          type="text"
+          value={abreviatura}
+        />
+      </label>
 
       <label style={{ display: "block", marginBottom: "var(--espacio-4)" }}>
         <span>Nombre del escenario</span>
@@ -126,7 +152,11 @@ export function AsistenteDeEscenario({ creando, alCrear }: Props) {
         />
       </label>
 
-      <button className="pildora" disabled={creando || nombre.trim() === ""} type="submit">
+      <button
+        className="pildora"
+        disabled={creando || nombre.trim() === "" || abreviatura.trim().length < 2}
+        type="submit"
+      >
         {creando ? "Creando…" : "Crear escenario"}
       </button>
     </form>

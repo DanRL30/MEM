@@ -28,6 +28,7 @@ NO_ENCONTRADO = "No existe un caso con ese identificador."
 def _resumen(caso: CasoAlmacenado) -> ResumenCaso:
     return ResumenCaso(
         id_caso=caso.id_caso,
+        abreviatura=caso.abreviatura,
         nombre=caso.nombre,
         tipo=caso.tipo,  # type: ignore[arg-type]
         estado=caso.estado,
@@ -95,6 +96,7 @@ async def crear(
     caso = repo.guardar(
         CasoAlmacenado(
             id_caso=nuevo_id_de_caso(nuevo.tipo),
+            abreviatura=nuevo.abreviatura,
             nombre=nuevo.nombre,
             tipo=nuevo.tipo,
             descripcion=nuevo.descripcion,

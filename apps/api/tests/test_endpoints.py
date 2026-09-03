@@ -123,7 +123,12 @@ def cliente_sin_maestros(repo: RepositorioEnMemoria) -> Iterator[TestClient]:
 def crear_caso(cliente: TestClient, nombre: str = "Nazareth 2038") -> str:
     respuesta = cliente.post(
         "/api/casos",
-        json={"nombre": nombre, "tipo": "con-proyecto", "descripcion": "Caso de prueba"},
+        json={
+            "abreviatura": "NZ-38",
+            "nombre": nombre,
+            "tipo": "con-proyecto",
+            "descripcion": "Caso de prueba",
+        },
         headers=CABECERAS,
     )
     assert respuesta.status_code == 201, respuesta.text
@@ -136,6 +141,7 @@ def con_insumos(repo: RepositorioEnMemoria, id_caso: str) -> None:
     repo.guardar(
         CasoAlmacenado(
             id_caso=caso.id_caso,
+            abreviatura=caso.abreviatura,
             nombre=caso.nombre,
             tipo=caso.tipo,
             descripcion=caso.descripcion,
@@ -148,10 +154,21 @@ def con_insumos(repo: RepositorioEnMemoria, id_caso: str) -> None:
 
 
 class TestCasos:
-    def test_crear_devuelve_el_caso_en_borrador(self, cliente: TestClient) -> None:
+    def test_un_caso_sin_abreviatura_se_rechaza(self, cliente: TestClient) -> None:
+        # La abreviatura es el rotulo con el que el escenario aparece donde el
+        # nombre completo no cabe, y una comparacion enfrenta dos escenarios
+        # columna contra columna. Opcional acabaria vacia justo ahi.
         respuesta = cliente.post(
             "/api/casos",
             json={"nombre": "Nazareth 2038", "tipo": "con-proyecto"},
+            headers=CABECERAS,
+        )
+        assert respuesta.status_code == 422
+
+    def test_crear_devuelve_el_caso_en_borrador(self, cliente: TestClient) -> None:
+        respuesta = cliente.post(
+            "/api/casos",
+            json={"abreviatura": "NZ-38", "nombre": "Nazareth 2038", "tipo": "con-proyecto"},
             headers=CABECERAS,
         )
         assert respuesta.status_code == 201
@@ -159,6 +176,22 @@ class TestCasos:
         assert cuerpo["estado"] == Estado.BORRADOR
         assert cuerpo["id_caso"].startswith("CASO-CON-")
         assert cuerpo["terna"] is None
+        assert cuerpo["abreviatura"] == "NZ-38"
+
+    def test_la_abreviatura_sobrevive_al_listado(self, cliente: TestClient) -> None:
+        # Un campo que se guarda y no vuelve es peor que uno que falta: la
+        # pantalla cae al nombre largo sin que nadie lo note.
+        cliente.post(
+            "/api/casos",
+            json={
+                "abreviatura": "SD-3",
+                "nombre": "Santo Domingo Fase III",
+                "tipo": "con-proyecto",
+            },
+            headers=CABECERAS,
+        )
+        listado = cliente.get("/api/casos", headers=CABECERAS).json()
+        assert [caso["abreviatura"] for caso in listado] == ["SD-3"]
 
     def test_listar_devuelve_lo_creado(self, cliente: TestClient) -> None:
         crear_caso(cliente, "Uno")
@@ -178,7 +211,12 @@ class TestCasos:
         con_insumos(repo, original)
         respuesta = cliente.post(
             "/api/casos",
-            json={"nombre": "Copia", "tipo": "con-proyecto", "duplicar_de": original},
+            json={
+                "abreviatura": "COPIA",
+                "nombre": "Copia",
+                "tipo": "con-proyecto",
+                "duplicar_de": original,
+            },
             headers=CABECERAS,
         )
         assert respuesta.status_code == 201

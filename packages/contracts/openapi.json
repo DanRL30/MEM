@@ -245,6 +245,12 @@
       },
       "DetalleCaso": {
         "properties": {
+          "abreviatura": {
+            "default": "",
+            "description": "Nombre corto del escenario, para tablas y comparaciones",
+            "title": "Abreviatura",
+            "type": "string"
+          },
           "acciones_disponibles": {
             "items": {
               "$ref": "#/components/schemas/Accion"
@@ -535,6 +541,16 @@
       },
       "NuevoCaso": {
         "properties": {
+          "abreviatura": {
+            "description": "Nombre corto con el que el escenario aparece en tablas, leyendas y comparaciones, donde el nombre completo no cabe",
+            "examples": [
+              "SD Fase III"
+            ],
+            "maxLength": 16,
+            "minLength": 2,
+            "title": "Abreviatura",
+            "type": "string"
+          },
           "descripcion": {
             "default": "",
             "maxLength": 1000,
@@ -569,6 +585,7 @@
           }
         },
         "required": [
+          "abreviatura",
           "nombre",
           "tipo"
         ],
@@ -831,6 +848,12 @@
       },
       "ResumenCaso": {
         "properties": {
+          "abreviatura": {
+            "default": "",
+            "description": "Nombre corto del escenario, para tablas y comparaciones",
+            "title": "Abreviatura",
+            "type": "string"
+          },
           "actualizado_en": {
             "format": "date-time",
             "title": "Actualizado En",

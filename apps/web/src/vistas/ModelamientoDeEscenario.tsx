@@ -163,7 +163,7 @@ export function ModelamientoDeEscenario() {
         {...(caso
           ? {
               caso: {
-                nombre: caso.nombre,
+                nombre: caso.abreviatura || caso.nombre,
                 chips: chipsDeLaTerna(evaluacion?.terna ?? caso.terna, caso.estado),
               },
             }
@@ -213,9 +213,9 @@ export function ModelamientoDeEscenario() {
                         }}
                         type="button"
                       >
-                        {existente.nombre}
+                        {existente.abreviatura || existente.nombre}
                       </button>{" "}
-                      · {existente.id_caso} · {existente.estado}
+                      · {existente.nombre} · {existente.id_caso} · {existente.estado}
                     </li>
                   ))}
                 </ul>
@@ -235,7 +235,8 @@ export function ModelamientoDeEscenario() {
               {activa === CONTROL ? (
                 <PanelVidrio titulo="Control">
                   <p>
-                    <strong>{caso.nombre}</strong> · {caso.id_caso} · {caso.descripcion}
+                    <strong>{caso.abreviatura}</strong> · {caso.nombre} · {caso.id_caso}
+                    {caso.descripcion ? ` · ${caso.descripcion}` : ""}
                   </p>
 
                   <CargaDePlantilla alEnviar={alCargar} cargando={ocupado} />

@@ -61,7 +61,18 @@ describe("La vista de modelamiento", () => {
     ]);
   });
 
-  it("no permite crear un escenario sin nombre", () => {
+  it("pide la abreviatura antes que el nombre", () => {
+    // El cliente ya trabaja con ese campo. Va delante porque es el rotulo
+    // corto con el que el escenario se identifica en tablas y comparaciones.
+    render(<App />);
+    const campos = screen
+      .getAllByRole("textbox")
+      .map((campo) => campo.closest("label")?.textContent ?? "");
+    expect(campos[0]).toContain("Abreviatura");
+    expect(campos[1]).toContain("Nombre del escenario");
+  });
+
+  it("no permite crear un escenario sin nombre ni abreviatura", () => {
     render(<App />);
     expect(screen.getByRole("button", { name: /Crear escenario/ })).toHaveProperty(
       "disabled",

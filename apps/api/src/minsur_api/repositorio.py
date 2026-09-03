@@ -44,6 +44,7 @@ class CasoAlmacenado:
     """Un caso tal como lo guarda la plataforma."""
 
     id_caso: str
+    abreviatura: str
     nombre: str
     tipo: str
     descripcion: str

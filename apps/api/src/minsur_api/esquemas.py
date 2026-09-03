@@ -71,6 +71,10 @@ usuario. Modelarlos como entidades propias esta pendiente.
 
 class ResumenCaso(Base):
     id_caso: str
+    abreviatura: str = Field(
+        default="",
+        description="Nombre corto del escenario, para tablas y comparaciones",
+    )
     nombre: str
     tipo: TipoDeCaso
     estado: Estado
@@ -79,6 +83,15 @@ class ResumenCaso(Base):
 
 
 class NuevoCaso(Base):
+    abreviatura: str = Field(
+        min_length=2,
+        max_length=16,
+        description=(
+            "Nombre corto con el que el escenario aparece en tablas, leyendas y "
+            "comparaciones, donde el nombre completo no cabe"
+        ),
+        examples=["SD Fase III"],
+    )
     nombre: str = Field(min_length=3, max_length=120)
     tipo: TipoDeCaso
     descripcion: str = Field(default="", max_length=1000)

@@ -573,6 +573,12 @@ export interface components {
         };
         /** DetalleCaso */
         DetalleCaso: {
+            /**
+             * Abreviatura
+             * @description Nombre corto del escenario, para tablas y comparaciones
+             * @default
+             */
+            abreviatura: string;
             /** Acciones Disponibles */
             acciones_disponibles: components["schemas"]["Accion"][];
             /**
@@ -725,6 +731,12 @@ export interface components {
         /** NuevoCaso */
         NuevoCaso: {
             /**
+             * Abreviatura
+             * @description Nombre corto con el que el escenario aparece en tablas, leyendas y comparaciones, donde el nombre completo no cabe
+             * @example SD Fase III
+             */
+            abreviatura: string;
+            /**
              * Descripcion
              * @default
              */
@@ -874,6 +886,12 @@ export interface components {
         };
         /** ResumenCaso */
         ResumenCaso: {
+            /**
+             * Abreviatura
+             * @description Nombre corto del escenario, para tablas y comparaciones
+             * @default
+             */
+            abreviatura: string;
             /**
              * Actualizado En
              * Format: date-time
