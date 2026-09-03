@@ -55,21 +55,31 @@ npm install --global pnpm
 
 Ambos gestionan el resto: `uv` crea y sincroniza el entorno virtual de Python 3.12 a partir de
 `pyproject.toml`, y `pnpm` resuelve el espacio de trabajo declarado en `pnpm-workspace.yaml`.
-Node 20 o superior.
+Node 22 o superior.
 
 ```bash
-uv sync
+uv sync --all-packages
 pnpm install
 uv run pytest
 pnpm --filter web dev
 ```
 
-`uv run` ejecuta dentro del entorno del proyecto sin necesidad de activarlo. Las comprobaciones que
-corren también en integración continua:
+`--all-packages` no es opcional: sin él los miembros del espacio de trabajo no se instalan en el
+entorno y `minsur_engine` no resuelve. Es la misma invocación que usan los pipelines.
+
+El gancho que rechaza emojis y trailers de coautoría se activa una vez por copia de trabajo:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`uv run` ejecuta dentro del entorno del proyecto sin necesidad de activarlo. El modo estricto de
+`mypy` ya está en `pyproject.toml`, así que no se pide en la línea de órdenes. Las comprobaciones
+que corren también en integración continua:
 
 ```bash
 uv run ruff check .
-uv run mypy --strict packages apps/api/src
+uv run mypy packages apps/api/src
 uv run pytest --cov
 ```
 

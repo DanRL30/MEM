@@ -619,6 +619,15 @@ en [reglas-no-documentadas.md](docs/modelo-economico/reglas-no-documentadas.md) 
 Finanzas. Corregirlo en el codigo rompe el contraste de fidelidad, que es el criterio de aceptacion
 del entregable.
 
+**El registro de reglas se lleva por numero y el numero no se reutiliza.** Una regla toma el
+siguiente libre al registrarse, no al implementarse: por eso la `011` aparece detras de la `015` en
+la tabla de [reglas-no-documentadas.md](docs/modelo-economico/reglas-no-documentadas.md), se reservo
+antes de redactarse, y por eso un hueco no se rellena. La fila se abre con lo observado y la
+hipotesis; `Confirmada por` es lo que habilita implementarla, e `Implementada en` la ata al modulo
+del motor que la reproduce. Ese ultimo campo es el que se recorre al reves cuando el contraste
+discrepa, de modo que una regla implementada y sin anotar deja la discrepancia sin traducir a un
+archivo. El commit que registra una regla la cita por su numero.
+
 **La excepcion son las desviaciones acordadas, y hoy son cinco lineas del contraste N1.** MINSUR
 pidio expresamente que la plataforma se aparte del modelo en esos puntos; el registro, con la
 reunion que origina cada acuerdo y el tratamiento que le corresponde, esta en
