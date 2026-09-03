@@ -74,7 +74,17 @@ export function AsistenteDeEscenario({ creando, alCrear }: Props) {
     <form onSubmit={enviar}>
       <fieldset style={{ border: "none", margin: 0, padding: 0 }}>
         <legend style={{ padding: 0 }}>Modelo de cálculo</legend>
-        <div style={{ display: "flex", gap: "var(--espacio-2)", marginBottom: "var(--espacio-4)" }}>
+        {/* Envuelve en vez de estrujarse: la etiqueta mas larga no cabe junto a
+            las otras dos en la columna del formulario, y sin `wrap` partia su
+            texto en dos lineas dentro de la pildora. */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "var(--espacio-2)",
+            marginBottom: "var(--espacio-4)",
+          }}
+        >
           {MODELOS.map((modelo) => (
             <label
               className="pildora"
@@ -123,7 +133,7 @@ export function AsistenteDeEscenario({ creando, alCrear }: Props) {
 
       <fieldset style={{ border: "none", margin: "0 0 var(--espacio-4)", padding: 0 }}>
         <legend style={{ padding: 0 }}>Tipo de caso</legend>
-        <div style={{ display: "flex", gap: "var(--espacio-4)" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--espacio-4)" }}>
           {TIPOS.map((opcion) => (
             <label className="pildora" key={opcion.clave} title={opcion.ayuda}>
               <input

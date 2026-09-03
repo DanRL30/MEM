@@ -27,6 +27,17 @@ describe("La vista de modelamiento", () => {
     expect(screen.getByRole("button", { name: /Crear escenario/ })).toBeDefined();
   });
 
+  it("pone los dos paneles de la portada en la misma rejilla", () => {
+    // Apilados, el formulario quedaba capado a su ancho y la lista se estiraba a
+    // toda la ventana: la pantalla se veia partida por la mitad. En una rejilla
+    // van lado a lado donde cabe, y apilados donde no.
+    const { container } = render(<App />);
+    const portada = container.querySelector(".portada");
+
+    expect(portada).not.toBeNull();
+    expect(portada?.querySelector("h2")?.textContent).toBe("Nuevo escenario");
+  });
+
   it("muestra los modelos previstos sin permitir elegirlos", () => {
     // El cliente pidio que Marcobre y Energias Renovables estuvieran a la
     // vista. Ocultarlos perderia la senal de que estan previstos; habilitarlos

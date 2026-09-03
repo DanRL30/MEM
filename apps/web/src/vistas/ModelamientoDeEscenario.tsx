@@ -201,12 +201,10 @@ export function ModelamientoDeEscenario() {
         ) : null}
 
         {caso === null ? (
-          <>
-            <div style={{ maxWidth: "48rem" }}>
-              <PanelVidrio titulo="Nuevo escenario">
-                <AsistenteDeEscenario alCrear={alCrear} creando={ocupado} />
-              </PanelVidrio>
-            </div>
+          <div className="portada">
+            <PanelVidrio titulo="Nuevo escenario">
+              <AsistenteDeEscenario alCrear={alCrear} creando={ocupado} />
+            </PanelVidrio>
             {existentes.length > 0 ? (
               <PanelVidrio tenue titulo="Escenarios abiertos">
                 <ul style={{ margin: 0, paddingLeft: "var(--espacio-5)" }}>
@@ -227,7 +225,7 @@ export function ModelamientoDeEscenario() {
                 </ul>
               </PanelVidrio>
             ) : null}
-          </>
+          </div>
         ) : (
           <>
             <Pestanas activa={activa} alCambiar={setActiva} pestanas={pestanas} />

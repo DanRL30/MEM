@@ -478,3 +478,32 @@ button.enlace {
   font-weight: var(--peso-encabezado);
   width: 1.2em;
 }
+
+/* --- La portada, antes de abrir un escenario ------------------------------
+ * Dos paneles que se leen juntos: el que crea un escenario y el que lista los
+ * abiertos. Apilados, el primero quedaba capado a su ancho de formulario y el
+ * segundo se estiraba a toda la ventana, de modo que la pantalla se veia
+ * partida por la mitad. Lado a lado ocupan lo que hay y se leen de un vistazo.
+ *
+ * `align-items: start` para que cada panel conserve su altura: estirar el mas
+ * corto hasta igualar al otro deja una caja de vidrio medio vacia.
+ */
+
+.portada {
+  align-items: start;
+  display: grid;
+  gap: var(--espacio-5);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* El punto de corte es el ancho al que el formulario deja de caber comodo al
+ * lado de la lista, no un tamano de dispositivo. La columna se dimensiona por
+ * la fila de pildoras del modelo de calculo, que es lo mas ancho del
+ * formulario; con holgura, porque un nombre de modelo mas largo la volveria a
+ * partir. Si aun asi no cabe, la fila envuelve y ninguna pildora se estruja.
+ */
+@media (min-width: 60rem) {
+  .portada {
+    grid-template-columns: minmax(0, 32rem) minmax(0, 1fr);
+  }
+}
