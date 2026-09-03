@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from minsur_engine.horizonte import Horizonte, Serie
 
 DIAS_DEL_ANO_COMERCIAL = 360.0
+"""El ano comercial del libro, y el valor por defecto cuando el caso calla."""
 
 PESO_DEL_IGV_EN_EL_FLUJO = 0.0
 """Factor con que la variación de IGV entra al flujo, `Otros!66`.
@@ -62,14 +63,25 @@ class SaldosDeCapitalTrabajo:
     variaciones: Serie
 
 
-def saldo_por_dias(base: Serie, dias: Serie) -> Serie:
-    """Saldo de una cuenta a partir de su base anual y sus días de rotación."""
+def saldo_por_dias(
+    base: Serie, dias: Serie, *, dias_del_ano: float = DIAS_DEL_ANO_COMERCIAL
+) -> Serie:
+    """Saldo de una cuenta a partir de su base anual y sus días de rotación.
+
+    El año comercial llega como dato y no escrito en la fórmula: el libro divide
+    entre 360 y quien trabaje sobre 365 no tendría que tocar el motor para
+    decirlo. Sin declarar, son los 360 del libro.
+    """
     if len(base) != len(dias):
         raise ErrorCapitalTrabajo(f"La base trae {len(base)} valores y los dias {len(dias)}.")
+    if dias_del_ano <= 0.0:
+        raise ErrorCapitalTrabajo(
+            f"El ano comercial vale {dias_del_ano} y se espera un numero de dias positivo."
+        )
     for i, d in enumerate(dias):
         if d < 0.0:
             raise ErrorCapitalTrabajo(f"Dias negativos en la posicion {i}: {d}.")
-    return tuple(b * d / DIAS_DEL_ANO_COMERCIAL for b, d in zip(base, dias, strict=True))
+    return tuple(b * d / dias_del_ano for b, d in zip(base, dias, strict=True))
 
 
 def variacion_de_cuenta(saldos: Serie, produce: Sequence[bool], *, es_por_cobrar: bool) -> Serie:
@@ -102,7 +114,12 @@ def variacion_de_cuenta(saldos: Serie, produce: Sequence[bool], *, es_por_cobrar
 
 
 def cuenta(
-    base: Serie, dias: Serie, produce: Sequence[bool], *, es_por_cobrar: bool
+    base: Serie,
+    dias: Serie,
+    produce: Sequence[bool],
+    *,
+    es_por_cobrar: bool,
+    dias_del_ano: float = DIAS_DEL_ANO_COMERCIAL,
 ) -> SaldosDeCapitalTrabajo:
     """Saldo y variación de una cuenta comercial, `Otros!72-73` y `!79-80`.
 
@@ -110,7 +127,7 @@ def cuenta(
     del libro, y sin él una discrepancia no se puede atribuir al saldo o al
     delta.
     """
-    saldos = saldo_por_dias(base, dias)
+    saldos = saldo_por_dias(base, dias, dias_del_ano=dias_del_ano)
     return SaldosDeCapitalTrabajo(
         saldos=saldos,
         variaciones=variacion_de_cuenta(saldos, produce, es_por_cobrar=es_por_cobrar),

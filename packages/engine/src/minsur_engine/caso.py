@@ -372,6 +372,9 @@ class DatosComunes:
     gasto_de_ventas_por_tonelada: Serie = ()
     dias_por_cobrar: Serie = ()
     dias_por_pagar: Serie = ()
+    dias_del_ano_comercial: float = 360.0
+    """Divisor de la rotacion. El libro usa 360; declararlo lo hace del caso."""
+
     osinergmin: Serie = ()
     oefa: Serie = ()
     """Aportes reguladores, año a año.

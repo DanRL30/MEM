@@ -36,6 +36,21 @@ class TestCuentasComerciales:
         saldos = saldo_por_dias((3_600.0,), (40.0,))
         assert saldos[0] == pytest.approx(400.0)
 
+    def test_el_ano_comercial_lo_declara_el_caso_y_no_el_codigo(self) -> None:
+        # El libro divide entre 360 y esa es la cifra por defecto, pero es dato:
+        # un caso que trabaje sobre 365 lo dice en su plantilla de supuestos y no
+        # obliga a tocar el motor.
+        assert saldo_por_dias((3_600.0,), (36.0,), dias_del_ano=360.0) == (360.0,)
+        assert saldo_por_dias((3_650.0,), (36.5,), dias_del_ano=365.0) == (365.0,)
+        # Y el divisor mueve el saldo, que es la prueba de que se usa.
+        a = saldo_por_dias((3_600.0,), (40.0,), dias_del_ano=360.0)
+        b = saldo_por_dias((3_600.0,), (40.0,), dias_del_ano=365.0)
+        assert a != b
+
+    def test_un_ano_comercial_no_positivo_es_error(self) -> None:
+        with pytest.raises(ErrorCapitalTrabajo, match="ano comercial"):
+            saldo_por_dias((100.0,), (30.0,), dias_del_ano=0.0)
+
     def test_la_cartera_se_recupera_en_el_ultimo_ano_productivo(self) -> None:
         saldos = (100.0, 150.0, 150.0)
         produce = (True, True, False)

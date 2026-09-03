@@ -134,6 +134,7 @@ FILAS_DE_SUPUESTOS = (
     FilaDeSupuesto("Otras Cuentas por Pagar", "$", "otras_cuentas_por_pagar"),
     FilaDeSupuesto("Dias de Cuentas por Cobrar", "dias", "dias_por_cobrar", constante=True),
     FilaDeSupuesto("Dias de Cuentas por Pagar", "dias", "dias_por_pagar", constante=True),
+    FilaDeSupuesto("Dias del Ano Comercial", "dias", "dias_del_ano_comercial", constante=True),
     FilaDeSupuesto("Tasa de IGV", "%", "tasa_igv", constante=True),
     FilaDeSupuesto(
         "Porcentaje de Ventas de Exportacion",
@@ -317,6 +318,10 @@ def aplicar(caso: Caso, supuestos: SupuestosDelCaso, comite: ComiteDePrecios | N
                 caso.datos_comunes.dias_por_pagar,
             ),
             tasa_igv=_escalar(comunes.get("tasa_igv", ()), caso.datos_comunes.tasa_igv),
+            dias_del_ano_comercial=_escalar(
+                comunes.get("dias_del_ano_comercial", ()),
+                caso.datos_comunes.dias_del_ano_comercial,
+            ),
             porcentaje_de_ventas_de_exportacion=_escalar(
                 comunes.get("porcentaje_de_ventas_de_exportacion", ()),
                 caso.datos_comunes.porcentaje_de_ventas_de_exportacion,

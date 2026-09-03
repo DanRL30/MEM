@@ -1025,12 +1025,14 @@ def _capital_de_trabajo(
         _serie(comunes.dias_por_cobrar, horizonte, "dias por cobrar"),
         produce,
         es_por_cobrar=True,
+        dias_del_ano=comunes.dias_del_ano_comercial,
     )
     por_pagar = capital_trabajo.cuenta(
         bolsa,
         _serie(comunes.dias_por_pagar, horizonte, "dias por pagar"),
         produce,
         es_por_cobrar=False,
+        dias_del_ano=comunes.dias_del_ano_comercial,
     )
     return _CapitalDeTrabajo(
         por_cobrar=por_cobrar,
