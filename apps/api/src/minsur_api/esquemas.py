@@ -116,14 +116,32 @@ class ConfirmacionCarga(Base):
     ruta_blob: str
 
 
+class IncidenciaDePlantilla(Base):
+    """Un problema de lectura, con su ubicación exacta en el libro.
+
+    La ingesta acumula incidencias y no se detiene en la primera, porque una
+    plantilla llenada a mano llega con varias a la vez. Los tres campos van
+    separados para que la interfaz pueda llevar al usuario a la celda: una
+    cadena ya compuesta obliga a que la pantalla la desarme para eso.
+    """
+
+    hoja: str = Field(description="Pestaña del libro, o `(archivo)` y `(libro)`")
+    celda: str = Field(description="Referencia de celda, o `-` si el problema es del libro")
+    mensaje: str
+
+
 class ResultadoValidacion(Base):
     """Validación de una plantilla antes de admitirla al cálculo."""
 
     valida: bool
     filas_leidas: int
+    incidencias: list[IncidenciaDePlantilla] = Field(
+        default_factory=list,
+        description="Problemas encontrados, con su hoja y su celda",
+    )
     hallazgos: list[str] = Field(
         default_factory=list,
-        description="Problemas encontrados, con hoja y celda cuando aplica",
+        description="Las mismas incidencias ya compuestas como texto, para registro",
     )
     huella: str = Field(default="", description="SHA-256 del contenido admitido")
 
@@ -132,10 +150,26 @@ class ResultadoValidacion(Base):
 
 
 class Indicadores(Base):
+    """Los cuatro indicadores del contraste N3.
+
+    `tir` y `capital_intensity` son opcionales porque el caso puede no
+    definirlas, y eso es un resultado correcto, no un fallo. Un caso que abre
+    en positivo —una operación en marcha— no tiene una tasa que describa su
+    rentabilidad, y el libro escribe un guion en esa celda. Devolver cero en su
+    lugar haría indistinguible «no hay TIR» de «TIR igual a cero», que es
+    justamente la distinción que fija el ADR 0011.
+    """
+
     npv_musd: float = Field(description="Valor actual neto, millones de dólares")
-    tir: float = Field(description="Tasa interna de retorno, en tanto por uno")
+    tir: float | None = Field(
+        default=None,
+        description="Tasa interna de retorno en tanto por uno, o nula si el caso no la define",
+    )
     payback_anios: float
-    capital_intensity: float
+    capital_intensity: float | None = Field(
+        default=None,
+        description="Dólares de capital por tonelada de capacidad, o nula si no hay capacidad",
+    )
 
 
 class ResultadoEvaluacion(Base):
@@ -196,6 +230,75 @@ class ResultadoFidelidad(Base):
     nivel_n2: bool = Field(description="Flujos, año a año")
     nivel_n3: bool = Field(description="Indicadores finales")
     desviaciones: list[DesviacionLinea] = Field(default_factory=list)
+
+
+# --- Bloques intermedios -----------------------------------------------------
+
+
+class SerieAnual(Base):
+    """Una línea del libro, con un valor por año del horizonte."""
+
+    concepto: str
+    unidad: str | None = Field(
+        default=None,
+        description="Unidad productiva a la que pertenece la línea, si no es del caso entero",
+    )
+    valores: list[float]
+    origen: Literal["dato", "calculada"] = Field(
+        default="calculada",
+        description="Si la línea la carga el usuario o la produce el motor",
+    )
+    recalculada: list[float] | None = Field(
+        default=None,
+        description=(
+            "Lo que el sistema esperaba para una línea que el usuario carga y el motor "
+            "sabe rehacer. Va debajo de la cargada; sin ella la alerta no dice qué esperaba"
+        ),
+    )
+
+
+class BloqueDeCorrida(Base):
+    """Un bloque del cálculo, correspondiente a una hoja del libro."""
+
+    clave: str
+    titulo: str
+    hoja: str = Field(description="Hoja del libro corporativo que reproduce este bloque")
+    series: list[SerieAnual]
+
+
+class DiscrepanciaDeCorroboracion(Base):
+    """Una celda donde el dato cargado y el recálculo del sistema no coinciden.
+
+    No detiene el cálculo ni sustituye el dato: el que manda es el del usuario.
+    Es control de calidad, y viaja con la corrida para poder sustentar después
+    por qué se aceptó una diferencia.
+    """
+
+    unidad: str
+    concepto: str
+    ano: int
+    cargado: float
+    recalculado: float
+    diferencia: float
+    diferencia_relativa: float
+
+
+class BloquesDeCorrida(Base):
+    """La cadena de cálculo entera, en el orden en que la presenta el libro."""
+
+    id_caso: str
+    id_corrida: str
+    anios: list[int]
+    unidades: list[str]
+    bloques: list[BloqueDeCorrida]
+    campos_con_dato: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Campos con algún valor distinto de cero, por unidad. Lo decide el motor "
+            "para que la API y la interfaz oculten las mismas filas del mismo caso"
+        ),
+    )
+    discrepancias: list[DiscrepanciaDeCorroboracion] = Field(default_factory=list)
 
 
 # --- Tablero e historial -----------------------------------------------------

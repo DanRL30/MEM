@@ -596,8 +596,12 @@ capa de marca que carga [main.tsx](apps/web/src/main.tsx).
   [LEEME.md](apps/web/src/activos/fuentes/LEEME.md). Agregar un peso o sustituir una familia exige
   actualizar ese registro en el mismo commit.
 
-`apps/web/staticwebapp.config.json` viaja con el artefacto: Static Web Apps lo lee del `dist`
-publicado, de modo que un cambio de rutas o de cabeceras no se comprueba corriendo `pnpm dev`.
+`apps/web/public/staticwebapp.config.json` viaja con el artefacto: Static Web Apps lo lee del
+`dist` publicado, de modo que un cambio de rutas o de cabeceras no se comprueba corriendo
+`pnpm dev`. **Vive en `public/` justamente por eso.** Hasta el 03/09/2026 estaba en la raiz de
+`apps/web`, que Vite no copia: la politica de seguridad de contenido, la restriccion de origen al
+borde y las tres respuestas sustitutas se versionaban y no llegaban al artefacto publicado. Lo
+mismo vale para `sin-permiso.html`, que ese archivo referencia en su respuesta 403.
 
 ### Infraestructura
 

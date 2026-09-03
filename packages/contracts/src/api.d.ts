@@ -134,6 +134,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/casos/{id_caso}/corrida/bloques": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bloques intermedios de la última corrida, en el orden del libro
+         * @description Toda la cadena de cálculo, hoja por hoja, como la presenta el libro.
+         *
+         *     Verificar solo el indicador final es metodológicamente inválido: dos
+         *     errores que se compensan producen un NPV correcto sobre un modelo roto.
+         *     Este endpoint es lo que permite recorrer la cadena entera en pantalla y
+         *     localizar una diferencia en la línea donde aparece.
+         */
+        get: operations["bloques_de_la_corrida_api_casos__id_caso__corrida_bloques_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/casos/{id_caso}/evaluar": {
         parameters: {
             query?: never;
@@ -463,6 +488,48 @@ export interface components {
              */
             url: string;
         };
+        /**
+         * BloqueDeCorrida
+         * @description Un bloque del cálculo, correspondiente a una hoja del libro.
+         */
+        BloqueDeCorrida: {
+            /** Clave */
+            clave: string;
+            /**
+             * Hoja
+             * @description Hoja del libro corporativo que reproduce este bloque
+             */
+            hoja: string;
+            /** Series */
+            series: components["schemas"]["SerieAnual"][];
+            /** Titulo */
+            titulo: string;
+        };
+        /**
+         * BloquesDeCorrida
+         * @description La cadena de cálculo entera, en el orden en que la presenta el libro.
+         */
+        BloquesDeCorrida: {
+            /** Anios */
+            anios: number[];
+            /** Bloques */
+            bloques: components["schemas"]["BloqueDeCorrida"][];
+            /**
+             * Campos Con Dato
+             * @description Campos con algún valor distinto de cero, por unidad. Lo decide el motor para que la API y la interfaz oculten las mismas filas del mismo caso
+             */
+            campos_con_dato?: {
+                [key: string]: string[];
+            };
+            /** Discrepancias */
+            discrepancias?: components["schemas"]["DiscrepanciaDeCorroboracion"][];
+            /** Id Caso */
+            id_caso: string;
+            /** Id Corrida */
+            id_corrida: string;
+            /** Unidades */
+            unidades: string[];
+        };
         /** ConfirmacionCarga */
         ConfirmacionCarga: {
             /** Ruta Blob */
@@ -530,6 +597,30 @@ export interface components {
              */
             tipo: "sin-proyecto" | "monometalico" | "polimetalico";
         };
+        /**
+         * DiscrepanciaDeCorroboracion
+         * @description Una celda donde el dato cargado y el recálculo del sistema no coinciden.
+         *
+         *     No detiene el cálculo ni sustituye el dato: el que manda es el del usuario.
+         *     Es control de calidad, y viaja con la corrida para poder sustentar después
+         *     por qué se aceptó una diferencia.
+         */
+        DiscrepanciaDeCorroboracion: {
+            /** Ano */
+            ano: number;
+            /** Cargado */
+            cargado: number;
+            /** Concepto */
+            concepto: string;
+            /** Diferencia */
+            diferencia: number;
+            /** Diferencia Relativa */
+            diferencia_relativa: number;
+            /** Recalculado */
+            recalculado: number;
+            /** Unidad */
+            unidad: string;
+        };
         /** EntradaHistorial */
         EntradaHistorial: {
             estado: components["schemas"]["Estado"];
@@ -578,10 +669,46 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** Indicadores */
+        /**
+         * IncidenciaDePlantilla
+         * @description Un problema de lectura, con su ubicación exacta en el libro.
+         *
+         *     La ingesta acumula incidencias y no se detiene en la primera, porque una
+         *     plantilla llenada a mano llega con varias a la vez. Los tres campos van
+         *     separados para que la interfaz pueda llevar al usuario a la celda: una
+         *     cadena ya compuesta obliga a que la pantalla la desarme para eso.
+         */
+        IncidenciaDePlantilla: {
+            /**
+             * Celda
+             * @description Referencia de celda, o `-` si el problema es del libro
+             */
+            celda: string;
+            /**
+             * Hoja
+             * @description Pestaña del libro, o `(archivo)` y `(libro)`
+             */
+            hoja: string;
+            /** Mensaje */
+            mensaje: string;
+        };
+        /**
+         * Indicadores
+         * @description Los cuatro indicadores del contraste N3.
+         *
+         *     `tir` y `capital_intensity` son opcionales porque el caso puede no
+         *     definirlas, y eso es un resultado correcto, no un fallo. Un caso que abre
+         *     en positivo —una operación en marcha— no tiene una tasa que describa su
+         *     rentabilidad, y el libro escribe un guion en esa celda. Devolver cero en su
+         *     lugar haría indistinguible «no hay TIR» de «TIR igual a cero», que es
+         *     justamente la distinción que fija el ADR 0011.
+         */
         Indicadores: {
-            /** Capital Intensity */
-            capital_intensity: number;
+            /**
+             * Capital Intensity
+             * @description Dólares de capital por tonelada de capacidad, o nula si no hay capacidad
+             */
+            capital_intensity?: number | null;
             /**
              * Npv Musd
              * @description Valor actual neto, millones de dólares
@@ -591,9 +718,9 @@ export interface components {
             payback_anios: number;
             /**
              * Tir
-             * @description Tasa interna de retorno, en tanto por uno
+             * @description Tasa interna de retorno en tanto por uno, o nula si el caso no la define
              */
-            tir: number;
+            tir?: number | null;
         };
         /** NuevoCaso */
         NuevoCaso: {
@@ -728,7 +855,7 @@ export interface components {
             filas_leidas: number;
             /**
              * Hallazgos
-             * @description Problemas encontrados, con hoja y celda cuando aplica
+             * @description Las mismas incidencias ya compuestas como texto, para registro
              */
             hallazgos?: string[];
             /**
@@ -737,6 +864,11 @@ export interface components {
              * @default
              */
             huella: string;
+            /**
+             * Incidencias
+             * @description Problemas encontrados, con su hoja y su celda
+             */
+            incidencias?: components["schemas"]["IncidenciaDePlantilla"][];
             /** Valida */
             valida: boolean;
         };
@@ -773,6 +905,33 @@ export interface components {
             version_api: string;
             /** Version Motor */
             version_motor?: string | null;
+        };
+        /**
+         * SerieAnual
+         * @description Una línea del libro, con un valor por año del horizonte.
+         */
+        SerieAnual: {
+            /** Concepto */
+            concepto: string;
+            /**
+             * Origen
+             * @description Si la línea la carga el usuario o la produce el motor
+             * @default calculada
+             * @enum {string}
+             */
+            origen: "dato" | "calculada";
+            /**
+             * Recalculada
+             * @description Lo que el sistema esperaba para una línea que el usuario carga y el motor sabe rehacer. Va debajo de la cargada; sin ella la alerta no dice qué esperaba
+             */
+            recalculada?: number[] | null;
+            /**
+             * Unidad
+             * @description Unidad productiva a la que pertenece la línea, si no es del caso entero
+             */
+            unidad?: string | null;
+            /** Valores */
+            valores: number[];
         };
         /**
          * SolicitudCarga
@@ -1187,6 +1346,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Problema"];
+                };
+            };
+        };
+    };
+    bloques_de_la_corrida_api_casos__id_caso__corrida_bloques_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path: {
+                /** @description Identificador del caso */
+                id_caso: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BloquesDeCorrida"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problema"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

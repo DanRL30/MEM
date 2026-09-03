@@ -52,6 +52,100 @@
         "title": "AutorizacionCarga",
         "type": "object"
       },
+      "BloqueDeCorrida": {
+        "description": "Un bloque del cálculo, correspondiente a una hoja del libro.",
+        "properties": {
+          "clave": {
+            "title": "Clave",
+            "type": "string"
+          },
+          "hoja": {
+            "description": "Hoja del libro corporativo que reproduce este bloque",
+            "title": "Hoja",
+            "type": "string"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/SerieAnual"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "titulo": {
+            "title": "Titulo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "clave",
+          "titulo",
+          "hoja",
+          "series"
+        ],
+        "title": "BloqueDeCorrida",
+        "type": "object"
+      },
+      "BloquesDeCorrida": {
+        "description": "La cadena de cálculo entera, en el orden en que la presenta el libro.",
+        "properties": {
+          "anios": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Anios",
+            "type": "array"
+          },
+          "bloques": {
+            "items": {
+              "$ref": "#/components/schemas/BloqueDeCorrida"
+            },
+            "title": "Bloques",
+            "type": "array"
+          },
+          "campos_con_dato": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": "Campos con algún valor distinto de cero, por unidad. Lo decide el motor para que la API y la interfaz oculten las mismas filas del mismo caso",
+            "title": "Campos Con Dato",
+            "type": "object"
+          },
+          "discrepancias": {
+            "items": {
+              "$ref": "#/components/schemas/DiscrepanciaDeCorroboracion"
+            },
+            "title": "Discrepancias",
+            "type": "array"
+          },
+          "id_caso": {
+            "title": "Id Caso",
+            "type": "string"
+          },
+          "id_corrida": {
+            "title": "Id Corrida",
+            "type": "string"
+          },
+          "unidades": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unidades",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id_caso",
+          "id_corrida",
+          "anios",
+          "unidades",
+          "bloques"
+        ],
+        "title": "BloquesDeCorrida",
+        "type": "object"
+      },
       "ConfirmacionCarga": {
         "properties": {
           "ruta_blob": {
@@ -216,6 +310,50 @@
         "title": "DetalleCaso",
         "type": "object"
       },
+      "DiscrepanciaDeCorroboracion": {
+        "description": "Una celda donde el dato cargado y el recálculo del sistema no coinciden.\n\nNo detiene el cálculo ni sustituye el dato: el que manda es el del usuario.\nEs control de calidad, y viaja con la corrida para poder sustentar después\npor qué se aceptó una diferencia.",
+        "properties": {
+          "ano": {
+            "title": "Ano",
+            "type": "integer"
+          },
+          "cargado": {
+            "title": "Cargado",
+            "type": "number"
+          },
+          "concepto": {
+            "title": "Concepto",
+            "type": "string"
+          },
+          "diferencia": {
+            "title": "Diferencia",
+            "type": "number"
+          },
+          "diferencia_relativa": {
+            "title": "Diferencia Relativa",
+            "type": "number"
+          },
+          "recalculado": {
+            "title": "Recalculado",
+            "type": "number"
+          },
+          "unidad": {
+            "title": "Unidad",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unidad",
+          "concepto",
+          "ano",
+          "cargado",
+          "recalculado",
+          "diferencia",
+          "diferencia_relativa"
+        ],
+        "title": "DiscrepanciaDeCorroboracion",
+        "type": "object"
+      },
       "EntradaHistorial": {
         "properties": {
           "estado": {
@@ -326,11 +464,46 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "IncidenciaDePlantilla": {
+        "description": "Un problema de lectura, con su ubicación exacta en el libro.\n\nLa ingesta acumula incidencias y no se detiene en la primera, porque una\nplantilla llenada a mano llega con varias a la vez. Los tres campos van\nseparados para que la interfaz pueda llevar al usuario a la celda: una\ncadena ya compuesta obliga a que la pantalla la desarme para eso.",
+        "properties": {
+          "celda": {
+            "description": "Referencia de celda, o `-` si el problema es del libro",
+            "title": "Celda",
+            "type": "string"
+          },
+          "hoja": {
+            "description": "Pestaña del libro, o `(archivo)` y `(libro)`",
+            "title": "Hoja",
+            "type": "string"
+          },
+          "mensaje": {
+            "title": "Mensaje",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hoja",
+          "celda",
+          "mensaje"
+        ],
+        "title": "IncidenciaDePlantilla",
+        "type": "object"
+      },
       "Indicadores": {
+        "description": "Los cuatro indicadores del contraste N3.\n\n`tir` y `capital_intensity` son opcionales porque el caso puede no\ndefinirlas, y eso es un resultado correcto, no un fallo. Un caso que abre\nen positivo —una operación en marcha— no tiene una tasa que describa su\nrentabilidad, y el libro escribe un guion en esa celda. Devolver cero en su\nlugar haría indistinguible «no hay TIR» de «TIR igual a cero», que es\njustamente la distinción que fija el ADR 0011.",
         "properties": {
           "capital_intensity": {
-            "title": "Capital Intensity",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dólares de capital por tonelada de capacidad, o nula si no hay capacidad",
+            "title": "Capital Intensity"
           },
           "npv_musd": {
             "description": "Valor actual neto, millones de dólares",
@@ -342,16 +515,21 @@
             "type": "number"
           },
           "tir": {
-            "description": "Tasa interna de retorno, en tanto por uno",
-            "title": "Tir",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tasa interna de retorno en tanto por uno, o nula si el caso no la define",
+            "title": "Tir"
           }
         },
         "required": [
           "npv_musd",
-          "tir",
-          "payback_anios",
-          "capital_intensity"
+          "payback_anios"
         ],
         "title": "Indicadores",
         "type": "object"
@@ -620,7 +798,7 @@
             "type": "integer"
           },
           "hallazgos": {
-            "description": "Problemas encontrados, con hoja y celda cuando aplica",
+            "description": "Las mismas incidencias ya compuestas como texto, para registro",
             "items": {
               "type": "string"
             },
@@ -632,6 +810,14 @@
             "description": "SHA-256 del contenido admitido",
             "title": "Huella",
             "type": "string"
+          },
+          "incidencias": {
+            "description": "Problemas encontrados, con su hoja y su celda",
+            "items": {
+              "$ref": "#/components/schemas/IncidenciaDePlantilla"
+            },
+            "title": "Incidencias",
+            "type": "array"
           },
           "valida": {
             "title": "Valida",
@@ -724,6 +910,65 @@
           "version_api"
         ],
         "title": "Salud",
+        "type": "object"
+      },
+      "SerieAnual": {
+        "description": "Una línea del libro, con un valor por año del horizonte.",
+        "properties": {
+          "concepto": {
+            "title": "Concepto",
+            "type": "string"
+          },
+          "origen": {
+            "default": "calculada",
+            "description": "Si la línea la carga el usuario o la produce el motor",
+            "enum": [
+              "dato",
+              "calculada"
+            ],
+            "title": "Origen",
+            "type": "string"
+          },
+          "recalculada": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lo que el sistema esperaba para una línea que el usuario carga y el motor sabe rehacer. Va debajo de la cargada; sin ella la alerta no dice qué esperaba",
+            "title": "Recalculada"
+          },
+          "unidad": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unidad productiva a la que pertenece la línea, si no es del caso entero",
+            "title": "Unidad"
+          },
+          "valores": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Valores",
+            "type": "array"
+          }
+        },
+        "required": [
+          "concepto",
+          "valores"
+        ],
+        "title": "SerieAnual",
         "type": "object"
       },
       "SolicitudCarga": {
@@ -1436,6 +1681,84 @@
           }
         },
         "summary": "Congelar la evaluación como sustento de decisión",
+        "tags": [
+          "Evaluación"
+        ]
+      }
+    },
+    "/api/casos/{id_caso}/corrida/bloques": {
+      "get": {
+        "description": "Toda la cadena de cálculo, hoja por hoja, como la presenta el libro.\n\nVerificar solo el indicador final es metodológicamente inválido: dos\nerrores que se compensan producen un NPV correcto sobre un modelo roto.\nEste endpoint es lo que permite recorrer la cadena entera en pantalla y\nlocalizar una diferencia en la línea donde aparece.",
+        "operationId": "bloques_de_la_corrida_api_casos__id_caso__corrida_bloques_get",
+        "parameters": [
+          {
+            "description": "Identificador del caso",
+            "in": "path",
+            "name": "id_caso",
+            "required": true,
+            "schema": {
+              "description": "Identificador del caso",
+              "examples": [
+                "CASO-SR-2026-014"
+              ],
+              "title": "Id Caso",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BloquesDeCorrida"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problema"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problema"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bloques intermedios de la última corrida, en el orden del libro",
         "tags": [
           "Evaluación"
         ]

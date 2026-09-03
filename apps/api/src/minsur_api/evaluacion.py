@@ -75,13 +75,18 @@ def indicadores_de(corrida: CorridaAlmacenada) -> Indicadores:
     El motor trabaja en dólares y el contrato expone millones, porque es la
     unidad en la que el negocio lee un NPV. La conversión vive aquí y no en el
     motor: cambiar cómo se presenta un número no debe tocar cómo se calcula.
+
+    Lo que no se traduce es la ausencia. Un caso puede no definir TIR ni
+    capital intensity, y esa nulidad viaja tal cual hasta la pantalla: un cero
+    en su lugar sería un número que nadie calculó y que se lee como si alguien
+    lo hubiera hecho.
     """
     indicadores = corrida.resultado.indicadores
     return Indicadores(
         npv_musd=indicadores.npv / MILLONES,
-        tir=indicadores.tir if indicadores.tir is not None else 0.0,
+        tir=indicadores.tir,
         payback_anios=indicadores.payback.anos,
-        capital_intensity=indicadores.capital_intensity or 0.0,
+        capital_intensity=indicadores.capital_intensity,
     )
 
 

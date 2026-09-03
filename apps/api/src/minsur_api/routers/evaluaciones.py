@@ -19,8 +19,10 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from minsur_domain.estados import Perfil
 from minsur_engine.caso import DatosMaestros
 
+from ..bloques import bloques_de
 from ..dependencias import datos_maestros, repositorio
 from ..esquemas import (
+    BloquesDeCorrida,
     CorridaCongelada,
     Problema,
     ResultadoEvaluacion,
@@ -53,6 +55,41 @@ def _caso_no_encontrado() -> HTTPException:
         status_code=status.HTTP_404_NOT_FOUND,
         detail={"detalle": "No existe un caso con ese identificador.", "restriccion": None},
     )
+
+
+@router.get(
+    "/corrida/bloques",
+    response_model=BloquesDeCorrida,
+    summary="Bloques intermedios de la última corrida, en el orden del libro",
+    responses={404: {"model": Problema}, 409: {"model": Problema}},
+)
+async def bloques_de_la_corrida(
+    id_caso: str = ID_CASO,
+    usuario: Usuario = Depends(usuario_actual),
+    repo: RepositorioDeCasos = Depends(repositorio),
+) -> BloquesDeCorrida:
+    """Toda la cadena de cálculo, hoja por hoja, como la presenta el libro.
+
+    Verificar solo el indicador final es metodológicamente inválido: dos
+    errores que se compensan producen un NPV correcto sobre un modelo roto.
+    Este endpoint es lo que permite recorrer la cadena entera en pantalla y
+    localizar una diferencia en la línea donde aparece.
+    """
+    try:
+        repo.obtener(id_caso)
+    except CasoNoEncontrado:
+        raise _caso_no_encontrado() from None
+
+    corrida = repo.ultima_corrida(id_caso)
+    if corrida is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "detalle": "El caso todavía no tiene ninguna corrida que mostrar.",
+                "restriccion": None,
+            },
+        )
+    return bloques_de(corrida)
 
 
 @router.post(

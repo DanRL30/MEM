@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./estilos/color.css";
 import "./estilos/tipografia.css";
+import "./estilos/superficie.css";
 
 const raiz = document.getElementById("raiz");
 

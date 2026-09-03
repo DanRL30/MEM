@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from .config import config
 from .routers import (
     casos,
+    desarrollo,
     evaluaciones,
     historial,
     identidad,
@@ -86,6 +87,20 @@ def crear_app() -> FastAPI:
         historial.router,
     ):
         app.include_router(router, prefix="/api")
+
+    # La carga por la API existe solo en local, para que la interfaz pueda
+    # construirse contra la cadena real mientras `R-07` y `R-23` mantienen
+    # bloqueada la carga directa al almacenamiento. Fuera de local esta
+    # superficie no se monta: no es una ruta protegida, es una ruta ausente.
+    #
+    # Queda fuera del esquema publicado a proposito. De ese esquema salen los
+    # tipos del frontend y la definicion que se importa a API Management, y una
+    # ruta que solo existe en la maquina del desarrollador no pertenece al
+    # contrato que se entrega. `include_in_schema=False` es lo que impide que
+    # `pnpm contracts`, que se ejecuta en local, la filtre al archivo
+    # versionado.
+    if config().es_local:
+        app.include_router(desarrollo.router, prefix="/api", include_in_schema=False)
 
     @app.exception_handler(Exception)
     async def error_no_previsto(request: Request, exc: Exception) -> JSONResponse:

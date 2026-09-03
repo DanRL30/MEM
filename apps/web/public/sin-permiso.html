@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sin permiso · Plataforma de Evaluación Económica</title>
+    <!-- Sin script y sin recursos externos: la política de seguridad de
+         contenido declara script-src 'self' y font-src 'self', y esta página
+         se sirve cuando el usuario aún no tiene una sesión útil. Los estilos
+         van en línea porque style-src sí admite 'unsafe-inline'. -->
+    <style>
+      body {
+        background: #ffffff;
+        color: #2d314d;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        line-height: 1.5;
+        margin: 0;
+        display: grid;
+        min-height: 100vh;
+        place-items: center;
+      }
+      main {
+        max-width: 34rem;
+        padding: 2rem;
+      }
+      h1 {
+        color: #003da5;
+        font-size: 1.5rem;
+        margin: 0 0 1rem;
+      }
+      code {
+        background: #e9e9e9;
+        border-radius: 4px;
+        padding: 0.1rem 0.35rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>No tienes permiso para esta página</h1>
+      <p>
+        Tu cuenta está autenticada, pero su perfil no alcanza a esta parte de la plataforma. El
+        perfil se deriva de los grupos de seguridad de tu cuenta corporativa, no se configura dentro
+        de la aplicación.
+      </p>
+      <p>
+        Si crees que deberías tener acceso, pide a TI de MINSUR que revise tu pertenencia a los
+        grupos <code>SG-MINSUR-EVALECO-*</code>. Indica qué intentabas hacer: cada perfil habilita
+        operaciones distintas sobre el mismo caso.
+      </p>
+      <p><a href="/">Volver al inicio</a></p>
+    </main>
+  </body>
+</html>

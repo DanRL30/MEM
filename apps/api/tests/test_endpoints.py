@@ -105,9 +105,16 @@ def cliente(repo: RepositorioEnMemoria) -> Iterator[TestClient]:
 
 @pytest.fixture
 def cliente_sin_maestros(repo: RepositorioEnMemoria) -> Iterator[TestClient]:
-    """Cliente sin datos maestros: es el estado real mientras `R-32` siga abierta."""
+    """Cliente sin datos maestros: es lo que ve cualquier entorno que no sea local.
+
+    La ausencia se declara aqui en vez de heredarse del entorno. En local la
+    dependencia sirve el juego `DEV-0` para que la interfaz pueda ejercitarse, y
+    una prueba que dependiera de ese detalle comprobaria la configuracion de la
+    maquina en lugar del comportamiento del endpoint.
+    """
     app = crear_app()
     app.dependency_overrides[repositorio] = lambda: repo
+    app.dependency_overrides[datos_maestros] = lambda: None
     with TestClient(app) as cliente:
         yield cliente
     app.dependency_overrides.clear()

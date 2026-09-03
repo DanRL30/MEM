@@ -1,15 +1,12 @@
-// Armazon de la interfaz. El encabezado identifica el servicio y <main> es el
-// punto donde el enrutador monta las vistas de PT3: casos, tablero, historial y
-// comparador. Se mantiene separado del punto de entrada para que las pruebas
-// puedan renderizarlo sin tocar el DOM del documento.
+// Armazon de la interfaz. Monta la vista de modelamiento de escenario, que es
+// la primera de PT3; el tablero, el historial y el comparador entran detras,
+// con el enrutador, cuando existan.
+//
+// Se mantiene separado del punto de entrada para que las pruebas puedan
+// renderizarlo sin tocar el DOM del documento.
+
+import { ModelamientoDeEscenario } from "./vistas/ModelamientoDeEscenario";
 
 export default function App() {
-  return (
-    <>
-      <header>
-        <h1>Plataforma de Evaluación Económica</h1>
-      </header>
-      <main aria-label="Contenido principal" />
-    </>
-  );
+  return <ModelamientoDeEscenario />;
 }

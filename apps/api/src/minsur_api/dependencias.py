@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from minsur_domain.carga_directa import CargaDirecta
 from minsur_engine.caso import DatosMaestros
 
+from . import maestros_desarrollo
 from .config import config
 from .repositorio import RepositorioDeCasos, RepositorioEnMemoria
 
@@ -61,13 +62,21 @@ def repositorio() -> RepositorioDeCasos:
 def datos_maestros() -> DatosMaestros | None:
     """Versión de datos maestros vigente: parámetros, tasas y escalas.
 
-    Los mantiene MINSUR (`R-32`) y todavía no han llegado, así que hoy devuelve
-    `None` y los endpoints que calculan responden 501 con esa restricción.
-    Inventar unos valores por defecto seria peor: alguien los tomaria por
-    oficiales y ningun contraste lo detectaria, porque el motor calcularia bien
-    sobre parametros equivocados.
+    Los mantiene MINSUR (`R-32`) y todavía no han llegado, así que fuera de
+    local devuelve `None` y los endpoints que calculan responden 501 con esa
+    restricción. Inventar unos valores por defecto seria peor: alguien los
+    tomaria por oficiales y ningun contraste lo detectaria, porque el motor
+    calcularia bien sobre parametros equivocados.
+
+    En local devuelve el juego de `maestros_desarrollo`, que se llama `DEV-0` y
+    viaja en la terna de la corrida. Sin el, la interfaz no tiene forma de
+    ejercitar el calculo mientras `R-32` siga abierta; con el, cualquier
+    resultado queda marcado como calculado con datos de desarrollo. El limite
+    lo pone el entorno, no una bandera de la solicitud.
 
     Es una dependencia y no una lectura directa para que el entorno espejo
     pueda inyectar un juego de prueba sin tocar los routers.
     """
+    if config().es_local:
+        return maestros_desarrollo.MAESTROS
     return None

@@ -1,0 +1,283 @@
+/* Superficies, espaciado y forma.
+ *
+ * `color.css` fija la paleta del manual de marca y `tipografia.css` el sistema
+ * tipografico. Ninguno de los dos dice como se separan, se redondean ni se
+ * elevan las piezas de una aplicacion, porque el manual no cubre interfaz.
+ * Este archivo lo hace, y como aquel es derivacion de INVA: pendiente de
+ * aprobacion de Comunicaciones de MINSUR antes de considerarse definitivo.
+ *
+ * --- El vidrio -------------------------------------------------------------
+ *
+ * MINSUR pidio estetica glassmorphism el 25/08/2026. Aqui se aplica al cromo
+ * -cabecera, paneles, tarjetas de indicador, dialogos- y **nunca a las tablas
+ * de cifras**, que van sobre fondo opaco.
+ *
+ * No es una preferencia estetica. El texto de una tabla de veinte ejercicios
+ * por unidad se lee a 14 px, y un fondo translucido cambia su contraste segun
+ * lo que pase por debajo: el mismo numero cumple o incumple AA dependiendo del
+ * desplazamiento. Un contraste que depende del scroll no es un contraste.
+ *
+ * El efecto necesita algo que desenfocar, de ahi el lavado de marca del lienzo.
+ * Es muy tenue a proposito: el manual asigna al blanco entre 30 y 60 % de
+ * presencia y el fondo no compite con el dato.
+ */
+
+:root {
+  /* --- Espaciado ---------------------------------------------------------
+   * Escala de 4 px. La densidad de una herramienta de analisis se gana
+   * apretando el espacio entre piezas, no la letra: el manual fija un cuerpo
+   * minimo de 10 pt y `tipografia.css` ya trabaja en ese suelo.
+   */
+  --espacio-1: 0.25rem;
+  --espacio-2: 0.5rem;
+  --espacio-3: 0.75rem;
+  --espacio-4: 1rem;
+  --espacio-5: 1.5rem;
+  --espacio-6: 2rem;
+
+  /* --- Forma ------------------------------------------------------------- */
+  --radio-control: 6px;
+  --radio-tarjeta: 14px;
+  --radio-pildora: 999px;
+
+  /* --- Altura de fila ----------------------------------------------------
+   * Tres densidades. La que corresponde a cada perfil sigue pendiente de
+   * `R-41`, asi que hoy la vista usa la media y las otras dos quedan listas.
+   */
+  --fila-compacta: 28px;
+  --fila-media: 32px;
+  --fila-alta: 40px;
+
+  /* --- Vidrio ------------------------------------------------------------
+   * El borde claro es lo que dibuja el canto de la lamina; sin el, la
+   * superficie se funde con el lienzo y el desenfoque parece un error de
+   * renderizado. La sombra lleva el azul de marca en lugar de negro puro,
+   * porque una sombra neutra sobre un lavado azul se ve sucia.
+   */
+  --vidrio-fondo: rgba(255, 255, 255, 0.62);
+  --vidrio-fondo-tenue: rgba(255, 255, 255, 0.42);
+  --vidrio-borde: rgba(255, 255, 255, 0.75);
+  --vidrio-desenfoque: 18px;
+  --vidrio-saturacion: 1.4;
+  --vidrio-sombra: 0 8px 32px rgba(0, 61, 165, 0.1);
+
+  /* --- Lienzo ------------------------------------------------------------ */
+  --lavado-marca:
+    radial-gradient(60rem 40rem at 12% -10%, rgba(64, 110, 248, 0.16), transparent 60%),
+    radial-gradient(50rem 34rem at 92% 4%, rgba(0, 61, 165, 0.12), transparent 62%);
+}
+
+body {
+  background-image: var(--lavado-marca);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* --- La lamina de vidrio -------------------------------------------------- */
+
+.vidrio {
+  background-color: var(--vidrio-fondo);
+  backdrop-filter: blur(var(--vidrio-desenfoque)) saturate(var(--vidrio-saturacion));
+  border: 1px solid var(--vidrio-borde);
+  border-radius: var(--radio-tarjeta);
+  box-shadow: var(--vidrio-sombra);
+}
+
+.vidrio-tenue {
+  background-color: var(--vidrio-fondo-tenue);
+}
+
+/* Reserva obligatoria, por dos vias distintas.
+ *
+ * La primera es de capacidad: un navegador sin `backdrop-filter` pinta la
+ * superficie translucida sin desenfocar nada, y el texto queda sobre lo que
+ * haya debajo.
+ *
+ * La segunda es de preferencia declarada: quien pide menos transparencia suele
+ * hacerlo porque la necesita para leer. Un tablero que solo se lee con el
+ * efecto activo no es un tablero.
+ */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .vidrio,
+  .vidrio-tenue {
+    background-color: var(--fondo-lienzo);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .vidrio,
+  .vidrio-tenue {
+    background-color: var(--fondo-lienzo);
+    backdrop-filter: none;
+    border-color: var(--borde-sutil);
+  }
+}
+
+/* --- Las tablas no llevan vidrio ------------------------------------------ */
+
+.tabla-solida {
+  background-color: var(--fondo-lienzo);
+  border: 1px solid var(--borde-sutil);
+  border-radius: var(--radio-tarjeta);
+  overflow: auto;
+}
+
+.tabla-solida table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.tabla-solida th,
+.tabla-solida td {
+  border-bottom: 1px solid var(--borde-sutil);
+  height: var(--fila-media);
+  padding: 0 var(--espacio-3);
+  white-space: nowrap;
+}
+
+.tabla-solida td {
+  text-align: right;
+}
+
+.tabla-solida th {
+  text-align: left;
+}
+
+/* La cabecera se queda fija: en veinte ejercicios, una columna sin ano visible
+ * obliga a subir a comprobar cual es. La primera columna hace lo mismo en
+ * horizontal con el nombre del concepto.
+ */
+.tabla-solida thead th {
+  background-color: var(--fondo-lienzo);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.tabla-solida th:first-child,
+.tabla-solida td:first-child {
+  background-color: var(--fondo-lienzo);
+  left: 0;
+  position: sticky;
+  text-align: left;
+  z-index: 2;
+}
+
+.tabla-solida thead th:first-child {
+  z-index: 3;
+}
+
+/* --- Origen del dato ------------------------------------------------------
+ * La codificacion viene de la vista con la que se reviso el calculo: azul lo
+ * que el usuario carga, naranja lo que carga y el sistema ademas recalcula.
+ * El color es relleno y nunca color de texto: ninguno de los dos alcanza 4,5
+ * a 1 sobre blanco, y colorear la cifra incumpliria WCAG AA.
+ */
+.origen-dato {
+  background-color: rgba(64, 110, 248, 0.14);
+}
+
+.origen-recalculada {
+  background-color: rgba(245, 138, 46, 0.16);
+}
+
+.fila-recalculo td {
+  color: var(--texto-principal);
+  font-style: italic;
+  opacity: 0.75;
+}
+
+/* --- Controles de formulario ----------------------------------------------
+ * El navegador no trae ningun estilo util para estos: un `select` sin altura
+ * declarada mide distinto que un `input` a su lado y la fila queda desalineada.
+ */
+
+label > span {
+  display: block;
+  font-size: var(--texto-etiqueta);
+  letter-spacing: var(--interletrado-etiqueta);
+  margin-bottom: var(--espacio-1);
+}
+
+input[type="text"],
+input[type="file"],
+select {
+  background-color: var(--fondo-lienzo);
+  border: 1px solid var(--borde-sutil);
+  border-radius: var(--radio-control);
+  color: var(--texto-principal);
+  font: inherit;
+  min-height: var(--fila-alta);
+  padding: 0 var(--espacio-3);
+  width: 100%;
+}
+
+input[type="file"] {
+  padding: var(--espacio-2);
+}
+
+input[type="text"]:focus,
+select:focus {
+  border-color: var(--texto-enfasis);
+}
+
+fieldset legend {
+  font-size: var(--texto-etiqueta);
+  letter-spacing: var(--interletrado-etiqueta);
+  margin-bottom: var(--espacio-2);
+}
+
+/* --- Piezas de cromo ------------------------------------------------------ */
+
+.pildora {
+  border: 1px solid var(--borde-sutil);
+  border-radius: var(--radio-pildora);
+  padding: var(--espacio-1) var(--espacio-3);
+}
+
+button.pildora {
+  background-color: var(--texto-enfasis);
+  border-color: var(--texto-enfasis);
+  color: var(--marca-blanco);
+  cursor: pointer;
+  font: inherit;
+  min-height: var(--fila-alta);
+  padding: 0 var(--espacio-5);
+}
+
+button.pildora:disabled {
+  background-color: var(--fondo-contenedor);
+  border-color: var(--borde-sutil);
+  color: var(--texto-principal);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+button.enlace {
+  background: none;
+  border: none;
+  color: var(--texto-enfasis);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+}
+
+.cifra-grande {
+  font-size: var(--texto-display);
+  font-weight: var(--peso-titular);
+  letter-spacing: var(--interletrado-titular);
+  line-height: var(--interlineado-titular);
+}
+
+/* El foco visible no se elimina en ninguna superficie. Sobre vidrio hace falta
+ * un anillo de contraste alto, porque el borde claro de la lamina se come un
+ * contorno tenue.
+ */
+:focus-visible {
+  outline: 2px solid var(--texto-enfasis);
+  outline-offset: 2px;
+}
