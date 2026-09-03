@@ -193,6 +193,26 @@ class TestCasos:
         listado = cliente.get("/api/casos", headers=CABECERAS).json()
         assert [caso["abreviatura"] for caso in listado] == ["SD-3"]
 
+    def test_el_caso_recuerda_quien_lo_creo_y_cuando(self, cliente: TestClient) -> None:
+        # La tabla de escenarios lleva las dos parejas de fecha y autor. Sin la
+        # creacion, la unica fecha es la de la ultima corrida y no se distingue
+        # un caso de ayer recalculado hoy de uno creado hoy.
+        cliente.post(
+            "/api/casos",
+            json={
+                "abreviatura": "SD-3",
+                "nombre": "Santo Domingo Fase III",
+                "tipo": "con-proyecto",
+            },
+            headers=CABECERAS,
+        )
+        caso = cliente.get("/api/casos", headers=CABECERAS).json()[0]
+
+        assert caso["creado_por"] == caso["actualizado_por"]
+        # Al crearse las dos coinciden, y es la corrida la que separa la
+        # segunda: por eso no se puede derivar una de la otra mas adelante.
+        assert caso["creado_en"] == caso["actualizado_en"]
+
     def test_listar_devuelve_lo_creado(self, cliente: TestClient) -> None:
         crear_caso(cliente, "Uno")
         crear_caso(cliente, "Dos")

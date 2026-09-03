@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import App from "../src/App";
 import { Pestanas } from "../src/componentes/Pestanas";
+import { TablaDeEscenarios } from "../src/componentes/TablaDeEscenarios";
 import { TablaDelLibro } from "../src/componentes/TablaDelLibro";
 import type { SerieAnual } from "../src/api/cliente";
 import { TarjetaIndicador } from "../src/componentes/TarjetaIndicador";
@@ -90,6 +91,76 @@ describe("La vista de modelamiento", () => {
       "disabled",
       true,
     );
+  });
+});
+
+describe("La tabla de escenarios abiertos", () => {
+  const caso = {
+    id_caso: "CASO-CON-2026-A1D3FD",
+    abreviatura: "SD Fase III",
+    nombre: "Santo Domingo Fase III",
+    tipo: "con-proyecto" as const,
+    estado: "calculada" as const,
+    creado_en: "2026-09-01T14:05:00Z",
+    creado_por: "daniel.robles@invaglobal.com",
+    actualizado_en: "2026-09-03T21:31:00Z",
+    actualizado_por: "hugo.diaz@minsur.com",
+  };
+
+  it("lleva las ocho columnas que pidio el cliente", () => {
+    render(<TablaDeEscenarios alAbrir={() => undefined} casos={[caso]} />);
+    const cabeceras = screen.getAllByRole("columnheader").map((c) => c.textContent);
+
+    expect(cabeceras).toEqual([
+      "Abreviatura",
+      "Nombre",
+      "Tipo de caso",
+      "Creado",
+      "Creado por",
+      "Modificado",
+      "Modificado por",
+      "Estado",
+    ]);
+  });
+
+  it("muestra la persona y no su buzon, y la fecha a veinticuatro horas", () => {
+    // `es-PE` escribe `04:31 p. m.`, que ocupa casi el doble que `16:31` y
+    // sacaba la columna de estado fuera de la tabla.
+    render(<TablaDeEscenarios alAbrir={() => undefined} casos={[caso]} />);
+
+    expect(screen.getByText("daniel.robles")).toBeDefined();
+    expect(screen.getByText("hugo.diaz")).toBeDefined();
+    expect(screen.queryByText(/@/)).toBeNull();
+    expect(screen.queryByText(/p\. m\./)).toBeNull();
+  });
+
+  it("no se cae si un caso antiguo no trae quien lo creo", () => {
+    // El contrato lo declara obligatorio, pero un caso guardado por una version
+    // anterior no lo trae: una pantalla que se cae entera por una celda vacia
+    // es peor que una celda vacia.
+    const { creado_por: _omitido, ...sinAutor } = caso;
+    render(
+      <TablaDeEscenarios
+        alAbrir={() => undefined}
+        casos={[sinAutor as unknown as typeof caso]}
+      />,
+    );
+    expect(screen.getByText("Santo Domingo Fase III")).toBeDefined();
+  });
+
+  it("abre el escenario desde su abreviatura", () => {
+    const abiertos: string[] = [];
+    render(
+      <TablaDeEscenarios
+        alAbrir={(id) => {
+          abiertos.push(id);
+        }}
+        casos={[caso]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "SD Fase III" }));
+
+    expect(abiertos).toEqual(["CASO-CON-2026-A1D3FD"]);
   });
 });
 

@@ -593,6 +593,13 @@ export interface components {
             actualizado_en: string;
             /** Actualizado Por */
             actualizado_por: string;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+            /** Creado Por */
+            creado_por: string;
             /** Descripcion */
             descripcion: string;
             estado: components["schemas"]["Estado"];
@@ -918,6 +925,13 @@ export interface components {
             actualizado_en: string;
             /** Actualizado Por */
             actualizado_por: string;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+            /** Creado Por */
+            creado_por: string;
             estado: components["schemas"]["Estado"];
             /** Id Caso */
             id_caso: string;

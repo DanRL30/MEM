@@ -32,6 +32,10 @@ def _resumen(caso: CasoAlmacenado) -> ResumenCaso:
         nombre=caso.nombre,
         tipo=caso.tipo,  # type: ignore[arg-type]
         estado=caso.estado,
+        # Un caso guardado antes de que existieran estas dos columnas no las
+        # tiene, y su creacion es lo mas antiguo que se sabe de el.
+        creado_en=caso.creado_en or caso.actualizado_en,
+        creado_por=caso.creado_por or caso.actualizado_por,
         actualizado_en=caso.actualizado_en,
         actualizado_por=caso.actualizado_por,
     )
@@ -89,6 +93,7 @@ async def crear(
     nace en borrador y con revision de inputs 1: es un caso nuevo, no una
     version del anterior.
     """
+    ahora = datetime.now(UTC)
     insumos = None
     if nuevo.duplicar_de is not None:
         insumos = _buscar(repo, nuevo.duplicar_de).insumos
@@ -101,7 +106,9 @@ async def crear(
             tipo=nuevo.tipo,
             descripcion=nuevo.descripcion,
             estado=Estado.BORRADOR,
-            actualizado_en=datetime.now(UTC),
+            creado_en=ahora,
+            creado_por=usuario.correo,
+            actualizado_en=ahora,
             actualizado_por=usuario.correo,
             insumos=insumos,
         )

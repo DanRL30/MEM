@@ -497,7 +497,7 @@ button.enlace {
 }
 
 /* El punto de corte es el ancho al que el formulario deja de caber comodo al
- * lado de la lista, no un tamano de dispositivo. La columna se dimensiona por
+ * lado de la tabla, no un tamano de dispositivo. La columna se dimensiona por
  * la fila de pildoras del modelo de calculo, que es lo mas ancho del
  * formulario; con holgura, porque un nombre de modelo mas largo la volveria a
  * partir. Si aun asi no cabe, la fila envuelve y ninguna pildora se estruja.
@@ -506,4 +506,68 @@ button.enlace {
   .portada {
     grid-template-columns: minmax(0, 32rem) minmax(0, 1fr);
   }
+}
+
+/* --- La tabla de escenarios abiertos --------------------------------------
+ * Ocho columnas no caben en una pantalla estrecha. La tabla se desplaza dentro
+ * de su panel y no estira la pagina, que es la misma regla de la hoja del
+ * libro: lo ancho se desplaza por dentro.
+ */
+
+.tabla-de-escenarios {
+  overflow-x: auto;
+}
+
+.tabla-de-escenarios table {
+  border-collapse: collapse;
+  font-size: var(--texto-etiqueta);
+  width: 100%;
+}
+
+.tabla-de-escenarios th,
+.tabla-de-escenarios td {
+  border-bottom: 1px solid var(--borde-sutil);
+  padding: var(--espacio-2) var(--espacio-3);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tabla-de-escenarios thead th {
+  color: var(--texto-principal);
+  font-weight: var(--peso-encabezado);
+}
+
+/* La abreviatura identifica la fila: con siete columnas a la derecha, una fecha
+ * suelta no diria de que escenario es. Se queda fija al desplazarse. */
+.tabla-de-escenarios .columna-abreviatura {
+  background-color: var(--fondo-lienzo);
+  left: 0;
+  position: sticky;
+}
+
+.tabla-de-escenarios tbody tr:hover td,
+.tabla-de-escenarios tbody tr:hover .columna-abreviatura {
+  background-color: var(--fondo-contenedor);
+}
+
+.tabla-de-escenarios .columna-fecha {
+  font-variant-numeric: tabular-nums;
+}
+
+/* El estado, con el color que le corresponde. Es relleno y borde, nunca color
+ * de texto: sobre una pildora pequena el contraste no daria. */
+.tabla-de-escenarios .pildora {
+  white-space: nowrap;
+}
+
+.estado-borrador {
+  border-color: var(--estado-informacion);
+}
+
+.estado-calculada {
+  border-color: var(--estado-exito);
+}
+
+.estado-congelada {
+  border-color: var(--texto-enfasis);
 }

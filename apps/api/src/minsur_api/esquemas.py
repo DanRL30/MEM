@@ -78,6 +78,8 @@ class ResumenCaso(Base):
     nombre: str
     tipo: TipoDeCaso
     estado: Estado
+    creado_en: datetime
+    creado_por: str
     actualizado_en: datetime
     actualizado_por: str
 

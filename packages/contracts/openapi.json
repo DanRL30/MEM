@@ -273,6 +273,15 @@
             "title": "Actualizado Por",
             "type": "string"
           },
+          "creado_en": {
+            "format": "date-time",
+            "title": "Creado En",
+            "type": "string"
+          },
+          "creado_por": {
+            "title": "Creado Por",
+            "type": "string"
+          },
           "descripcion": {
             "title": "Descripcion",
             "type": "string"
@@ -313,6 +322,8 @@
           "nombre",
           "tipo",
           "estado",
+          "creado_en",
+          "creado_por",
           "actualizado_en",
           "actualizado_por",
           "descripcion",
@@ -892,6 +903,15 @@
             "title": "Actualizado Por",
             "type": "string"
           },
+          "creado_en": {
+            "format": "date-time",
+            "title": "Creado En",
+            "type": "string"
+          },
+          "creado_por": {
+            "title": "Creado Por",
+            "type": "string"
+          },
           "estado": {
             "$ref": "#/components/schemas/Estado"
           },
@@ -917,6 +937,8 @@
           "nombre",
           "tipo",
           "estado",
+          "creado_en",
+          "creado_por",
           "actualizado_en",
           "actualizado_por"
         ],

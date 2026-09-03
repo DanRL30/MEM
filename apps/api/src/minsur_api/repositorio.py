@@ -51,6 +51,12 @@ class CasoAlmacenado:
     estado: Estado
     actualizado_en: datetime
     actualizado_por: str
+    creado_en: datetime | None = None
+    """Cuando nacio el escenario. Sin el, la unica fecha es la de la ultima
+    corrida, y no se puede distinguir un caso de ayer recalculado hoy de uno
+    creado hoy: es justo lo que se mira al volver a una lista de escenarios."""
+
+    creado_por: str = ""
     insumos: CasoDelMotor | None = None
     """Datos del caso ya validados por la ingesta. Sin ellos no hay cálculo."""
 

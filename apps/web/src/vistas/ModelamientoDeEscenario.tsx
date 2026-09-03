@@ -33,6 +33,7 @@ import { CargaDePlantilla } from "../componentes/CargaDePlantilla";
 import { Encabezado } from "../componentes/Encabezado";
 import { ListaDeIncidencias } from "../componentes/ListaDeIncidencias";
 import { PanelVidrio } from "../componentes/PanelVidrio";
+import { TablaDeEscenarios } from "../componentes/TablaDeEscenarios";
 import { Pestanas, type Pestana } from "../componentes/Pestanas";
 import { TablaDelLibro } from "../componentes/TablaDelLibro";
 import { TarjetaIndicador } from "../componentes/TarjetaIndicador";
@@ -207,22 +208,7 @@ export function ModelamientoDeEscenario() {
             </PanelVidrio>
             {existentes.length > 0 ? (
               <PanelVidrio tenue titulo="Escenarios abiertos">
-                <ul style={{ margin: 0, paddingLeft: "var(--espacio-5)" }}>
-                  {existentes.map((existente) => (
-                    <li key={existente.id_caso}>
-                      <button
-                        className="enlace"
-                        onClick={() => {
-                          alAbrir(existente.id_caso);
-                        }}
-                        type="button"
-                      >
-                        {existente.abreviatura || existente.nombre}
-                      </button>{" "}
-                      · {existente.nombre} · {existente.id_caso} · {existente.estado}
-                    </li>
-                  ))}
-                </ul>
+                <TablaDeEscenarios alAbrir={alAbrir} casos={existentes} />
               </PanelVidrio>
             ) : null}
           </div>
