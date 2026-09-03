@@ -427,31 +427,39 @@ def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> l
         if _tiene_dato(finas):
             produccion.append(_serie(f"Producción {unidad.nombre}", finas, medida="tmf"))
 
-    unitarios: list[SeccionDelBloque] = []
-    for unidad in resultado.caso.unidades:
-        base = tratado.get(unidad.nombre)
-        if not _tiene_dato(base):
-            continue
-        filas = [
+    # El costo por tonelada tratada se calcula **una sola vez**, no por unidad:
+    # el modelo lo hace sobre la unidad cuyo cash cost se analiza por tonelada
+    # tratada. Se ancla a la primera del caso que trate mineral, que en las
+    # evaluaciones de MINSUR es San Rafael. No se escribe aqui que unidad es:
+    # un caso que declare otra en primer lugar la usaria a ella.
+    ancla = next(
+        (u for u in resultado.caso.unidades if _tiene_dato(tratado.get(u.nombre))),
+        None,
+    )
+    unitarios: list[SerieAnual] = []
+    if ancla is not None:
+        base = tratado[ancla.nombre]
+        unitarios = [
             _serie(
                 fila.etiqueta,
-                _serie_unitaria(_o_en_ceros(unidad.costos.get(fila.etiqueta), anos), base or ()),
+                _serie_unitaria(_o_en_ceros(ancla.costos.get(fila.etiqueta), anos), base),
                 medida="$/tt",
             )
             for fila in FILAS_DE_CASH_COST
-            if not fila.es_seccion and _se_muestra(fila.etiqueta, unidad.costos.get(fila.etiqueta))
+            if not fila.es_seccion and _se_muestra(fila.etiqueta, ancla.costos.get(fila.etiqueta))
         ]
-        total = resultado.cash_cost_por_unidad.get(unidad.nombre)
-        if total is not None:
-            filas.append(
+        total_del_ancla = resultado.cash_cost_por_unidad.get(ancla.nombre)
+        if total_del_ancla is not None:
+            unitarios.append(
                 _serie(
-                    f"Total {unidad.nombre} / tt",
-                    _serie_unitaria(total, base or ()),
+                    f"Total {ancla.nombre} / tt",
+                    _serie_unitaria(total_del_ancla, base),
                     medida="$/tt",
                 )
             )
-        unitarios.append(SeccionDelBloque(titulo=unidad.nombre, series=filas))
 
+    # El costo por tonelada fina, en cambio, si va unidad por unidad, y cierra
+    # con el total del caso sobre lo que refina la refineria.
     por_fina = []
     for unidad in resultado.caso.unidades:
         finas = unidad.produccion.toneladas_finas
@@ -465,9 +473,16 @@ def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> l
                 medida="$/tmf",
             )
         )
+    refineria = resultado.caso.refineria
+    if refineria is not None and _tiene_dato(resultado.refineria.refinado):
+        por_fina.append(
+            _serie(
+                f"Total Cash Cost {refineria.nombre} / tmf",
+                _serie_unitaria(resultado.cash_cost, resultado.refineria.refinado),
+                medida="$/tmf",
+            )
+        )
 
-    # `Total Cash Cost` cierra los bloques de cash cost y no entra en el de
-    # producción: en el libro es una fila suelta entre los dos.
     grupos = [
         GrupoDelBloque(
             titulo="",
@@ -478,7 +493,11 @@ def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> l
         GrupoDelBloque(titulo="Producción", secciones=_una_seccion(produccion)),
     ]
     if unitarios:
-        grupos.append(GrupoDelBloque(titulo="Cash cost por tonelada tratada", secciones=unitarios))
+        grupos.append(
+            GrupoDelBloque(
+                titulo="Cash cost por tonelada tratada", secciones=_una_seccion(unitarios)
+            )
+        )
     if por_fina:
         grupos.append(
             GrupoDelBloque(titulo="Cash cost por tonelada fina", secciones=_una_seccion(por_fina))

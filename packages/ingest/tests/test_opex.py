@@ -39,6 +39,7 @@ from minsur_engine.parametros import ParametrosCorporativos
 from minsur_ingest.opex import (
     CON_DATO_DE_CASH_COST,
     CON_DATO_DE_GASTOS,
+    CON_DATO_DE_SUPUESTOS_DE_LA_REFINERIA,
     CONCEPTOS_LIBRES,
     ErrorDeAsociacion,
     aplicar,
@@ -108,6 +109,7 @@ def libro_de_opex(tmp_path: Path) -> Path:
     _escribir(mina, "Estudios Pre Factibilidad (Gasto)", [30.0, 0.0, 0.0])
     _escribir(mina, "Estudios Factibilidad (Capitalizable)", [70.0, 0.0, 0.0])
     _escribir(libro["Refineria"], "Fundición", [0.0, 100.0, 100.0])
+    _escribir(libro["Refineria"], "Costo / tmf", [1.2, 1.3, 1.4])
     libro.save(ruta)
     return ruta
 
@@ -160,7 +162,12 @@ class TestIdaYVuelta:
         # Es lo que permite cargar un proyecto que hoy no existe en el libro: lo
         # que no aplica va en cero y la plataforma no lo muestra.
         libro = load_workbook(libro_de_opex)
-        esperadas = [f.etiqueta for f in CON_DATO_DE_CASH_COST + CON_DATO_DE_GASTOS]
+        esperadas = [
+            f.etiqueta
+            for f in CON_DATO_DE_CASH_COST
+            + CON_DATO_DE_GASTOS
+            + CON_DATO_DE_SUPUESTOS_DE_LA_REFINERIA
+        ]
         for nombre in ("Mina Alfa", "Refineria"):
             hoja = libro[nombre]
             leidas = [
@@ -169,6 +176,20 @@ class TestIdaYVuelta:
                 if fila[1].value and fila[0].value
             ]
             assert leidas == esperadas
+
+    def test_la_tarifa_de_la_refineria_no_es_un_costo_de_la_unidad(
+        self, libro_de_opex: Path
+    ) -> None:
+        # Regla `079`. `Costo / tmf` va en la plantilla de opex porque es un
+        # costo y lo llena quien llena el bloque, pero **no es un concepto del
+        # cash cost**: si cayera en `costos` se sumaria al total de la pestana.
+        caso = _con_opex(libro_de_opex)
+        refineria = caso.unidades[1]
+
+        assert "Costo / tmf" not in refineria.costos
+        # $/tmf son dolares por tonelada fina, no miles: su factor de escala
+        # es uno y la tarifa llega tal como se teclea.
+        assert caso.datos_comunes.costo_de_fundicion == (1.2, 1.3, 1.4)
 
     def test_los_costos_y_los_gastos_llegan_separados(self, libro_de_opex: Path) -> None:
         mina = _con_opex(libro_de_opex).unidades[0]

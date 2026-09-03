@@ -96,7 +96,6 @@ FILAS_DE_SUPUESTOS = (
     FilaDeSupuesto("Ajustes de Venta", "$", "ajustes_de_venta"),
     FilaDeSupuesto("Otros Supuestos", SECCION),
     FilaDeSupuesto("Costo de Transporte de Concentrado", "$/t conc", "transporte"),
-    FilaDeSupuesto("Costo de Fundicion", "$/tmf", "costo_de_fundicion"),
     FilaDeSupuesto("Gasto de Ventas Sn Refinado", "$/tmf", "gasto_de_ventas_sn_refinado"),
     FilaDeSupuesto("Gasto de Ventas Conc. Sn", "$/t conc", "gasto_de_ventas_conc_sn"),
     FilaDeSupuesto("Gasto de Ventas Conc. Cu", "$/t conc", "gasto_de_ventas_conc_cu"),
@@ -309,9 +308,6 @@ def aplicar(caso: Caso, supuestos: SupuestosDelCaso, comite: ComiteDePrecios | N
             fletes_por_tonelada=comunes.get("transporte", caso.datos_comunes.fletes_por_tonelada),
             gasto_de_ventas_por_tonelada=comunes.get(
                 "gasto_de_ventas_conc_sn", caso.datos_comunes.gasto_de_ventas_por_tonelada
-            ),
-            costo_de_fundicion=comunes.get(
-                "costo_de_fundicion", caso.datos_comunes.costo_de_fundicion
             ),
             exploraciones=comunes.get("exploraciones", caso.datos_comunes.exploraciones),
             planilla_sobre_cash_cost=comunes.get(

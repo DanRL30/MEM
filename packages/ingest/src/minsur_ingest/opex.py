@@ -135,10 +135,26 @@ FILAS_DE_GASTOS = (
     FilaDeOpex(DONACIONES, MEDIDA),
 )
 
-FILAS_DE_OPEX = FILAS_DE_CASH_COST + FILAS_DE_LA_COLA + FILAS_DE_GASTOS
+# La tarifa con la que la refineria cobra el concentrado que no lleva costo
+# directo en su bloque. Es la fila `Costo / tmf` del libro y va aqui, en la
+# plantilla de opex, y no en la de supuestos: es un costo, no un supuesto de
+# venta, y quien lo llena es quien llena el resto del bloque. Regla `079`.
+COSTO_POR_TONELADA_FINA = "Costo / tmf"
+
+FILAS_DE_SUPUESTOS_DE_LA_REFINERIA = (
+    FilaDeOpex("Supuestos de la refineria", SECCION),
+    FilaDeOpex(COSTO_POR_TONELADA_FINA, "$/tmf"),
+)
+
+FILAS_DE_OPEX = (
+    FILAS_DE_CASH_COST + FILAS_DE_LA_COLA + FILAS_DE_GASTOS + FILAS_DE_SUPUESTOS_DE_LA_REFINERIA
+)
 
 CON_DATO_DE_CASH_COST = tuple(f for f in FILAS_DE_CASH_COST if not f.es_seccion)
 CON_DATO_DE_GASTOS = tuple(f for f in FILAS_DE_GASTOS if not f.es_seccion)
+CON_DATO_DE_SUPUESTOS_DE_LA_REFINERIA = tuple(
+    f for f in FILAS_DE_SUPUESTOS_DE_LA_REFINERIA if not f.es_seccion
+)
 
 
 class ErrorDeAsociacion(ValueError):
@@ -147,10 +163,16 @@ class ErrorDeAsociacion(ValueError):
 
 @dataclass(frozen=True)
 class OpexDeUnidad:
-    """Lo que una pestaña aporta: sus costos y sus gastos."""
+    """Lo que una pestaña aporta: sus costos, sus gastos y sus supuestos."""
 
     costos: dict[str, Serie] = field(default_factory=dict)
     gastos: dict[str, Serie] = field(default_factory=dict)
+    supuestos: dict[str, Serie] = field(default_factory=dict)
+    """Lo que no es un costo de esta unidad sino una tarifa de la refinería.
+
+    Hoy solo `Costo / tmf`. Va aparte de `costos` porque no es un concepto del
+    cash cost: si cayera ahí se sumaría al total del bloque.
+    """
 
 
 def armar_opex(
@@ -194,13 +216,25 @@ def armar_opex(
     if leidas is None:
         return resultado
 
+    leidas = _tomar(
+        CON_DATO_DE_SUPUESTOS_DE_LA_REFINERIA,
+        filas,
+        leidas,
+        resultado.supuestos,
+        incidencias,
+        hoja=hoja,
+        bloque="supuestos de la refineria",
+    )
+    if leidas is None:
+        return resultado
+
     if leidas != len(filas):
         incidencias.append(
             Incidencia(
                 hoja,
                 filas[leidas][0],
-                f"sobran {len(filas) - leidas} fila(s) despues del bloque de gastos, que es el "
-                "ultimo de la estructura estandar.",
+                f"sobran {len(filas) - leidas} fila(s) despues del bloque de supuestos de la "
+                "refineria, que es el ultimo de la estructura estandar.",
             )
         )
     return resultado
@@ -292,10 +326,19 @@ def aplicar(caso: Caso, bloques: Sequence[OpexDeUnidad]) -> Caso:
             f"{len(caso.unidades)} unidad(es), incluida la refinería. Asociarlas por orden exige "
             "que sean tantas como unidades: sobra o falta un proyecto."
         )
+    # La tarifa es una sola y la declara la pestaña de la refinería. Si más de
+    # una la trae, manda la de la refinería: es su tarifa.
+    tarifa: Serie = caso.datos_comunes.costo_de_fundicion
+    for unidad, bloque in zip(caso.unidades, bloques, strict=True):
+        propia = bloque.supuestos.get(COSTO_POR_TONELADA_FINA, ())
+        if propia and (unidad.es_refineria or not tarifa):
+            tarifa = propia
+
     return replace(
         caso,
         unidades=tuple(
             replace(unidad, costos=bloque.costos, gastos=bloque.gastos)
             for unidad, bloque in zip(caso.unidades, bloques, strict=True)
         ),
+        datos_comunes=replace(caso.datos_comunes, costo_de_fundicion=tarifa),
     )

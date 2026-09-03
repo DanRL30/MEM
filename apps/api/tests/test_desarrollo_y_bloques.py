@@ -469,17 +469,23 @@ class TestBloquesIntermedios:
         )
         assert opex["grupos"].index(suelta) < opex["grupos"].index(produccion)
 
-    def test_el_costo_unitario_sale_de_dividir_lo_de_arriba(
+    def test_el_costo_por_tonelada_tratada_se_calcula_una_sola_vez(
         self, cliente: TestClient, plantilla: Path, plantilla_opex: Path
     ) -> None:
+        # El modelo no lo hace por unidad: lo calcula sobre la unidad cuyo cash
+        # cost se analiza por tonelada tratada, y la plataforma lo ancla a la
+        # primera del caso que trate mineral.
         cuerpo = self._bloques(cliente, plantilla, plantilla_opex)
         opex = next(b for b in cuerpo["bloques"] if b["clave"] == "opex")
         unitario = next(
             g for g in opex["grupos"] if g["titulo"] == "Cash cost por tonelada tratada"
         )
-        series = [s for seccion in unitario["secciones"] for s in seccion["series"]]
+
+        assert len(unitario["secciones"]) == 1
+        series = unitario["secciones"][0]["series"]
         assert all(s["medida"] == "$/tt" for s in series)
-        assert any(s["etiqueta"].startswith("Total ") for s in series)
+        totales = [s["etiqueta"] for s in series if s["etiqueta"].startswith("Total ")]
+        assert len(totales) == 1, "un solo total, no uno por unidad"
 
     def test_cada_serie_tiene_un_valor_por_ano(self, cliente: TestClient, plantilla: Path) -> None:
         cuerpo = self._bloques(cliente, plantilla)
