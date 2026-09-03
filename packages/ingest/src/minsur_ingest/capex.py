@@ -190,5 +190,6 @@ def _capital(
             horizonte,
             por_naturaleza,
             anos_activos=anos_con_dato(unidad.produccion.mineral_tratado),
+            umbral_inicial=unidad.umbral_de_capital_inicial,
         ),
     )

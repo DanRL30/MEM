@@ -107,39 +107,47 @@ def clasificar_por_etapa(
     por_naturaleza: Mapping[str, Serie],
     *,
     anos_activos: Sequence[int] = (),
+    umbral_inicial: int | None = None,
 ) -> dict[str, Serie]:
     """Deriva la etapa del capital a partir de su naturaleza contable.
 
-    El libro no carga la etapa: la calcula, con tres reglas que la disección dejó
-    a la vista.
+    El libro no carga la etapa: la calcula, y la lectura de `InputsCapex!74:78` y
+    `!81:85` del 02/09/2026 dejó su regla a la vista. Se reproduce entera, y
+    coincide al céntimo con las bandas de los casos 1 y 7.
 
     **El cierre de mina es exactamente lo no depreciable.** No son dos conceptos
     que coincidan: en el libro la fila de cierre se construye sumando el código
     `NOD` de todas las unidades, y ninguna otra naturaleza entra ahí.
 
-    **El capital inicial es el anterior al primer año con producción**, y el
-    resto es sostenimiento. El libro lleva la cuenta con un contador escondido en
-    una fila que parece una cabecera, y usa un umbral distinto para cada unidad
-    sin decir por qué; aquí el primer año con producción lo aporta quien llama,
-    con el criterio que Finanzas fijó el 01/09/2026.
+    **La etapa distingue unidades de proyecto de unidades base**, y no es una
+    puerta por producción aplicada a todas por igual. El capital depreciable de
+    una unidad base es sostenimiento siempre, produzca o no: así trata el libro a
+    San Rafael, B2, la refinería, el depósito de relaves y San Rafael Potencial,
+    que no tienen bloque de capital inicial. El de un proyecto es inicial
+    mientras su cuenta de ejercicios con producción no pase `umbral_inicial`, y
+    sostenimiento después.
+
+    `umbral_inicial` es justo eso: **vacío significa unidad base** y un entero,
+    hasta cuántos ejercicios con producción sigue siendo inicial su capital. El
+    libro usa uno para Nazareth y dos para Santo Domingo, y no dice por qué; el
+    valor lo declara el caso, que es donde puede vivir sin cablear un nombre.
 
     **La cuarta etapa no se emite.** El libro la deja sin rotular y sin fórmula:
     vale cero en todos los ejercicios y en todos los escenarios.
-
-    Una unidad que no produce —una refinería, un depósito de relaves— no tiene
-    primer año de producción, de modo que todo su capital depreciable es inicial.
     """
-    primero = min(anos_activos) if anos_activos else horizonte.anos
+    activos = set(anos_activos)
     inicial = [0.0] * horizonte.anos
     sostenimiento = [0.0] * horizonte.anos
-    for naturaleza, serie in por_naturaleza.items():
-        if naturaleza == "no_depreciable":
-            continue
-        for i, valor in enumerate(serie[: horizonte.anos]):
-            if i < primero:
-                inicial[i] += valor
-            else:
-                sostenimiento[i] += valor
+    cuenta = 0
+    for i in range(horizonte.anos):
+        if i in activos:
+            cuenta += 1
+        es_inicial = umbral_inicial is not None and cuenta <= umbral_inicial
+        destino = inicial if es_inicial else sostenimiento
+        for naturaleza, serie in por_naturaleza.items():
+            if naturaleza == "no_depreciable" or i >= len(serie):
+                continue
+            destino[i] += serie[i]
     return {
         "inicial": tuple(inicial),
         "sostenimiento": tuple(sostenimiento),

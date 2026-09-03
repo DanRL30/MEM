@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
+from minsur_engine.capex import CapitalDeUnidad, clasificar_por_etapa
 from minsur_engine.caso import (
     Caso,
     DatosComunes,
@@ -30,7 +31,7 @@ from minsur_engine.caso import (
 )
 from minsur_engine.corrida import calcular
 from minsur_engine.depreciacion import TasasDeDepreciacion
-from minsur_engine.horizonte import Horizonte
+from minsur_engine.horizonte import Horizonte, anos_con_dato
 from minsur_engine.impuestos import EscalaProgresiva, Tramo
 from minsur_engine.parametros import ParametrosCorporativos
 from minsur_ingest.capex import CON_DATO_DE_CAPEX, ErrorDeAsociacion, aplicar
@@ -191,27 +192,53 @@ class TestConversionDeEscalas:
         assert capital.por_naturaleza["edificaciones"] == (300_000.0, 0.0, 0.0)
 
 
+def _con_etapa(unidad: UnidadProductiva, horizonte: Horizonte) -> CapitalDeUnidad:
+    """Reclasifica el capital de una unidad con el umbral que ella declare."""
+    assert unidad.capital is not None
+    return CapitalDeUnidad(
+        unidad=unidad.nombre,
+        por_naturaleza=unidad.capital.por_naturaleza,
+        por_etapa=clasificar_por_etapa(
+            horizonte,
+            unidad.capital.por_naturaleza,
+            anos_activos=anos_con_dato(unidad.produccion.mineral_tratado),
+            umbral_inicial=unidad.umbral_de_capital_inicial,
+        ),
+    )
+
+
 class TestLaEtapaSeDeriva:
     def test_el_cierre_es_exactamente_lo_no_depreciable(self, libro_de_capex: Path) -> None:
         capital = _con_capex(libro_de_capex).unidades[0].capital
         assert capital is not None
         assert capital.por_etapa["cierre"] == (0.0, 0.0, 500_000.0)
 
-    def test_lo_anterior_al_primer_ano_con_produccion_es_inicial(
-        self, libro_de_capex: Path
-    ) -> None:
+    def test_una_unidad_base_lo_lleva_todo_a_sostenimiento(self, libro_de_capex: Path) -> None:
+        # Sin umbral declarado la unidad es base, y el libro no le abre bloque de
+        # capital inicial: su capital depreciable es sostenimiento aunque el
+        # gasto sea anterior a su primer ano con produccion.
         capital = _con_capex(libro_de_capex).unidades[0].capital
         assert capital is not None
-        assert capital.por_etapa["inicial"] == (1_000_000.0, 0.0, 0.0)
-        assert capital.por_etapa["sostenimiento"] == (0.0, 200_000.0, 400_000.0)
+        assert not any(capital.por_etapa["inicial"])
+        assert capital.por_etapa["sostenimiento"] == (1_000_000.0, 200_000.0, 400_000.0)
 
-    def test_una_unidad_que_no_produce_lo_lleva_todo_a_inicial(self, libro_de_capex: Path) -> None:
-        # Sin produccion no hay primer ano de produccion, de modo que no hay
-        # frontera entre inicial y sostenimiento.
+    def test_un_proyecto_es_inicial_hasta_su_umbral(self, libro_de_capex: Path) -> None:
+        # Con umbral 1, el capital es inicial hasta el primer ejercicio con
+        # produccion inclusive, y sostenimiento desde el segundo. Es la regla del
+        # libro, que cuenta ejercicios producidos y no anos de calendario.
+        caso = _con_capex(libro_de_capex)
+        mina = caso.unidades[0]
+        proyecto = _con_etapa(replace(mina, umbral_de_capital_inicial=1), caso.horizonte)
+        assert proyecto.por_etapa["inicial"] == (1_000_000.0, 200_000.0, 0.0)
+        assert proyecto.por_etapa["sostenimiento"] == (0.0, 0.0, 400_000.0)
+
+    def test_una_unidad_que_no_produce_sin_umbral_no_tiene_capital_inicial(
+        self, libro_de_capex: Path
+    ) -> None:
         capital = _con_capex(libro_de_capex).unidades[1].capital
         assert capital is not None
-        assert capital.por_etapa["inicial"] == (300_000.0, 0.0, 0.0)
-        assert not any(capital.por_etapa["sostenimiento"])
+        assert not any(capital.por_etapa["inicial"])
+        assert capital.por_etapa["sostenimiento"] == (300_000.0, 0.0, 0.0)
 
     def test_las_dos_clasificaciones_cuadran(self, libro_de_capex: Path) -> None:
         for unidad in _con_capex(libro_de_capex).unidades:

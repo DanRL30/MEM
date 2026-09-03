@@ -151,6 +151,15 @@ class UnidadProductiva:
 
     capital: CapitalDeUnidad | None = None
 
+    umbral_de_capital_inicial: int | None = None
+    """Hasta cuántos ejercicios con producción su capital es inicial.
+
+    **Vacío significa unidad base**, y entonces su capital depreciable es
+    sostenimiento siempre. Un proyecto declara aquí su umbral: el libro usa uno
+    para Nazareth y dos para Santo Domingo, sin decir por qué. Ver
+    `clasificar_por_etapa`.
+    """
+
     reservas: float | None = None
     """Reservas de apertura, en toneladas, tal como las declara quien configura.
 

@@ -351,6 +351,13 @@ se pide porque el libro no la carga: sale por formula, y
 importa al leer una prueba: el `Check` del libro se cumple por construccion y dejo de ser una
 verificacion. `Equipos de Computo` se pide aparte de la maquinaria y se consolida al leer.
 
+**La etapa distingue unidades de proyecto de unidades base**, y no es una puerta por produccion
+aplicada a todas por igual. El capital depreciable de una unidad base es sostenimiento siempre,
+produzca o no; el de un proyecto es inicial mientras su cuenta de ejercicios con produccion no pase
+el `umbral_de_capital_inicial` que declara el caso, y vacio significa unidad base. El libro usa uno
+para Nazareth y dos para Santo Domingo, sin decir por que. Contrastado contra las bandas de los
+casos 1 y 7, las tres etapas coinciden ejercicio a ejercicio.
+
 **Tres filas del bloque de gastos no se piden porque el libro las deriva**: `Ano con operacion`,
 `Planilla` y `Gestion Social Deducible`, que son las reglas `026` y `027`. Los gastos no son cash
 cost -viven en `UnidadProductiva.gastos`, aparte de `costos`- y cada fila va a un sitio distinto:

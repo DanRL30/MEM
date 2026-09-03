@@ -49,8 +49,14 @@ deliberado.
 
 1. **`Cierre Mina` es exactamente el codigo `NOD`.** La fila de cierre se construye sumando lo no
    depreciable de todas las unidades, y ninguna otra naturaleza entra ahi.
-2. **`Capex Inicial` es la unidad en sus primeros anos productivos**, decidido por un contador que
-   vive en dos filas rotuladas como si fueran cabeceras.
+2. **`Capex Inicial` es la unidad de proyecto en sus primeros anos productivos**, decidido por un
+   contador que vive en dos filas rotuladas como si fueran cabeceras. La regla distingue dos clases
+   de unidad y **no es una puerta por produccion aplicada a todas por igual**: una unidad base -San
+   Rafael, B2, la refineria, el deposito, San Rafael Potencial- no tiene bloque de capital inicial y
+   su capital depreciable es sostenimiento siempre, produzca o no. Un proyecto es inicial mientras
+   su cuenta de ejercicios con produccion no pase un umbral propio: uno en Nazareth, dos en Santo
+   Domingo, sin justificacion escrita. Contrastado contra las bandas de los casos 1 y 7 el
+   02/09/2026, **las tres etapas coinciden ejercicio a ejercicio**.
 3. **El resto es `Sostenimiento`.** La cuarta etapa, `xxx`, no tiene formula en ninguna columna de
    ano: vale cero siempre, y la hoja `Depreciacion` la arrastra rotulada `Otros`.
 
