@@ -10,16 +10,24 @@
 // el archivo tiene que servirse del propio origen. Vite lo empaqueta con su
 // huella desde `src/`, que es la razón de que viva ahí y no en `public/`.
 
-const LOGOTIPOS = import.meta.glob<string>("../activos/marca/*.svg", {
+const LOGOTIPOS = import.meta.glob<string>("../activos/marca/*.{svg,png,webp}", {
   eager: true,
   import: "default",
   query: "?url",
 });
 
+/**
+ * Elige la versión para superficie clara, que es la de esta cabecera.
+ *
+ * La preferencia por el nombre y no por el orden alfabético importa: el día que
+ * entre `minsur-horizontal-blanco`, pensado para fondo oscuro, se colaría antes
+ * que el de color y quedaría invisible sobre el vidrio.
+ */
 function logotipo(): string | undefined {
   const rutas = Object.keys(LOGOTIPOS).sort();
-  const color = rutas.find((r) => r.includes("color"));
-  return LOGOTIPOS[color ?? rutas[0] ?? ""];
+  const paraFondoClaro = rutas.filter((r) => !/blanco|white|negativo/i.test(r));
+  const color = paraFondoClaro.find((r) => /color/i.test(r));
+  return LOGOTIPOS[color ?? paraFondoClaro[0] ?? rutas[0] ?? ""];
 }
 
 interface Props {
@@ -43,7 +51,9 @@ export function Encabezado({ caso }: Props) {
       }}
     >
       {marca ? (
-        <img src={marca} alt="MINSUR" style={{ height: "1.75rem" }} />
+        // `height` sin `width` conserva la proporcion del archivo, sea cual
+        // sea. El alto es el que fija la cabecera, no el logotipo.
+        <img alt="MINSUR" src={marca} style={{ height: "1.75rem", width: "auto" }} />
       ) : (
         <span style={{ fontWeight: "var(--peso-titular)" }}>MINSUR</span>
       )}
