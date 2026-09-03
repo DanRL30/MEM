@@ -350,6 +350,16 @@ class DatosComunes:
     planilla_sobre_cash_cost: Serie = ()
     """Tasa con que el libro deriva la planilla del cash cost de cada unidad."""
 
+    parametros_declarados: Mapping[str, float] = field(default_factory=dict)
+    """Parametros corporativos que este caso declara, y solo esos.
+
+    Son dato maestro que mantiene MINSUR (`R-32`) y el mismo trato que las tasas
+    de depreciacion: lo que el caso declara sobrescribe **solo ese parametro** y
+    lo que calla se rige por la version de datos maestros de la corrida. Dos
+    casos que declaren parametros distintos dejan de ser comparables, y por eso
+    la corrida registra la version que uso.
+    """
+
     tasas_declaradas: Mapping[str, float] = field(default_factory=dict)
     """Tasas de depreciación que este caso declara, por componente contable.
 

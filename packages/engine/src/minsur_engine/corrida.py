@@ -271,7 +271,9 @@ class Corrida:
 def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     """Evalúa un caso de punta a punta."""
     horizonte = caso.horizonte
-    parametros = maestros.parametros
+    parametros = _con_parametros_declarados(
+        maestros.parametros, caso.datos_comunes.parametros_declarados
+    )
 
     bloque = _bloque_de_la_refineria(caso)
     resultado_de_ventas = _ventas(caso, bloque)
@@ -840,6 +842,38 @@ def _agotamiento(unidad: UnidadProductiva, horizonte: Horizonte) -> Agotamiento:
         reservas=declaradas if declaradas is not None else sum(extraido),
         conversion_de_recursos=_serie(
             unidad.conversion_de_recursos, horizonte, f"{unidad.nombre}/conversion"
+        ),
+    )
+
+
+def _con_parametros_declarados(
+    maestros: ParametrosCorporativos, declarados: Mapping[str, float]
+) -> ParametrosCorporativos:
+    """Parametros de la corrida: los del dato maestro, salvo los que el caso declare.
+
+    Mismo criterio que con las tasas de depreciacion: se sobrescribe uno a uno y
+    la version de datos maestros sigue viajando en la terna, de modo que la
+    corrida deja constancia de sobre que base se declaro lo que se declaro.
+    """
+    if not declarados:
+        return maestros
+
+    def de(campo: str, maestro: float) -> float:
+        return declarados.get(campo, maestro)
+
+    return ParametrosCorporativos(
+        version_datos_maestros=maestros.version_datos_maestros,
+        tasa_descuento=de("tasa_descuento", maestros.tasa_descuento),
+        participacion_trabajadores=de(
+            "participacion_trabajadores", maestros.participacion_trabajadores
+        ),
+        impuesto_renta=de("impuesto_renta", maestros.impuesto_renta),
+        regalia_minima=de("regalia_minima", maestros.regalia_minima),
+        osinergmin=maestros.osinergmin,
+        oefa=maestros.oefa,
+        fondo_jubilacion_minera=de("fondo_jubilacion_minera", maestros.fondo_jubilacion_minera),
+        limite_arrastre_de_perdidas=de(
+            "limite_arrastre_de_perdidas", maestros.limite_arrastre_de_perdidas
         ),
     )
 

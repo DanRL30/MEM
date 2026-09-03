@@ -427,6 +427,59 @@ class TestLasTasasDeDepreciacion:
         assert aplicar(_caso_minimo(), del_caso).datos_comunes.tasas_declaradas == {}
 
 
+class TestLosParametrosCorporativos:
+    """Son dato maestro de MINSUR, y un caso puede sobrescribir los que necesite.
+
+    Mismo trato que las tasas de depreciacion. Lo que el caso calla se rige por
+    la version de datos maestros que la corrida registra en su terna, que es lo
+    que permite comparar dos casos: si cada uno declarara su propia norma
+    tributaria, dejarian de serlo sin que nada lo advirtiera.
+    """
+
+    ETIQUETAS: ClassVar[dict[str, str]] = {
+        "Tasa de Descuento": "tasa_descuento",
+        "Participacion de Trabajadores": "participacion_trabajadores",
+        "Impuesto a la Renta": "impuesto_renta",
+        "Regalia Minima sobre Ventas": "regalia_minima",
+        "Fondo de Jubilacion Minera": "fondo_jubilacion_minera",
+        "Limite de Arrastre de Perdidas": "limite_arrastre_de_perdidas",
+    }
+
+    def _declarar(self, ruta: Path, **declarados: float) -> Path:
+        """Vacia las seis filas y escribe solo las que se indiquen."""
+        libro = load_workbook(ruta)
+        hoja = libro["Comunes"]
+        for fila in hoja.iter_rows(min_row=5, max_col=2):
+            campo = self.ETIQUETAS.get(str(fila[0].value or "").strip())
+            if campo is None:
+                continue
+            numero = int(fila[0].row or 0)
+            for columna in range(3, 6):
+                hoja.cell(row=numero, column=columna).value = None
+            if campo in declarados:
+                hoja.cell(row=numero, column=3).value = declarados[campo]
+        libro.save(ruta)
+        return ruta
+
+    def test_la_plantilla_los_pide_y_llegan_al_caso(self, supuestos: Path) -> None:
+        del_caso = leer_supuestos(self._declarar(supuestos, impuesto_renta=32.0)).supuestos
+        assert del_caso is not None
+        comunes = aplicar(_caso_minimo(), del_caso).datos_comunes
+        assert comunes.parametros_declarados["impuesto_renta"] == pytest.approx(0.32)
+
+    def test_lo_declarado_sobrescribe_solo_lo_declarado(self, supuestos: Path) -> None:
+        del_caso = leer_supuestos(self._declarar(supuestos, impuesto_renta=32.0)).supuestos
+        assert del_caso is not None
+        assert set(aplicar(_caso_minimo(), del_caso).datos_comunes.parametros_declarados) == {
+            "impuesto_renta"
+        }
+
+    def test_sin_declarar_ninguno_manda_el_dato_maestro(self, supuestos: Path) -> None:
+        del_caso = leer_supuestos(self._declarar(supuestos)).supuestos
+        assert del_caso is not None
+        assert aplicar(_caso_minimo(), del_caso).datos_comunes.parametros_declarados == {}
+
+
 def _caso_minimo() -> Caso:
     horizonte = Horizonte(primer_ano=2027, anos=3)
     ceros = horizonte.ceros()

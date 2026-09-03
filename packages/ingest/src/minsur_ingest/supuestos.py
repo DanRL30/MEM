@@ -115,6 +115,21 @@ FILAS_DE_SUPUESTOS = (
     FilaDeSupuesto("Edificaciones y Construcciones", "%", "tasa_edificaciones", constante=True),
     FilaDeSupuesto("Estudios", "%", "tasa_estudios", constante=True),
     FilaDeSupuesto("No Depreciable", "%", "tasa_no_depreciable", constante=True),
+    FilaDeSupuesto("Parametros Corporativos", SECCION),
+    # Mismo trato que las tasas de depreciacion: son dato maestro de MINSUR
+    # (`R-32`) y declararlos aqui los sobrescribe **solo para este caso**.
+    # Vacios, rige la version de datos maestros que la corrida registra en su
+    # terna, que es lo que permite comparar dos casos.
+    FilaDeSupuesto("Tasa de Descuento", "%", "tasa_descuento", constante=True),
+    FilaDeSupuesto(
+        "Participacion de Trabajadores", "%", "participacion_trabajadores", constante=True
+    ),
+    FilaDeSupuesto("Impuesto a la Renta", "%", "impuesto_renta", constante=True),
+    FilaDeSupuesto("Regalia Minima sobre Ventas", "%", "regalia_minima", constante=True),
+    FilaDeSupuesto("Fondo de Jubilacion Minera", "%", "fondo_jubilacion_minera", constante=True),
+    FilaDeSupuesto(
+        "Limite de Arrastre de Perdidas", "%", "limite_arrastre_de_perdidas", constante=True
+    ),
     FilaDeSupuesto("Reguladores", SECCION),
     # El libro los lleva ano a ano y decrecientes, no como una tasa fija.
     FilaDeSupuesto("Contribucion a OEFA", "%", "oefa"),
@@ -322,6 +337,7 @@ def aplicar(caso: Caso, supuestos: SupuestosDelCaso, comite: ComiteDePrecios | N
                 comunes.get("dias_del_ano_comercial", ()),
                 caso.datos_comunes.dias_del_ano_comercial,
             ),
+            parametros_declarados=_parametros_declarados(comunes),
             porcentaje_de_ventas_de_exportacion=_escalar(
                 comunes.get("porcentaje_de_ventas_de_exportacion", ()),
                 caso.datos_comunes.porcentaje_de_ventas_de_exportacion,
@@ -439,6 +455,27 @@ def _por_metal(propios: dict[str, Serie], campos: Mapping[str, str]) -> dict[str
         if serie:
             declaradas[metal] = serie
     return declaradas
+
+
+PARAMETROS_CORPORATIVOS = (
+    "tasa_descuento",
+    "participacion_trabajadores",
+    "impuesto_renta",
+    "regalia_minima",
+    "fondo_jubilacion_minera",
+    "limite_arrastre_de_perdidas",
+)
+"""Los que un caso puede sobrescribir. Llevan el nombre del campo del motor."""
+
+
+def _parametros_declarados(comunes: dict[str, Serie]) -> dict[str, float]:
+    """Parametros corporativos que el caso declara, y solo esos."""
+    declarados: dict[str, float] = {}
+    for campo in PARAMETROS_CORPORATIVOS:
+        valor = _constante(comunes.get(campo, ()))
+        if valor is not None:
+            declarados[campo] = valor
+    return declarados
 
 
 TASAS_DE_DEPRECIACION = {
