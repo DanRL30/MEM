@@ -138,6 +138,10 @@ body {
   --ancho-concepto: 22rem;
   --ancho-medida: 3.5rem;
   --ancho-ano: 6.5rem;
+  /* Cero salvo en las hojas que llevan codigo contable a la izquierda, de modo
+   * que las tres columnas fijas se colocan con la misma aritmetica lleve la
+   * hoja codigo o no. Es lo unico que `.con-codigo` cambia. */
+  --ancho-codigo: 0rem;
 }
 
 /* Sin alto maximo: la hoja crece hasta donde llegue y es la pagina la que se
@@ -196,9 +200,35 @@ body {
   text-align: center;
 }
 
+/* La columna A del libro: el codigo contable de tres letras con el que sus
+ * `SUMIF` agrupan. Solo la lleva la hoja de capital, y por eso su ancho es cero
+ * mientras nadie la pida: una columna vacia a la izquierda de todas las demas
+ * hojas seria un margen sin explicacion.
+ */
+.hoja-del-libro.con-codigo {
+  --ancho-codigo: 3.5rem;
+}
+
+.columna-codigo {
+  background-color: var(--fondo-lienzo);
+  color: var(--texto-principal);
+  font-size: var(--texto-etiqueta);
+  font-weight: var(--peso-encabezado);
+  left: 0;
+  position: sticky;
+  text-align: center;
+  z-index: 1;
+}
+
+.hoja-del-libro td.columna-codigo,
+.hoja-del-libro th.columna-codigo {
+  min-width: var(--ancho-codigo);
+  width: var(--ancho-codigo);
+}
+
 .columna-concepto {
   background-color: var(--fondo-lienzo);
-  left: 0;
+  left: var(--ancho-codigo);
   min-width: var(--ancho-concepto);
   position: sticky;
   text-align: left;
@@ -210,7 +240,7 @@ body {
   background-color: var(--fondo-lienzo);
   color: var(--texto-principal);
   font-size: var(--texto-etiqueta);
-  left: var(--ancho-concepto);
+  left: calc(var(--ancho-codigo) + var(--ancho-concepto));
   min-width: var(--ancho-medida);
   position: sticky;
   text-align: left;
@@ -218,6 +248,7 @@ body {
   z-index: 1;
 }
 
+.hoja-del-libro thead .columna-codigo,
 .hoja-del-libro thead .columna-concepto,
 .hoja-del-libro thead .columna-medida {
   background-color: var(--libro-cabecera);

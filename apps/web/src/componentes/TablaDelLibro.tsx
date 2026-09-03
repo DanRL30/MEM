@@ -7,9 +7,15 @@
 // aire: en sesenta filas es lo que separa una mina de la siguiente sin obligar
 // a leer el rótulo.
 //
-// **Las dos primeras columnas quedan fijas.** Es el `freeze_panes` de la propia
-// plantilla: con treinta y seis ejercicios, una cifra del extremo derecho no
-// diría de qué concepto es.
+// **Las columnas de la izquierda quedan fijas.** Es el `freeze_panes` de la
+// propia plantilla: con treinta y seis ejercicios, una cifra del extremo derecho
+// no diría de qué concepto es.
+//
+// **La primera de ellas es el código contable, y solo aparece si la hoja lo
+// lleva.** Hoy es el capital: sus tres letras son la clave con la que el libro
+// agrupa, y verlas explica por qué dos filas distintas acaban en la misma suma.
+// En las demás hojas la columna no se emite, porque una columna vacía a la
+// izquierda de todo sería un margen sin explicación.
 //
 // **La última columna no lleva datos.** Absorbe el ancho que sobra cuando el
 // horizonte es corto, para que ninguna columna real se estire: sin ella, la de
@@ -133,14 +139,20 @@ export function TablaDelLibro({ anios, grupos, mostrarRecalculo = false }: Props
     return <p>Este bloque no tiene ninguna línea con dato en el caso cargado.</p>;
   }
 
-  // Las dos columnas fijas, los ejercicios, la del total y la sobrante.
-  const columnas = anios.length + 4;
+  // La columna del código solo se emite si alguna fila la usa.
+  const hayCodigo = conFilas.some((grupo) =>
+    grupo.secciones.some((seccion) => seccion.series.some((serie) => serie.codigo)),
+  );
+  // Las columnas fijas, los ejercicios, la del total y la sobrante.
+  const columnas = anios.length + (hayCodigo ? 5 : 4);
+  const fijas = hayCodigo ? 3 : 2;
 
   return (
-    <div className="hoja-del-libro">
+    <div className={hayCodigo ? "hoja-del-libro con-codigo" : "hoja-del-libro"}>
       <table>
         <thead>
           <tr>
+            {hayCodigo ? <th className="columna-codigo" scope="col" /> : null}
             <th className="columna-concepto" scope="col">
               Concepto
             </th>
@@ -169,10 +181,10 @@ export function TablaDelLibro({ anios, grupos, mostrarRecalculo = false }: Props
 
               {grupo.titulo ? (
                 <tr className="banda-unidad">
-                  <th className="banda-rotulo" colSpan={2} scope="colgroup">
+                  <th className="banda-rotulo" colSpan={fijas} scope="colgroup">
                     {grupo.titulo}
                   </th>
-                  <td colSpan={columnas - 2} />
+                  <td colSpan={columnas - fijas} />
                 </tr>
               ) : null}
 
@@ -182,16 +194,19 @@ export function TablaDelLibro({ anios, grupos, mostrarRecalculo = false }: Props
                   <Fragment key={`${grupo.titulo}-${seccion.titulo ?? ""}`}>
                     {seccion.titulo ? (
                       <tr className="banda-seccion">
-                        <th className="banda-rotulo" colSpan={2} scope="colgroup">
+                        <th className="banda-rotulo" colSpan={fijas} scope="colgroup">
                           {seccion.titulo}
                         </th>
-                        <td colSpan={columnas - 2} />
+                        <td colSpan={columnas - fijas} />
                       </tr>
                     ) : null}
 
                     {seccion.series.map((serie, indice) => (
                       <Fragment key={`${serie.etiqueta}-${String(indice)}`}>
                         <tr className={serie.total ? "fila-total" : undefined}>
+                          {hayCodigo ? (
+                            <td className="columna-codigo">{serie.codigo}</td>
+                          ) : null}
                           <th className="columna-concepto" scope="row" title={serie.nota ?? ""}>
                             {serie.etiqueta}
                           </th>
@@ -205,6 +220,7 @@ export function TablaDelLibro({ anios, grupos, mostrarRecalculo = false }: Props
 
                         {mostrarRecalculo && serie.recalculada ? (
                           <tr className="fila-recalculo">
+                            {hayCodigo ? <td className="columna-codigo" /> : null}
                             <th className="columna-concepto" scope="row">
                               Esperado por el sistema
                             </th>

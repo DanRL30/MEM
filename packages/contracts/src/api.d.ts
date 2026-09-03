@@ -974,6 +974,12 @@ export interface components {
              */
             acumulado?: number | null;
             /**
+             * Codigo
+             * @description Código contable de la fila, en la columna de la izquierda. Hoy solo lo lleva el capital: son las tres letras con las que el libro agrupa
+             * @default
+             */
+            codigo: string;
+            /**
              * Concepto
              * @description Campo del motor que alimenta la línea
              * @default

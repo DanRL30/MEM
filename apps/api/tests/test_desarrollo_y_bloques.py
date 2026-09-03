@@ -607,12 +607,16 @@ class TestBloquesIntermedios:
         )
         assert computo["nota"], "la fila dice que el libro la lleva sumada"
 
-    def test_los_dos_cuadres_de_la_hoja_cierran_en_cero(
+    def test_la_hoja_cierra_con_su_cuadre_en_cero(
         self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
     ) -> None:
-        # Con una sola clasificacion cargada se cumplen por construccion. Se
-        # muestran igual, como indicador, y si alguno dejara de cerrar seria
-        # senal de que el capital que se pinta no es el que entro al calculo.
+        # Con una sola clasificacion cargada se cumple por construccion. Se
+        # muestra igual, como indicador, y si dejara de cerrar seria senal de
+        # que el capital que se pinta no es el que entro al calculo.
+        #
+        # El libro trae ademas `Tipo vs Detalle`, que aqui no se emite: restaba
+        # el total de la suma de los totales por unidad, y las dos cifras salen
+        # de las mismas celdas.
         bloque = self._capex(cliente, plantilla, plantilla_capex)
         series = [
             serie
@@ -620,12 +624,39 @@ class TestBloquesIntermedios:
             for seccion in grupo["secciones"]
             for serie in seccion["series"]
         ]
-        cuadres = [s for s in series if s["etiqueta"] in ("Tipo vs Detalle", "check")]
+        assert [s["etiqueta"] for s in series].count("Tipo vs Detalle") == 0
 
-        assert len(cuadres) == 2
-        for cuadre in cuadres:
-            assert cuadre["valores"] == pytest.approx([0.0] * len(cuadre["valores"]))
-            assert cuadre["nota"], "la fila declara que se cumple por construccion"
+        cuadre = next(s for s in series if s["etiqueta"] == "check")
+        assert cuadre["valores"] == pytest.approx([0.0] * len(cuadre["valores"]))
+        assert cuadre["nota"], "la fila declara que se cumple por construccion"
+
+    def test_las_naturalezas_llevan_el_codigo_contable_del_libro(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # La columna A del libro. No es decorativa: es la clave de union de los
+        # `SUMIF` que construyen todo lo derivado, y que dos filas compartan
+        # `MAQ` es lo que explica que el libro fusione el computo con la
+        # maquinaria justo donde la plataforma los separa.
+        bloque = self._capex(cliente, plantilla, plantilla_capex)
+        clasificacion = next(
+            g for g in bloque["grupos"] if g["titulo"].startswith("Clasificación ")
+        )
+        series = clasificacion["secciones"][0]["series"]
+
+        assert [s["codigo"] for s in series] == ["NOD", "MAQ", "MAQ", "INS", "EDI", ""]
+
+        cruce = next(g for g in bloque["grupos"] if g["titulo"] == "Capex por Naturaleza")
+        assert [s["codigo"] for s in cruce["secciones"][0]["series"][:5]] == [
+            "NOD",
+            "MAQ",
+            "MAQ",
+            "INS",
+            "EDI",
+        ]
+        # El consolidado final no lo lleva, y el libro tampoco: ahi no se agrupa
+        # nada, se suman las tres etapas que los `SUMIF` ya construyeron.
+        total = next(g for g in bloque["grupos"] if g["titulo"] == "Capex por Naturaleza TOTAL")
+        assert all(not s["codigo"] for s in total["secciones"][0]["series"])
 
     def test_el_capital_se_muestra_en_miles(
         self, cliente: TestClient, plantilla: Path, plantilla_capex: Path

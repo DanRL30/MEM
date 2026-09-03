@@ -88,8 +88,8 @@ NOTA_DEL_CHECK = (
 )
 
 # El libro carga una sola clasificación del capital, la contable, y deriva la
-# etapa de ella. Sus dos filas de cuadre comparaban dos sumas que salían de
-# celdas distintas; aquí salen de las mismas, de modo que cuadran siempre.
+# etapa de ella. Su fila de cuadre comparaba dos sumas que salían de celdas
+# distintas; aquí salen de la misma, de modo que cuadra siempre.
 NOTA_DEL_CUADRE_DEL_CAPITAL = (
     "Fila de cuadre del libro. Con una sola clasificación cargada se cumple por "
     "construcción: vale cero salvo que el capital se arme a mano."
@@ -195,6 +195,7 @@ def _serie(
     *,
     medida: str = "",
     concepto: str = "",
+    codigo: str = "",
     origen: str = "calculada",
     recalculada: list[float] | None = None,
     total: bool = False,
@@ -206,6 +207,7 @@ def _serie(
         etiqueta=etiqueta,
         medida=medida,
         concepto=concepto,
+        codigo=codigo,
         valores=[float(v) for v in valores],
         origen="dato" if origen == "dato" else "calculada",
         recalculada=recalculada,
@@ -712,7 +714,9 @@ def _bloque_de_opex(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorrida:
 # Las cinco naturalezas contables, con la etiqueta del libro y el campo del
 # motor que las alimenta. Se toman del catalogo de la plantilla y no se escriben
 # aqui, de modo que la fila que se ve sea la que el usuario lleno.
-NATURALEZAS_DEL_CAPITAL = tuple((fila.etiqueta, fila.naturaleza) for fila in CON_DATO_DE_CAPEX)
+NATURALEZAS_DEL_CAPITAL = tuple(
+    (fila.etiqueta, fila.naturaleza, fila.codigo) for fila in CON_DATO_DE_CAPEX
+)
 
 # Las tres etapas, con el rotulo con que el libro encabeza cada seccion de su
 # cruce. La cuarta, que el libro deja rotulada `xxx`, no se emite: no tiene
@@ -731,13 +735,23 @@ def _naturaleza_de_la_unidad(unidad: UnidadProductiva, campo: str, anos: int) ->
     return _o_en_ceros(unidad.capital.por_naturaleza.get(campo), anos)
 
 
-def _serie_de_naturaleza(etiqueta: str, campo: str, valores: Sequence[float]) -> SerieAnual:
-    """Una fila del cruce, con su aviso si el libro la lleva sumada con otra."""
+def _serie_de_naturaleza(
+    etiqueta: str, campo: str, codigo: str, valores: Sequence[float]
+) -> SerieAnual:
+    """Una fila del cruce, con su código y su aviso si el libro la lleva sumada.
+
+    El código de tres letras es la columna A del libro y no es decorativo: es la
+    clave con la que sus `SUMIF` construyen todo lo derivado de esta hoja. Que
+    dos filas compartan `MAQ` es lo que explica que el libro fusione los equipos
+    de cómputo con la maquinaria justo donde la plataforma los separa, de modo
+    que verlo en pantalla ahorra la pregunta.
+    """
     return _serie(
         etiqueta,
         valores,
         medida=MEDIDA_CAPEX,
         concepto=campo,
+        codigo=codigo,
         nota=NOTA_DEL_COMPUTO if campo == "equipos_de_computo" else None,
     )
 
@@ -762,10 +776,13 @@ def _grupo_del_detalle_del_capital(
     Abre la hoja aunque sea cálculo, porque así abre el libro: quien evalúa un
     proyecto mira primero cuánto es inicial y cuánto sostenimiento, y el detalle
     por unidad está debajo para explicarlo.
+
+    **Sin la fila `Tipo vs Detalle` del libro**, que restaba este total de la
+    suma de los totales por unidad. Allí compara dos sumas que vienen de celdas
+    distintas y puede descuadrar; aquí las dos salen de la misma clasificación
+    cargada, de modo que la fila era un cero constante ocupando una línea.
     """
     horizonte = corrida.resultado.caso.horizonte
-    total = capex_total(horizonte, capital)
-    por_unidad = [_suma(list(u.por_naturaleza.values()), anos) for u in capital]
     series = [
         _serie("Capex Inicial", capex_de_etapa(horizonte, capital, "inicial"), medida=MEDIDA_CAPEX),
         _serie(
@@ -774,16 +791,7 @@ def _grupo_del_detalle_del_capital(
             medida=MEDIDA_CAPEX,
         ),
         _serie("Cierre Mina", capex_de_etapa(horizonte, capital, "cierre"), medida=MEDIDA_CAPEX),
-        _serie("Total", total, medida=MEDIDA_CAPEX, total=True),
-        _serie(
-            "Tipo vs Detalle",
-            [
-                (total[i] if i < len(total) else 0.0) - v
-                for i, v in enumerate(_suma(por_unidad, anos))
-            ],
-            medida=MEDIDA_CAPEX,
-            nota=NOTA_DEL_CUADRE_DEL_CAPITAL,
-        ),
+        _serie("Total", capex_total(horizonte, capital), medida=MEDIDA_CAPEX, total=True),
     ]
     return GrupoDelBloque(titulo="Detalle Capex", secciones=_una_seccion(series))
 
@@ -804,10 +812,11 @@ def _grupos_de_la_clasificacion(corrida: CorridaAlmacenada, anos: int) -> list[G
                 _naturaleza_de_la_unidad(unidad, campo, anos),
                 medida=MEDIDA_CAPEX,
                 concepto=campo,
+                codigo=codigo,
                 origen="dato",
                 nota=NOTA_DEL_COMPUTO if campo == "equipos_de_computo" else None,
             )
-            for etiqueta, campo in NATURALEZAS_DEL_CAPITAL
+            for etiqueta, campo, codigo in NATURALEZAS_DEL_CAPITAL
         ]
         grupos.append(
             GrupoDelBloque(
@@ -866,8 +875,8 @@ def _secciones_del_cruce(
     for etapa, titulo in ETAPAS_DEL_CAPITAL:
         filas = desglose.get(etapa, {})
         series = [
-            _serie_de_naturaleza(etiqueta, campo, _o_en_ceros(filas.get(campo), anos))
-            for etiqueta, campo in NATURALEZAS_DEL_CAPITAL
+            _serie_de_naturaleza(etiqueta, campo, codigo, _o_en_ceros(filas.get(campo), anos))
+            for etiqueta, campo, codigo in NATURALEZAS_DEL_CAPITAL
         ]
         secciones.append(SeccionDelBloque(titulo=titulo, series=_con_su_total(series, anos)))
     return secciones
@@ -907,13 +916,21 @@ def _grupos_del_cruce(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDelBlo
 def _grupo_del_total_por_naturaleza(
     corrida: CorridaAlmacenada, capital: Sequence[CapitalDeUnidad], anos: int
 ) -> GrupoDelBloque:
-    """`Por Naturaleza - Total`, con el segundo cuadre de la hoja."""
+    """`Por Naturaleza - Total`, con el `check` que cierra la hoja.
+
+    Es el único bloque de naturalezas sin código a la izquierda, y así lo lleva
+    el libro: aquí no se agrupa nada, se suman las tres etapas que los `SUMIF`
+    ya construyeron.
+    """
     consolidado = _cruce_consolidado(corrida, anos)
     series = [
         _serie_de_naturaleza(
-            etiqueta, campo, _suma([filas.get(campo, ()) for filas in consolidado.values()], anos)
+            etiqueta,
+            campo,
+            "",
+            _suma([filas.get(campo, ()) for filas in consolidado.values()], anos),
         )
-        for etiqueta, campo in NATURALEZAS_DEL_CAPITAL
+        for etiqueta, campo, _codigo in NATURALEZAS_DEL_CAPITAL
     ]
     con_total = _con_su_total(series, anos)
     total = con_total[-1].valores

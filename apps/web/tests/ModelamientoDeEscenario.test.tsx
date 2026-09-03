@@ -127,6 +127,7 @@ describe("La hoja del libro", () => {
             etiqueta: "Toneladas finas",
             medida: "t",
             concepto: "toneladas_finas",
+            codigo: "",
             origen: "dato",
             total: false,
             recalculada: [0, 13, 13],
@@ -148,6 +149,7 @@ describe("La hoja del libro", () => {
             etiqueta: "Toneladas finas",
             medida: "t",
             concepto: "toneladas_finas",
+            codigo: "",
             origen: "dato",
             total: false,
             recalculada: [0, 13, 13],
@@ -176,6 +178,7 @@ describe("La hoja del libro", () => {
             etiqueta: "Mineral extraído",
             medida: "t",
             concepto: "mineral_extraido",
+            codigo: "",
             origen: "dato",
             total: false,
             valores: [1404922, 0, 0],
@@ -184,6 +187,7 @@ describe("La hoja del libro", () => {
             etiqueta: "Ley Sn",
             medida: "%",
             concepto: "ley_de_cabeza",
+            codigo: "",
             origen: "dato",
             total: false,
             valores: [0.02, 0, 0],
@@ -214,6 +218,7 @@ describe("La hoja del libro", () => {
             etiqueta: "Mina",
             medida: "$k",
             concepto: "",
+            codigo: "",
             origen: "dato",
             total: false,
             valores: [90_000_000, 0, 0],
@@ -235,6 +240,7 @@ describe("La hoja del libro", () => {
             etiqueta: "Ley Ag",
             medida: "oz/t",
             concepto: "ley_ag",
+            codigo: "",
             origen: "dato",
             total: false,
             valores: [1.5, 1.5, 1.5],
@@ -244,6 +250,44 @@ describe("La hoja del libro", () => {
     );
     expect(screen.getByRole("columnheader", { name: "Unidad" })).toBeDefined();
     expect(screen.getByText("oz/t")).toBeDefined();
+  });
+
+  it("solo abre la columna del codigo contable si la hoja lo trae", () => {
+    // Es la columna A del libro y solo la lleva el capital. En las demas hojas
+    // una columna vacia a la izquierda de todo seria un margen sin explicacion,
+    // asi que no se emite.
+    const sinCodigo = grupo([
+      {
+        etiqueta: "Ley Ag",
+        medida: "oz/t",
+        concepto: "ley_ag",
+        codigo: "",
+        origen: "dato",
+        total: false,
+        valores: [1.5, 1.5, 1.5],
+      },
+    ]);
+    const { container, rerender } = render(<TablaDelLibro anios={anios} grupos={sinCodigo} />);
+    expect(container.querySelectorAll(".columna-codigo")).toHaveLength(0);
+
+    rerender(
+      <TablaDelLibro
+        anios={anios}
+        grupos={grupo([
+          {
+            etiqueta: "Equipos de computo",
+            medida: "$k",
+            concepto: "equipos_de_computo",
+            codigo: "MAQ",
+            origen: "dato",
+            total: false,
+            valores: [900, 0, 0],
+          },
+        ])}
+      />,
+    );
+    expect(screen.getByText("MAQ")).toBeDefined();
+    expect(container.querySelector(".hoja-del-libro")?.className).toContain("con-codigo");
   });
 
   it("sombrea la fila que cierra un bloque", () => {
@@ -257,6 +301,7 @@ describe("La hoja del libro", () => {
             etiqueta: "Mina",
             medida: "$k",
             concepto: "",
+            codigo: "",
             origen: "dato",
             total: false,
             valores: [1, 1, 1],
@@ -265,6 +310,7 @@ describe("La hoja del libro", () => {
             etiqueta: "Total San Rafael",
             medida: "$k",
             concepto: "",
+            codigo: "",
             origen: "calculada",
             total: true,
             valores: [1, 1, 1],

@@ -1004,6 +1004,12 @@
             "description": "El total del horizonte, en la columna de la derecha. Lo resuelve la API porque no siempre es una suma: una ley es el promedio ponderado por el tonelaje de su fila, y un ratio no tiene total",
             "title": "Acumulado"
           },
+          "codigo": {
+            "default": "",
+            "description": "Código contable de la fila, en la columna de la izquierda. Hoy solo lo lleva el capital: son las tres letras con las que el libro agrupa",
+            "title": "Codigo",
+            "type": "string"
+          },
           "concepto": {
             "default": "",
             "description": "Campo del motor que alimenta la línea",

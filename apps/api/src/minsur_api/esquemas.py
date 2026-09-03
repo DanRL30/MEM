@@ -280,6 +280,13 @@ class SerieAnual(Base):
         description="Unidad de medida tal como la declara el libro: t, %, oz/t, $k",
     )
     concepto: str = Field(default="", description="Campo del motor que alimenta la línea")
+    codigo: str = Field(
+        default="",
+        description=(
+            "Código contable de la fila, en la columna de la izquierda. Hoy solo lo "
+            "lleva el capital: son las tres letras con las que el libro agrupa"
+        ),
+    )
     valores: list[float]
     origen: Literal["dato", "calculada"] = Field(
         default="calculada",

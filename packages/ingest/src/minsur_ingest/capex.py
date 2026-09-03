@@ -44,7 +44,16 @@ class FilaDeCapex:
     """`None` marca una fila de sección, que no lleva datos."""
 
     naturaleza: str = ""
-    """Naturaleza contable del motor que alimenta. Dos filas alimentan la misma."""
+    """Naturaleza contable del motor que alimenta."""
+
+    codigo: str = ""
+    """Codigo contable de tres letras, el de la columna A del libro.
+
+    **No es decorativo: es la clave con la que el libro suma.** Todo lo derivado
+    de esta hoja —la etapa, el cruce, los totales— sale de un `SUMIF` sobre el,
+    y que los equipos de computo compartan `MAQ` con la maquinaria es lo que
+    hace que el libro los muestre fusionados donde la plataforma los separa.
+    """
 
     calculada: bool = False
     """Ninguna lo es: en esta plantilla no hay nada que corroborar."""
@@ -56,11 +65,16 @@ class FilaDeCapex:
 
 FILAS_DE_CAPEX = (
     FilaDeCapex("Clasificación contable", SECCION),
-    FilaDeCapex("No depreciable", MEDIDA, "no_depreciable"),
-    FilaDeCapex("Equipos de cómputo", MEDIDA, "equipos_de_computo"),
-    FilaDeCapex("Maquinaria, equipos y vehículos", MEDIDA, "maquinaria"),
-    FilaDeCapex("Instalaciones y equipos diversos y de comunicaciones", MEDIDA, "instalaciones"),
-    FilaDeCapex("Edificaciones y construcciones", MEDIDA, "edificaciones"),
+    FilaDeCapex("No depreciable", MEDIDA, "no_depreciable", codigo="NOD"),
+    FilaDeCapex("Equipos de cómputo", MEDIDA, "equipos_de_computo", codigo="MAQ"),
+    FilaDeCapex("Maquinaria, equipos y vehículos", MEDIDA, "maquinaria", codigo="MAQ"),
+    FilaDeCapex(
+        "Instalaciones y equipos diversos y de comunicaciones",
+        MEDIDA,
+        "instalaciones",
+        codigo="INS",
+    ),
+    FilaDeCapex("Edificaciones y construcciones", MEDIDA, "edificaciones", codigo="EDI"),
 )
 
 CON_DATO_DE_CAPEX = tuple(f for f in FILAS_DE_CAPEX if not f.es_seccion)
