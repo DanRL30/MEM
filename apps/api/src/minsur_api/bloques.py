@@ -462,7 +462,14 @@ def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> l
     # con el total del caso sobre lo que refina la refineria.
     por_fina = []
     for unidad in resultado.caso.unidades:
-        finas = unidad.produccion.toneladas_finas
+        # Las finas de la refinería no son una serie cargada: son lo que refina,
+        # y el motor las calcula. Sin esta rama su fila no saldría, y el modelo
+        # sí la tiene.
+        finas = (
+            resultado.refineria.refinado
+            if unidad.es_refineria
+            else unidad.produccion.toneladas_finas
+        )
         total = resultado.cash_cost_por_unidad.get(unidad.nombre)
         if total is None or not _tiene_dato(finas):
             continue
