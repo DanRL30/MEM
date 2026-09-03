@@ -22,10 +22,11 @@ from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
 from minsur_api import maestros_desarrollo
-from minsur_api.bloques import BASE_DEL_CASH_COST
+from minsur_api.bloques import BASE_DEL_CASH_COST, _grupo_de_la_refineria
 from minsur_api.dependencias import datos_maestros, repositorio
 from minsur_api.main import crear_app
 from minsur_api.repositorio import RepositorioEnMemoria
+from minsur_engine.refineria import AporteALaRefineria, BloqueDeLaRefineria
 from minsur_ingest.capex import CON_DATO_DE_CAPEX
 from minsur_ingest.opex import CON_DATO_DE_GASTOS
 
@@ -35,23 +36,34 @@ RUTA_DE_CARGA = "/api/desarrollo/casos/CASO-XX-2026-000000/insumos"
 
 # La cadena de una mina, en el orden en que la plantilla pide las filas. El
 # primer ejercicio invierte y no produce.
+# La cadena de una mina de estano, con las magnitudes del oficio: las leyes en
+# por ciento tal como se teclean en la hoja, y cada eslabon cuadrando con el
+# anterior. Las cifras son inventadas y no salen de MINSUR, pero **el orden de
+# magnitud importa**: con una ley de cabeza de centesimas de punto la pantalla
+# redondeaba todas las leyes a `0.0%` y no habia forma de ver si la cadena
+# estaba bien.
+#
+#     finas       = tratado x ley del tratado x recuperacion
+#                 = 420 000 x 4,2 % x 90 %      = 15 876 t
+#     concentrado = finas / ley del concentrado
+#                 = 15 876 / 60 %               = 26 460 t
 CADENA = [
-    1_000.0,  # Mineral extraido
-    0.02,  # Ley Sn de cabeza
-    1_000.0,  # Mineral tratado en preconcentracion
-    0.02,  # Ley de Sn de entrada
-    500.0,  # Mineral preconcentrado
-    0.03,  # Ley Sn del preconcentrado
+    1_200_000.0,  # Mineral extraido
+    1.80,  # Ley Sn de cabeza
+    1_200_000.0,  # Mineral tratado en preconcentracion
+    1.80,  # Ley de Sn de entrada
+    420_000.0,  # Mineral preconcentrado
+    4.20,  # Ley Sn del preconcentrado
     0.0,  # Mineral directo
     0.0,  # Ley de Sn del directo
-    500.0,  # Mineral tratado total
-    0.03,  # Ley Sn del tratado total
-    500.0,  # Mineral tratado total para cash cost
-    0.03,  # Ley Sn del cash cost
-    13.5,  # Toneladas finas
-    0.30,  # Ley Sn del concentrado
+    420_000.0,  # Mineral tratado total
+    4.20,  # Ley Sn del tratado total
+    420_000.0,  # Mineral tratado total para cash cost
+    4.20,  # Ley Sn del cash cost
+    15_876.0,  # Toneladas finas
+    60.0,  # Ley Sn del concentrado
     90.0,  # Recuperacion Sn
-    45.0,  # Produccion Concentrado
+    26_460.0,  # Produccion Concentrado
     0.0,  # Concentrado producido Cu
     0.0,  # Ley Cu
     0.0,  # Ley Ag
@@ -747,6 +759,50 @@ class TestBloquesIntermedios:
         assert all(s["acumulado"] is not None for s in leyes), [
             s["etiqueta"] for s in leyes if s["acumulado"] is None
         ]
+
+    def test_la_ley_de_la_refineria_se_pondera_por_lo_entregado(self) -> None:
+        # Cuando la refineria satura, lo alimentado es menor que lo entregado, y
+        # la ley consolidada del libro se divide entre lo **entregado**: es el
+        # denominador de su formula, `(l1*c1 + l2*c2) / (c1 + c2)` sobre las
+        # filas por origen, que no llevan tope.
+        #
+        # Pesando por lo alimentado, un ejercicio en que la refineria no recibe
+        # nada dejaria la ley del horizonte en cero aunque cada ejercicio tuviera
+        # la suya, que es justo lo que se veia en pantalla.
+        # Dos ejercicios de cien toneladas entregadas y leyes distintas, con el
+        # primero saturado del todo: sin el, los dos pesos darian lo mismo y la
+        # prueba no distinguiria nada.
+        #
+        #     por lo entregado   (0,60 x 100 + 0,40 x 100) / 200 = 0,50
+        #     por lo alimentado  (0,60 x   0 + 0,40 x 100) / 100 = 0,40
+        aporte = AporteALaRefineria(
+            unidad="Mina Alfa",
+            concentrado=(100.0, 100.0),
+            ley=(0.60, 0.40),
+            recuperacion=(0.90, 0.90),
+            a_spot=(100.0, 0.0),
+            refinado=(0.0, 36.0),
+            refinado_sin_restriccion=(54.0, 36.0),
+        )
+        bloque = BloqueDeLaRefineria(
+            aportes=(aporte,),
+            concentrado_entregado=(100.0, 100.0),
+            concentrado_alimentado=(0.0, 100.0),
+            ley_de_alimentacion=(0.60, 0.40),
+            toneladas_alimentadas=(0.0, 100.0),
+            refinado=(0.0, 36.0),
+            refinado_sin_restriccion=(54.0, 36.0),
+            concentrado_excedente=(100.0, 0.0),
+            ley_del_excedente=(0.60, 0.0),
+            refinado_del_excedente=(60.0, 0.0),
+            check=(0.0, 0.0),
+        )
+        series = {
+            s.etiqueta: s for s in _grupo_de_la_refineria(bloque, "Pisco").secciones[0].series
+        }
+
+        assert series["Ley de Sn en Concentrado"].acumulado == pytest.approx(0.50)
+        assert series["Ley Promedio de Alimentación"].acumulado == pytest.approx(0.50)
 
     def test_un_ratio_no_lleva_total(
         self, cliente: TestClient, plantilla: Path, plantilla_opex: Path

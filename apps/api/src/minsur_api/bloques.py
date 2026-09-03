@@ -288,11 +288,22 @@ def _grupo_de_la_refineria(refineria: BloqueDeLaRefineria, nombre: str) -> Grupo
 
     Ninguna fila es un dato: la refinería no lleva pestaña de producción porque
     todo lo suyo sale del concentrado que le entregan las minas.
+
+    **Las dos leyes consolidadas se ponderan por el concentrado entregado, no
+    por el alimentado**, que es el denominador que el libro escribe en su fila
+    101. La diferencia solo se ve cuando la refinería satura: pesando por lo
+    alimentado, un ejercicio en que no entra nada dejaría la ley del horizonte
+    en cero aunque cada ejercicio tuviera la suya.
     """
     series: list[SerieAnual] = []
 
     # Cinco pares alimentado/ley, uno por origen, en el orden de las minas. Cada
     # ley se totaliza ponderada por el concentrado de su propia fila.
+    #
+    # **Estas filas son lo que cada unidad entrega, sin acotar por la capacidad**,
+    # y por eso no suman el consolidado de mas abajo cuando la refineria satura:
+    # ese es el `MIN` que el libro escribe en su fila 100. Lo que se queda fuera
+    # aparece integro en `Venta Sn Spot`, y la fila `Check` cierra las dos.
     for aporte in refineria.aportes:
         series.append(
             _serie(f"Concentrado Alimentado {aporte.unidad}", aporte.concentrado, medida="t")
@@ -313,14 +324,14 @@ def _grupo_de_la_refineria(refineria: BloqueDeLaRefineria, nombre: str) -> Grupo
                 "Ley de Sn en Concentrado",
                 refineria.ley_de_alimentacion,
                 medida="%",
-                peso=refineria.concentrado_alimentado,
+                peso=refineria.concentrado_entregado,
             ),
             _serie("Toneladas Alimentadas+escoria", refineria.toneladas_alimentadas, medida="t"),
             _serie(
                 "Ley Promedio de Alimentación",
                 refineria.ley_de_alimentacion,
                 medida="%",
-                peso=refineria.toneladas_alimentadas,
+                peso=refineria.concentrado_entregado,
             ),
         ]
     )
