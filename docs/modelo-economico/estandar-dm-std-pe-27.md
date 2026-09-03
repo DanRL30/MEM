@@ -26,8 +26,12 @@ Sobre un perfil de flujos tipico la diferencia entre ambas convenciones supera h
 tolerancia de 0,1 % que se propone para N3. No es un matiz de redondeo: es una convencion distinta.
 
 - Modulo: `indicadores.py`
-- Estado: **pendiente de confirmar contra el modelo de referencia** (`R-02`). Que el estandar lo
-  exija no implica que el libro corporativo lo aplique.
+- Estado: **contrastado y resuelto el 03/09/2026.** El modelo vigente no aplica mitad de ano: usa
+  `t` entero desde el primer ejercicio, que es la regla `005`, confirmada por Finanzas el
+  01/09/2026. Dos evaluaciones historicas -`Nazareth Dic_24` y `Santo Domingo 17.12`- si la aplican,
+  y ademas contra una fecha base posterior. El motor reproduce la cosecha vigente por el
+  [ADR 0010](../adr/0010-convencion-de-descuento.md) y **la discrepancia con la seccion 5.1 queda
+  reportada**, no corregida: tiene que aparecer en la certificacion de H6.
 
 ## 2. Fecha de valuacion y costos hundidos
 
