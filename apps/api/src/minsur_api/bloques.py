@@ -33,7 +33,12 @@ from collections.abc import Sequence
 from dataclasses import fields as campos_de
 from typing import Any
 
-from minsur_engine.cash_cost import cash_cost_unitario
+from minsur_engine.cash_cost import (
+    GESTION_SOCIAL_DEDUCIBLE,
+    PLANILLA,
+    SERVIDUMBRES,
+    cash_cost_unitario,
+)
 from minsur_engine.corroboracion import series_calculadas
 from minsur_engine.refineria import BloqueDeLaRefineria
 from minsur_ingest.opex import (
@@ -512,7 +517,7 @@ def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> l
     return grupos
 
 
-def _grupos_de_gastos(corrida: CorridaAlmacenada) -> list[GrupoDelBloque]:
+def _grupos_de_gastos(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDelBloque]:
     """Los gastos, al cierre de la hoja.
 
     Van al final y no dentro del bloque de cada unidad, que es donde los pone el
@@ -521,21 +526,71 @@ def _grupos_de_gastos(corrida: CorridaAlmacenada) -> list[GrupoDelBloque]:
     """
     grupos: list[GrupoDelBloque] = []
     for unidad in corrida.resultado.caso.unidades:
+        # Los gastos van con su estructura completa, con guion en la fila vacia.
+        # No es como el cash cost, donde ocultar lo vacio devuelve la lista de
+        # conceptos de cada unidad: aqui la lista es la misma para todas y lo
+        # que importa es que cada concepto caiga siempre en la misma linea.
         series = [
             _serie(
                 fila.etiqueta,
-                unidad.gastos[fila.etiqueta],
+                _o_en_ceros(unidad.gastos.get(fila.etiqueta), anos),
                 medida=fila.medida or "",
                 origen="dato",
             )
             for fila in FILAS_DE_GASTOS
-            if not fila.es_seccion and _tiene_dato(unidad.gastos.get(fila.etiqueta))
+            if not fila.es_seccion
         ]
-        if series:
+        if unidad.gastos:
             grupos.append(
                 GrupoDelBloque(titulo=f"Gastos - {unidad.nombre}", secciones=_una_seccion(series))
             )
     return grupos
+
+
+def _grupo_del_total_de_gastos(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDelBloque]:
+    """La tabla con la que el modelo cierra la hoja: los gastos consolidados.
+
+    No es la suma de los bloques de arriba y ya: lleva ademas las tres filas que
+    el motor deriva y la plantilla no pide —`Año con operación`, `Planilla` y
+    `Gestión Social Deducible`, las reglas `026` y `027`—, y el libro las muestra
+    en este bloque junto a lo cargado.
+
+    El orden es el del catálogo, con la planilla detrás de las servidumbres y la
+    gestión social deducible al final, que es donde las pone el modelo.
+    """
+    resultado = corrida.resultado
+    por_unidad = resultado.gastos_por_unidad
+
+    def consolidado(concepto: str) -> list[float] | None:
+        aportes = [g[concepto] for g in por_unidad.values() if concepto in g]
+        if not aportes:
+            return None
+        return [sum(s[i] for s in aportes if i < len(s)) for i in range(anos)]
+
+    activos = {
+        a for anos_de_unidad in resultado.anos_activos_por_unidad.values() for a in anos_de_unidad
+    }
+    series = [
+        _serie(
+            "Año con operación",
+            [1.0 if anio in activos else 0.0 for anio in resultado.caso.horizonte.anos_calendario],
+        )
+    ]
+
+    conceptos = [fila.etiqueta for fila in FILAS_DE_GASTOS if not fila.es_seccion]
+    if SERVIDUMBRES in conceptos:
+        conceptos.insert(conceptos.index(SERVIDUMBRES) + 1, PLANILLA)
+    conceptos.append(GESTION_SOCIAL_DEDUCIBLE)
+
+    # Aquí la estructura va completa, con su guion en la fila vacía: es la tabla
+    # de cierre y el modelo la muestra entera, de modo que cada concepto cae
+    # siempre en la misma línea.
+    for concepto in conceptos:
+        series.append(_serie(concepto, consolidado(concepto) or [0.0] * anos, medida=MEDIDA_OPEX))
+
+    if not por_unidad:
+        return []
+    return [GrupoDelBloque(titulo="Total Gastos", secciones=_una_seccion(series))]
 
 
 def _bloque_de_opex(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorrida:
@@ -559,7 +614,8 @@ def _bloque_de_opex(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorrida:
             *_grupos_de_cash_cost(corrida, anos),
             *_grupo_de_supuestos_de_la_refineria(corrida),
             *_grupo_de_produccion_y_unitarios(corrida, anos),
-            *_grupos_de_gastos(corrida),
+            *_grupos_de_gastos(corrida, anos),
+            *_grupo_del_total_de_gastos(corrida, anos),
         ],
     )
 

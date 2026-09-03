@@ -26,6 +26,7 @@ from minsur_api.bloques import BASE_DEL_CASH_COST
 from minsur_api.dependencias import datos_maestros, repositorio
 from minsur_api.main import crear_app
 from minsur_api.repositorio import RepositorioEnMemoria
+from minsur_ingest.opex import CON_DATO_DE_GASTOS
 
 CABECERAS = {"Authorization": "Bearer token-de-desarrollo"}
 RAIZ = Path(__file__).resolve().parents[3]
@@ -369,7 +370,8 @@ class TestBloquesIntermedios:
 
         assert titulos[0].startswith("Cash Cost - ")
         assert "Producción" in titulos
-        assert titulos[-1].startswith("Gastos - ")
+        assert titulos[-1] == "Total Gastos"
+        assert any(t.startswith("Gastos - ") for t in titulos)
         assert titulos.index("Producción") > max(
             i for i, t in enumerate(titulos) if t.startswith("Cash Cost - ")
         )
@@ -486,6 +488,35 @@ class TestBloquesIntermedios:
         assert all(s["medida"] == "$/tt" for s in series)
         totales = [s["etiqueta"] for s in series if s["etiqueta"].startswith("Total ")]
         assert len(totales) == 1, "un solo total, no uno por unidad"
+
+    def test_los_gastos_muestran_su_estructura_completa(
+        self, cliente: TestClient, plantilla: Path, plantilla_opex: Path
+    ) -> None:
+        # A diferencia del cash cost, la lista de gastos es la misma para todas
+        # las unidades: ocultar lo vacio no devolveria la lista de nadie y solo
+        # movería cada concepto de linea segun el proyecto.
+        cuerpo = self._bloques(cliente, plantilla, plantilla_opex)
+        opex = next(b for b in cuerpo["bloques"] if b["clave"] == "opex")
+        primero = next(g for g in opex["grupos"] if g["titulo"].startswith("Gastos - "))
+        series = primero["secciones"][0]["series"]
+
+        assert [s["etiqueta"] for s in series] == [f.etiqueta for f in CON_DATO_DE_GASTOS]
+        assert any(all(v == 0 for v in s["valores"]) for s in series)
+
+    def test_la_hoja_cierra_con_el_total_de_gastos(
+        self, cliente: TestClient, plantilla: Path, plantilla_opex: Path
+    ) -> None:
+        # El modelo cierra con los gastos consolidados, y ese bloque lleva las
+        # tres filas que el motor deriva y la plantilla no pide: el ano con
+        # operacion, la planilla y la gestion social deducible. Reglas 026 y 027.
+        cuerpo = self._bloques(cliente, plantilla, plantilla_opex)
+        opex = next(b for b in cuerpo["bloques"] if b["clave"] == "opex")
+
+        assert opex["grupos"][-1]["titulo"] == "Total Gastos"
+        etiquetas = [s["etiqueta"] for s in opex["grupos"][-1]["secciones"][0]["series"]]
+        assert etiquetas[0] == "Año con operación"
+        assert "Planilla" in etiquetas
+        assert etiquetas[-1] == "Gestión Social Deducible"
 
     def test_cada_serie_tiene_un_valor_por_ano(self, cliente: TestClient, plantilla: Path) -> None:
         cuerpo = self._bloques(cliente, plantilla)
