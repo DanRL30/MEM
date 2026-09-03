@@ -130,7 +130,7 @@ def cliente(repo: RepositorioEnMemoria) -> Iterator[TestClient]:
 def _crear_caso(cliente: TestClient) -> str:
     respuesta = cliente.post(
         "/api/casos",
-        json={"nombre": "Escenario de prueba", "tipo": "monometalico", "descripcion": "Prueba"},
+        json={"nombre": "Escenario de prueba", "tipo": "con-proyecto", "descripcion": "Prueba"},
         headers=CABECERAS,
     )
     assert respuesta.status_code == 201, respuesta.text

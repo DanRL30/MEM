@@ -1,15 +1,22 @@
-// Creación de un escenario, según el acuerdo del 25/08/2026.
+// Creación de un escenario dentro de un FEL.
 //
-// El orden de las tres decisiones es el que MINSUR describió: primero el modelo
-// de cálculo, después el proyecto y por último la fase del estudio.
+// **Ni el proyecto ni la fase FEL se preguntan aquí.** Se llega a esta pantalla
+// entrando a un proyecto, después a uno de sus FEL, y dentro de ese FEL están
+// todos sus escenarios: los dos son contexto de navegación, y volver a
+// preguntarlos abriría la puerta a que la respuesta contradiga el sitio desde
+// el que se está creando.
 //
-// **Marcobre y Energías Renovables se muestran y no se pueden elegir.** Es
-// deliberado: el cliente pidió que estuvieran a la vista como proyección. Un
-// modelo que se pudiera seleccionar sin que exista detrás produciría un caso
-// que no calcula, y ocultarlos perdería la señal de que están previstos.
+// Lo que sí se elige es de qué lado de la comparación está el escenario. Una
+// evaluación de inversión son dos corridas —la operación sin el proyecto y la
+// operación con él— y el indicador que sustenta la decisión es la diferencia
+// entre ambas. Por eso el tipo tiene dos valores y no una lista de metales:
+// que el concentrado sea monometálico o polimetálico se deduce de las unidades
+// que el caso declare, y no es algo que nadie deba teclear al abrirlo.
 //
-// El catálogo de proyectos es provisional. Lo definitivo lo mantiene MINSUR
-// como dato maestro; hasta entonces estas son las unidades del modelo vigente.
+// El modelo de cálculo sigue en el formulario porque es lo primero que el
+// cliente describió el 25/08/2026. **Marcobre y Energías Renovables se muestran
+// y no se pueden elegir**: ocultarlos perdería la señal de que están previstos,
+// y habilitarlos produciría un caso que no calcula.
 
 import { useState } from "react";
 
@@ -21,23 +28,19 @@ const MODELOS = [
   { clave: "renovables", nombre: "Energías Renovables", disponible: false },
 ] as const;
 
-const PROYECTOS = [
-  { clave: "SD", nombre: "Santo Domingo" },
-  { clave: "NZ", nombre: "Nazareth" },
-  { clave: "SR", nombre: "San Rafael" },
-] as const;
-
-const FASES = ["Identificación", "Selección", "Definición"] as const;
-
-// Los tipos son los que acepta el esquema de la API, y de ellos sale el prefijo
-// del identificador del caso. El tipo viene del contrato y no se escribe aquí:
-// si la API admitiera uno nuevo, esta lista deja de compilar hasta recogerlo.
 type TipoDeCaso = NuevoCaso["tipo"];
 
-const TIPOS: { clave: TipoDeCaso; nombre: string }[] = [
-  { clave: "monometalico", nombre: "Monometálico" },
-  { clave: "polimetalico", nombre: "Polimetálico" },
-  { clave: "sin-proyecto", nombre: "Sin proyecto" },
+const TIPOS: { clave: TipoDeCaso; nombre: string; ayuda: string }[] = [
+  {
+    clave: "con-proyecto",
+    nombre: "Con proyecto",
+    ayuda: "La operación incluyendo la inversión que se evalúa",
+  },
+  {
+    clave: "sin-proyecto",
+    nombre: "Sin proyecto",
+    ayuda: "La operación como seguiría sin ella, que es la base de comparación",
+  },
 ];
 
 interface Props {
@@ -47,18 +50,12 @@ interface Props {
 
 export function AsistenteDeEscenario({ creando, alCrear }: Props) {
   const [nombre, setNombre] = useState("");
-  const [proyecto, setProyecto] = useState<string>(PROYECTOS[0].clave);
-  const [fase, setFase] = useState<string>(FASES[0]);
-  const [tipo, setTipo] = useState<TipoDeCaso>("monometalico");
+  const [descripcion, setDescripcion] = useState("");
+  const [tipo, setTipo] = useState<TipoDeCaso>("con-proyecto");
 
   function enviar(evento: React.FormEvent<HTMLFormElement>) {
     evento.preventDefault();
-    const proyectoElegido = PROYECTOS.find((p) => p.clave === proyecto);
-    alCrear({
-      nombre: nombre.trim(),
-      tipo,
-      descripcion: `Proyecto ${proyectoElegido?.nombre ?? proyecto} · fase de ${fase}`,
-    });
+    alCrear({ nombre: nombre.trim(), tipo, descripcion: descripcion.trim() });
   }
 
   return (
@@ -98,55 +95,36 @@ export function AsistenteDeEscenario({ creando, alCrear }: Props) {
         />
       </label>
 
-      <div style={{ display: "flex", gap: "var(--espacio-4)", marginBottom: "var(--espacio-4)" }}>
-        <label>
-          <span>Proyecto</span>
-          <select
-            onChange={(e) => {
-              setProyecto(e.target.value);
-            }}
-            value={proyecto}
-          >
-            {PROYECTOS.map((p) => (
-              <option key={p.clave} value={p.clave}>
-                {p.nombre}
-              </option>
-            ))}
-          </select>
-        </label>
+      <fieldset style={{ border: "none", margin: "0 0 var(--espacio-4)", padding: 0 }}>
+        <legend style={{ padding: 0 }}>Tipo de caso</legend>
+        <div style={{ display: "flex", gap: "var(--espacio-4)" }}>
+          {TIPOS.map((opcion) => (
+            <label className="pildora" key={opcion.clave} title={opcion.ayuda}>
+              <input
+                checked={tipo === opcion.clave}
+                name="tipo"
+                onChange={() => {
+                  setTipo(opcion.clave);
+                }}
+                type="radio"
+                value={opcion.clave}
+              />{" "}
+              {opcion.nombre}
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
-        <label>
-          <span>Fase</span>
-          <select
-            onChange={(e) => {
-              setFase(e.target.value);
-            }}
-            value={fase}
-          >
-            {FASES.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          <span>Tipo de caso</span>
-          <select
-            onChange={(e) => {
-              setTipo(e.target.value as TipoDeCaso);
-            }}
-            value={tipo}
-          >
-            {TIPOS.map((t) => (
-              <option key={t.clave} value={t.clave}>
-                {t.nombre}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <label style={{ display: "block", marginBottom: "var(--espacio-4)" }}>
+        <span>Descripción (opcional)</span>
+        <input
+          onChange={(e) => {
+            setDescripcion(e.target.value);
+          }}
+          type="text"
+          value={descripcion}
+        />
+      </label>
 
       <button className="pildora" disabled={creando || nombre.trim() === ""} type="submit">
         {creando ? "Creando…" : "Crear escenario"}

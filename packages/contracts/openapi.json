@@ -290,8 +290,7 @@
           "tipo": {
             "enum": [
               "sin-proyecto",
-              "monometalico",
-              "polimetalico"
+              "con-proyecto"
             ],
             "title": "Tipo",
             "type": "string"
@@ -563,8 +562,7 @@
           "tipo": {
             "enum": [
               "sin-proyecto",
-              "monometalico",
-              "polimetalico"
+              "con-proyecto"
             ],
             "title": "Tipo",
             "type": "string"
@@ -856,8 +854,7 @@
           "tipo": {
             "enum": [
               "sin-proyecto",
-              "monometalico",
-              "polimetalico"
+              "con-proyecto"
             ],
             "title": "Tipo",
             "type": "string"

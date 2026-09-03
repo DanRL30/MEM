@@ -123,7 +123,7 @@ def cliente_sin_maestros(repo: RepositorioEnMemoria) -> Iterator[TestClient]:
 def crear_caso(cliente: TestClient, nombre: str = "Nazareth 2038") -> str:
     respuesta = cliente.post(
         "/api/casos",
-        json={"nombre": nombre, "tipo": "monometalico", "descripcion": "Caso de prueba"},
+        json={"nombre": nombre, "tipo": "con-proyecto", "descripcion": "Caso de prueba"},
         headers=CABECERAS,
     )
     assert respuesta.status_code == 201, respuesta.text
@@ -151,13 +151,13 @@ class TestCasos:
     def test_crear_devuelve_el_caso_en_borrador(self, cliente: TestClient) -> None:
         respuesta = cliente.post(
             "/api/casos",
-            json={"nombre": "Nazareth 2038", "tipo": "monometalico"},
+            json={"nombre": "Nazareth 2038", "tipo": "con-proyecto"},
             headers=CABECERAS,
         )
         assert respuesta.status_code == 201
         cuerpo = respuesta.json()
         assert cuerpo["estado"] == Estado.BORRADOR
-        assert cuerpo["id_caso"].startswith("CASO-MM-")
+        assert cuerpo["id_caso"].startswith("CASO-CON-")
         assert cuerpo["terna"] is None
 
     def test_listar_devuelve_lo_creado(self, cliente: TestClient) -> None:
@@ -178,7 +178,7 @@ class TestCasos:
         con_insumos(repo, original)
         respuesta = cliente.post(
             "/api/casos",
-            json={"nombre": "Copia", "tipo": "monometalico", "duplicar_de": original},
+            json={"nombre": "Copia", "tipo": "con-proyecto", "duplicar_de": original},
             headers=CABECERAS,
         )
         assert respuesta.status_code == 201

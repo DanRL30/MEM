@@ -595,7 +595,7 @@ export interface components {
              * Tipo
              * @enum {string}
              */
-            tipo: "sin-proyecto" | "monometalico" | "polimetalico";
+            tipo: "sin-proyecto" | "con-proyecto";
         };
         /**
          * DiscrepanciaDeCorroboracion
@@ -740,7 +740,7 @@ export interface components {
              * Tipo
              * @enum {string}
              */
-            tipo: "sin-proyecto" | "monometalico" | "polimetalico";
+            tipo: "sin-proyecto" | "con-proyecto";
         };
         /** PaginaHistorial */
         PaginaHistorial: {
@@ -890,7 +890,7 @@ export interface components {
              * Tipo
              * @enum {string}
              */
-            tipo: "sin-proyecto" | "monometalico" | "polimetalico";
+            tipo: "sin-proyecto" | "con-proyecto";
         };
         /** Salud */
         Salud: {

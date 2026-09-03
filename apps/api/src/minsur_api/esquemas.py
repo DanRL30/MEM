@@ -53,11 +53,26 @@ class Terna(Base):
 
 # --- Casos -------------------------------------------------------------------
 
+TipoDeCaso = Literal["sin-proyecto", "con-proyecto"]
+"""El eje del modelo: un proyecto se evalua contra la operacion sin el.
+
+No es una clasificacion por metal. Monometalico y polimetalico describen la
+forma del concentrado, que ya se deduce de las unidades que el caso declara y
+no es algo que el usuario elija al abrirlo. Lo que si elige es de que lado de
+la comparacion esta el escenario, porque de esa pareja sale el indicador
+incremental que sustenta la decision de inversion.
+
+El proyecto y la fase FEL no viajan aqui: el escenario se abre desde dentro de
+un FEL de un proyecto, de modo que los dos son contexto de navegacion y
+volverlos a preguntar abriria la puerta a que contradigan donde esta el
+usuario. Modelarlos como entidades propias esta pendiente.
+"""
+
 
 class ResumenCaso(Base):
     id_caso: str
     nombre: str
-    tipo: Literal["sin-proyecto", "monometalico", "polimetalico"]
+    tipo: TipoDeCaso
     estado: Estado
     actualizado_en: datetime
     actualizado_por: str
@@ -65,7 +80,7 @@ class ResumenCaso(Base):
 
 class NuevoCaso(Base):
     nombre: str = Field(min_length=3, max_length=120)
-    tipo: Literal["sin-proyecto", "monometalico", "polimetalico"]
+    tipo: TipoDeCaso
     descripcion: str = Field(default="", max_length=1000)
     duplicar_de: str | None = Field(
         default=None,

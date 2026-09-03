@@ -37,6 +37,30 @@ describe("La vista de modelamiento", () => {
     }
   });
 
+  it("no pregunta el proyecto ni la fase FEL", () => {
+    // Se llega a esta pantalla entrando a un proyecto, despues a uno de sus
+    // FEL, y dentro estan sus escenarios: los dos son contexto de navegacion.
+    // Volver a preguntarlos abriria la puerta a que la respuesta contradiga el
+    // sitio desde el que se esta creando.
+    render(<App />);
+    expect(screen.queryByText(/Proyecto/)).toBeNull();
+    expect(screen.queryByText(/Fase/)).toBeNull();
+  });
+
+  it("ofrece los dos lados de la comparacion y solo esos", () => {
+    // Una evaluacion de inversion son dos corridas y el indicador que sustenta
+    // la decision es la diferencia. Que el concentrado sea monometalico o
+    // polimetalico se deduce de las unidades, no se teclea al abrir el caso.
+    render(<App />);
+    const tipos = screen
+      .getAllByRole("radio")
+      .filter((radio) => radio.getAttribute("name") === "tipo");
+    expect(tipos.map((radio) => radio.getAttribute("value"))).toEqual([
+      "con-proyecto",
+      "sin-proyecto",
+    ]);
+  });
+
   it("no permite crear un escenario sin nombre", () => {
     render(<App />);
     expect(screen.getByRole("button", { name: /Crear escenario/ })).toHaveProperty(

@@ -154,7 +154,10 @@ def nuevo_id_de_caso(tipo: str) -> str:
     Un identificador que se lee en un correo o en un acta ahorra abrir la
     plataforma para saber de qué caso se habla.
     """
-    prefijo = {"sin-proyecto": "SP", "monometalico": "MM", "polimetalico": "PM"}.get(tipo, "CS")
+    # Tres letras y no dos: `CASO-CP-...` se confundiria en un correo con un
+    # comite de precios, que se cita como `CP-2026-09`. El identificador existe
+    # justamente para leerse fuera de la plataforma.
+    prefijo = {"sin-proyecto": "SIN", "con-proyecto": "CON"}.get(tipo, "CAS")
     ano = datetime.now(UTC).year
     return f"CASO-{prefijo}-{ano}-{uuid4().hex[:6].upper()}"
 
