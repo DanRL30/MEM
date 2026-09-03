@@ -33,14 +33,26 @@ from collections.abc import Sequence
 from dataclasses import fields as campos_de
 from typing import Any
 
+from minsur_engine.capex import (
+    CapitalDeUnidad,
+    capex_de_etapa,
+    capex_total,
+    desglosar_por_etapa_y_naturaleza,
+)
 from minsur_engine.cash_cost import (
     GESTION_SOCIAL_DEDUCIBLE,
     PLANILLA,
     SERVIDUMBRES,
     cash_cost_unitario,
 )
+from minsur_engine.caso import UnidadProductiva
 from minsur_engine.corroboracion import series_calculadas
+from minsur_engine.horizonte import Serie, anos_con_dato
 from minsur_engine.refineria import BloqueDeLaRefineria
+from minsur_ingest.capex import (
+    CON_DATO_DE_CAPEX,
+    MEDIDA as MEDIDA_CAPEX,
+)
 from minsur_ingest.opex import (
     CON_DATO_DE_CASH_COST,
     FILAS_DE_CASH_COST,
@@ -73,6 +85,22 @@ NOTA_DE_RECUPERACION = (
 NOTA_DEL_CHECK = (
     "Fila del libro. Aquí se cumple por construcción, así que confirma que la "
     "cadena cuadra pero no la verifica: eso lo hace la corroboración."
+)
+
+# El libro carga una sola clasificación del capital, la contable, y deriva la
+# etapa de ella. Sus dos filas de cuadre comparaban dos sumas que salían de
+# celdas distintas; aquí salen de las mismas, de modo que cuadran siempre.
+NOTA_DEL_CUADRE_DEL_CAPITAL = (
+    "Fila de cuadre del libro. Con una sola clasificación cargada se cumple por "
+    "construcción: vale cero salvo que el capital se arme a mano."
+)
+
+# El libro da a los equipos de cómputo el mismo código contable que a la
+# maquinaria, de modo que su cruce por naturaleza los muestra sumados. El motor
+# los lleva por separado en las dos vías de depreciación, y esta hoja también.
+NOTA_DEL_COMPUTO = (
+    "El libro suma este componente con la maquinaria, porque comparten código "
+    "contable. La plataforma lo lleva aparte: lo que llega sumado no se separa."
 )
 
 # Las series monetarias del motor están en dólares. El libro lleva varias de sus
@@ -681,13 +709,250 @@ def _bloque_de_opex(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorrida:
     )
 
 
-def _bloque_de_capex(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
+# Las cinco naturalezas contables, con la etiqueta del libro y el campo del
+# motor que las alimenta. Se toman del catalogo de la plantilla y no se escriben
+# aqui, de modo que la fila que se ve sea la que el usuario lleno.
+NATURALEZAS_DEL_CAPITAL = tuple((fila.etiqueta, fila.naturaleza) for fila in CON_DATO_DE_CAPEX)
+
+# Las tres etapas, con el rotulo con que el libro encabeza cada seccion de su
+# cruce. La cuarta, que el libro deja rotulada `xxx`, no se emite: no tiene
+# formula en ninguna columna de ano y vale cero siempre. Es la regla `032`.
+ETAPAS_DEL_CAPITAL = (
+    ("inicial", "Por Naturaleza - Inicial"),
+    ("sostenimiento", "Por Naturaleza - Sostenimiento"),
+    ("cierre", "Por Naturaleza - Cierre"),
+)
+
+
+def _naturaleza_de_la_unidad(unidad: UnidadProductiva, campo: str, anos: int) -> Sequence[float]:
+    """Una naturaleza del capital de una unidad, o ceros si no declara capital."""
+    if unidad.capital is None:
+        return [0.0] * anos
+    return _o_en_ceros(unidad.capital.por_naturaleza.get(campo), anos)
+
+
+def _serie_de_naturaleza(etiqueta: str, campo: str, valores: Sequence[float]) -> SerieAnual:
+    """Una fila del cruce, con su aviso si el libro la lleva sumada con otra."""
+    return _serie(
+        etiqueta,
+        valores,
+        medida=MEDIDA_CAPEX,
+        concepto=campo,
+        nota=NOTA_DEL_COMPUTO if campo == "equipos_de_computo" else None,
+    )
+
+
+def _suma(series: Sequence[Sequence[float]], anos: int) -> list[float]:
+    return [sum(s[i] for s in series if i < len(s)) for i in range(anos)]
+
+
+def _con_su_total(series: list[SerieAnual], anos: int) -> list[SerieAnual]:
+    """Cierra un bloque con su fila de total, sombreada como en el libro."""
+    return [
+        *series,
+        _serie("Total", _suma([s.valores for s in series], anos), medida=MEDIDA_CAPEX, total=True),
+    ]
+
+
+def _grupo_del_detalle_del_capital(
+    corrida: CorridaAlmacenada, capital: Sequence[CapitalDeUnidad], anos: int
+) -> GrupoDelBloque:
+    """`Detalle Capex`: la etapa, que es lo que ve el flujo de inversiones.
+
+    Abre la hoja aunque sea cálculo, porque así abre el libro: quien evalúa un
+    proyecto mira primero cuánto es inicial y cuánto sostenimiento, y el detalle
+    por unidad está debajo para explicarlo.
+    """
+    horizonte = corrida.resultado.caso.horizonte
+    total = capex_total(horizonte, capital)
+    por_unidad = [_suma(list(u.por_naturaleza.values()), anos) for u in capital]
+    series = [
+        _serie("Capex Inicial", capex_de_etapa(horizonte, capital, "inicial"), medida=MEDIDA_CAPEX),
+        _serie(
+            "Sostenimiento",
+            capex_de_etapa(horizonte, capital, "sostenimiento"),
+            medida=MEDIDA_CAPEX,
+        ),
+        _serie("Cierre Mina", capex_de_etapa(horizonte, capital, "cierre"), medida=MEDIDA_CAPEX),
+        _serie("Total", total, medida=MEDIDA_CAPEX, total=True),
+        _serie(
+            "Tipo vs Detalle",
+            [
+                (total[i] if i < len(total) else 0.0) - v
+                for i, v in enumerate(_suma(por_unidad, anos))
+            ],
+            medida=MEDIDA_CAPEX,
+            nota=NOTA_DEL_CUADRE_DEL_CAPITAL,
+        ),
+    ]
+    return GrupoDelBloque(titulo="Detalle Capex", secciones=_una_seccion(series))
+
+
+def _grupos_de_la_clasificacion(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDelBloque]:
+    """`Clasificación <unidad>`: lo único que esta hoja carga.
+
+    La estructura va completa en todas las unidades, con su guion en la fila
+    vacía, que es como la lleva el libro: las cinco naturalezas son la misma
+    lista para todas y lo que importa es que cada concepto caiga siempre en la
+    misma línea. Una unidad sin capital declarado lleva su bloque en ceros.
+    """
+    grupos = []
+    for unidad in corrida.resultado.caso.unidades:
+        series = [
+            _serie(
+                etiqueta,
+                _naturaleza_de_la_unidad(unidad, campo, anos),
+                medida=MEDIDA_CAPEX,
+                concepto=campo,
+                origen="dato",
+                nota=NOTA_DEL_COMPUTO if campo == "equipos_de_computo" else None,
+            )
+            for etiqueta, campo in NATURALEZAS_DEL_CAPITAL
+        ]
+        grupos.append(
+            GrupoDelBloque(
+                titulo=f"Clasificación {unidad.nombre}",
+                secciones=_una_seccion(_con_su_total(series, anos)),
+            )
+        )
+    return grupos
+
+
+def _desglose_de(
+    corrida: CorridaAlmacenada, unidad: UnidadProductiva
+) -> dict[str, dict[str, Serie]]:
+    """El cruce de una unidad, derivado con la regla de etapa del motor.
+
+    Se le pide al motor en vez de deducirlo del capital ya clasificado: la regla
+    que decide si un ejercicio es inicial o de sostenimiento vive en un solo
+    sitio, y rehacerla aquí la pondría en dos.
+    """
+    if unidad.capital is None:
+        return {}
+    return desglosar_por_etapa_y_naturaleza(
+        corrida.resultado.caso.horizonte,
+        unidad.capital.por_naturaleza,
+        anos_activos=anos_con_dato(unidad.produccion.mineral_tratado),
+        umbral_inicial=unidad.umbral_de_capital_inicial,
+    )
+
+
+def _cruce_consolidado(corrida: CorridaAlmacenada, anos: int) -> dict[str, dict[str, Serie]]:
+    consolidado: dict[str, dict[str, list[float]]] = {}
+    for unidad in corrida.resultado.caso.unidades:
+        for etapa, filas in _desglose_de(corrida, unidad).items():
+            destino = consolidado.setdefault(etapa, {})
+            for campo, serie in filas.items():
+                acumulada = destino.setdefault(campo, [0.0] * anos)
+                for i, valor in enumerate(serie[:anos]):
+                    acumulada[i] += valor
+    return {
+        etapa: {campo: tuple(serie) for campo, serie in filas.items()}
+        for etapa, filas in consolidado.items()
+    }
+
+
+def _secciones_del_cruce(
+    desglose: dict[str, dict[str, Serie]], anos: int
+) -> list[SeccionDelBloque]:
+    """Las tres etapas del cruce, cada una con sus cinco naturalezas.
+
+    El cruce es disperso y no es un hueco: lo no depreciable solo aparece en
+    cierre, y ninguna otra naturaleza aparece ahí. Las filas van igual, porque
+    es la forma de la hoja y porque un cero dice algo distinto de una fila que
+    falta.
+    """
+    secciones = []
+    for etapa, titulo in ETAPAS_DEL_CAPITAL:
+        filas = desglose.get(etapa, {})
+        series = [
+            _serie_de_naturaleza(etiqueta, campo, _o_en_ceros(filas.get(campo), anos))
+            for etiqueta, campo in NATURALEZAS_DEL_CAPITAL
+        ]
+        secciones.append(SeccionDelBloque(titulo=titulo, series=_con_su_total(series, anos)))
+    return secciones
+
+
+def _grupos_del_cruce(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDelBloque]:
+    """`Capex por Naturaleza`: el consolidado y el desglose de cada proyecto.
+
+    El libro reparte este bloque en dos juegos, uno general y otro propio de un
+    proyecto, y **excluye ese proyecto del general** porque alimenta una hoja de
+    flujo aparte. La plataforma evalúa un flujo: el consolidado recoge todas las
+    unidades y el bloque del proyecto es un desglose dentro de él, no una vía
+    paralela. Es lo que hace que las dos filas de cuadre cierren en cero.
+
+    Unidad de proyecto es la que declara `umbral_de_capital_inicial`, la misma
+    definición con la que el motor decide la etapa. Aquí no se cablea el nombre
+    de ninguna unidad de MINSUR.
+    """
+    grupos = [
+        GrupoDelBloque(
+            titulo="Capex por Naturaleza",
+            secciones=_secciones_del_cruce(_cruce_consolidado(corrida, anos), anos),
+        )
+    ]
+    for unidad in corrida.resultado.caso.unidades:
+        if unidad.umbral_de_capital_inicial is None:
+            continue
+        grupos.append(
+            GrupoDelBloque(
+                titulo=f"Capex por Naturaleza - {unidad.nombre}",
+                secciones=_secciones_del_cruce(_desglose_de(corrida, unidad), anos),
+            )
+        )
+    return grupos
+
+
+def _grupo_del_total_por_naturaleza(
+    corrida: CorridaAlmacenada, capital: Sequence[CapitalDeUnidad], anos: int
+) -> GrupoDelBloque:
+    """`Por Naturaleza - Total`, con el segundo cuadre de la hoja."""
+    consolidado = _cruce_consolidado(corrida, anos)
+    series = [
+        _serie_de_naturaleza(
+            etiqueta, campo, _suma([filas.get(campo, ()) for filas in consolidado.values()], anos)
+        )
+        for etiqueta, campo in NATURALEZAS_DEL_CAPITAL
+    ]
+    con_total = _con_su_total(series, anos)
+    total = con_total[-1].valores
+    del_detalle = capex_total(corrida.resultado.caso.horizonte, capital)
+    con_total.append(
+        _serie(
+            "check",
+            [v - (del_detalle[i] if i < len(del_detalle) else 0.0) for i, v in enumerate(total)],
+            medida=MEDIDA_CAPEX,
+            nota=NOTA_DEL_CUADRE_DEL_CAPITAL,
+        )
+    )
+    return GrupoDelBloque(titulo="Capex por Naturaleza TOTAL", secciones=_una_seccion(con_total))
+
+
+def _bloque_de_capex(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorrida:
+    """La hoja del capital, en el orden del libro.
+
+    Abre con la etapa consolidada, sigue con la clasificación contable de cada
+    unidad —que es lo único que la hoja carga— y cierra con el cruce de las dos
+    clasificaciones y su total.
+
+    Las cifras van en `$k`, que es como el libro lleva esta hoja y como la
+    ingesta la lee. El motor guarda dólares porque convierte al entrar; aquí se
+    rotula la unidad del libro y la pantalla deshace la conversión, igual que en
+    opex.
+    """
+    capital = list(corrida.resultado.capital_por_unidad)
     return BloqueDeCorrida(
         clave="capex",
         etiqueta="InputsCapex",
-        titulo="Capital",
+        titulo="Capital por etapa y naturaleza contable",
         hoja="InputsCapex",
-        grupos=_un_grupo([_serie("Capex", corrida.resultado.capex, medida=DOLARES)]),
+        grupos=[
+            _grupo_del_detalle_del_capital(corrida, capital, anos),
+            *_grupos_de_la_clasificacion(corrida, anos),
+            *_grupos_del_cruce(corrida, anos),
+            _grupo_del_total_por_naturaleza(corrida, capital, anos),
+        ],
     )
 
 
@@ -868,7 +1133,7 @@ def bloques_de(corrida: CorridaAlmacenada) -> BloquesDeCorrida:
         bloques=[
             _bloque_de_produccion(corrida, len(anios)),
             _bloque_de_opex(corrida, len(anios)),
-            _bloque_de_capex(corrida),
+            _bloque_de_capex(corrida, len(anios)),
             _bloque_de_depreciacion(corrida),
             _bloque_de_ventas(corrida),
             _bloque_de_otros(corrida),

@@ -102,6 +102,53 @@ class CapitalDeUnidad:
         return self.por_naturaleza.get(nombre) or horizonte.ceros()
 
 
+def desglosar_por_etapa_y_naturaleza(
+    horizonte: Horizonte,
+    por_naturaleza: Mapping[str, Serie],
+    *,
+    anos_activos: Sequence[int] = (),
+    umbral_inicial: int | None = None,
+) -> dict[str, dict[str, Serie]]:
+    """El cruce de las dos clasificaciones, etapa por naturaleza.
+
+    Es lo que el libro construye con un `SUMIF` sobre el codigo de tres letras
+    de su columna A, y es la forma en que se lee la hoja: cuanto del capital
+    inicial es maquinaria, cuanto del de cierre es no depreciable.
+
+    **La regla de la etapa vive aqui y solo aqui.** `clasificar_por_etapa` es la
+    consolidacion de este desglose, no una segunda derivacion: con la regla
+    escrita dos veces, cambiar una y olvidar la otra da dos respuestas para la
+    misma pregunta y ninguna forma de saber cual manda.
+
+    El resultado es disperso a proposito, y no es un hueco: `no_depreciable` no
+    aparece en inicial ni en sostenimiento, y ninguna otra naturaleza aparece en
+    cierre. El rotulo «cinco naturalezas por tres etapas» del bloque derivado
+    del libro es aparente por el mismo motivo.
+    """
+    activos = set(anos_activos)
+    etapas: dict[str, dict[str, list[float]]] = {
+        "inicial": {},
+        "sostenimiento": {},
+        "cierre": {},
+    }
+    cuenta = 0
+    for i in range(horizonte.anos):
+        if i in activos:
+            cuenta += 1
+        es_inicial = umbral_inicial is not None and cuenta <= umbral_inicial
+        etapa = "inicial" if es_inicial else "sostenimiento"
+        for naturaleza, serie in por_naturaleza.items():
+            if i >= len(serie):
+                continue
+            destino = "cierre" if naturaleza == "no_depreciable" else etapa
+            fila = etapas[destino].setdefault(naturaleza, [0.0] * horizonte.anos)
+            fila[i] += serie[i]
+    return {
+        etapa: {naturaleza: tuple(valores) for naturaleza, valores in filas.items()}
+        for etapa, filas in etapas.items()
+    }
+
+
 def clasificar_por_etapa(
     horizonte: Horizonte,
     por_naturaleza: Mapping[str, Serie],
@@ -135,24 +182,23 @@ def clasificar_por_etapa(
     **La cuarta etapa no se emite.** El libro la deja sin rotular y sin fórmula:
     vale cero en todos los ejercicios y en todos los escenarios.
     """
-    activos = set(anos_activos)
-    inicial = [0.0] * horizonte.anos
-    sostenimiento = [0.0] * horizonte.anos
-    cuenta = 0
-    for i in range(horizonte.anos):
-        if i in activos:
-            cuenta += 1
-        es_inicial = umbral_inicial is not None and cuenta <= umbral_inicial
-        destino = inicial if es_inicial else sostenimiento
-        for naturaleza, serie in por_naturaleza.items():
-            if naturaleza == "no_depreciable" or i >= len(serie):
-                continue
-            destino[i] += serie[i]
-    return {
-        "inicial": tuple(inicial),
-        "sostenimiento": tuple(sostenimiento),
-        "cierre": por_naturaleza.get("no_depreciable") or horizonte.ceros(),
-    }
+    desglose = desglosar_por_etapa_y_naturaleza(
+        horizonte,
+        por_naturaleza,
+        anos_activos=anos_activos,
+        umbral_inicial=umbral_inicial,
+    )
+    return {etapa: _consolidar(horizonte, filas) for etapa, filas in desglose.items()}
+
+
+def _consolidar(horizonte: Horizonte, por_naturaleza: Mapping[str, Serie]) -> Serie:
+    """Suma las naturalezas de una etapa en una sola serie."""
+    if not por_naturaleza:
+        return horizonte.ceros()
+    return tuple(
+        sum(serie[i] for serie in por_naturaleza.values() if i < len(serie))
+        for i in range(horizonte.anos)
+    )
 
 
 def capex_total(horizonte: Horizonte, unidades: Sequence[CapitalDeUnidad]) -> Serie:

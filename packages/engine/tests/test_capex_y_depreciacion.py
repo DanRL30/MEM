@@ -18,6 +18,8 @@ from minsur_engine.capex import (
     capex_de_etapa,
     capex_de_sostenimiento,
     capex_total,
+    clasificar_por_etapa,
+    desglosar_por_etapa_y_naturaleza,
 )
 from minsur_engine.depreciacion import (
     ESTUDIOS,
@@ -387,3 +389,60 @@ class TestLasDosPuertasDeProduccion:
         )
         assert detalle["maquinaria"][1] > 0.0
         assert detalle["maquinaria"][2] == 0.0
+
+
+class TestElCruceDeLasDosClasificaciones:
+    """`desglosar_por_etapa_y_naturaleza`, que es lo que el libro muestra.
+
+    El bloque derivado del libro cruza las dos clasificaciones con un `SUMIF`
+    sobre el codigo contable de su columna A. Aqui la regla de la etapa esta
+    escrita una sola vez y el cruce es su forma abierta, de modo que la etapa
+    consolidada tiene que salir de sumarlo.
+    """
+
+    def _naturalezas(self) -> dict[str, Serie]:
+        return {
+            "no_depreciable": (10.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0),
+            "equipos_de_computo": (1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+            "maquinaria": (100.0, 200.0, 300.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+            "instalaciones": (0.0, 50.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+            "edificaciones": (20.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        }
+
+    def test_consolida_exactamente_en_la_clasificacion_por_etapa(
+        self, horizonte: Horizonte
+    ) -> None:
+        naturalezas = self._naturalezas()
+        for umbral, activos in ((None, ()), (1, (1, 2, 3)), (2, (0, 2))):
+            desglose = desglosar_por_etapa_y_naturaleza(
+                horizonte, naturalezas, anos_activos=activos, umbral_inicial=umbral
+            )
+            etapas = clasificar_por_etapa(
+                horizonte, naturalezas, anos_activos=activos, umbral_inicial=umbral
+            )
+            for etapa, esperada in etapas.items():
+                sumada = tuple(
+                    sum(serie[i] for serie in desglose[etapa].values())
+                    for i in range(horizonte.anos)
+                )
+                assert sumada == pytest.approx(esperada), etapa
+
+    def test_lo_no_depreciable_solo_aparece_en_cierre(self, horizonte: Horizonte) -> None:
+        # Es la primera de las tres reglas de la auditoria del 02/09/2026, y la
+        # unica que el contraste contra datos reales confirma al centimo.
+        desglose = desglosar_por_etapa_y_naturaleza(
+            horizonte, self._naturalezas(), anos_activos=(1,), umbral_inicial=1
+        )
+        assert "no_depreciable" not in desglose["inicial"]
+        assert "no_depreciable" not in desglose["sostenimiento"]
+        assert list(desglose["cierre"]) == ["no_depreciable"]
+
+    def test_el_computo_no_se_funde_con_la_maquinaria(self, horizonte: Horizonte) -> None:
+        # El libro los suma porque comparten el codigo `MAQ`. Aqui van aparte:
+        # lo que llega sumado no se puede volver a separar.
+        desglose = desglosar_por_etapa_y_naturaleza(
+            horizonte, self._naturalezas(), anos_activos=(0,), umbral_inicial=1
+        )
+        inicial = desglose["inicial"]
+        assert sum(inicial["equipos_de_computo"]) > 0.0
+        assert inicial["equipos_de_computo"] != inicial["maquinaria"]

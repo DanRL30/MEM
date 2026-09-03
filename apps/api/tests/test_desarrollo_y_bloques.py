@@ -26,6 +26,7 @@ from minsur_api.bloques import BASE_DEL_CASH_COST
 from minsur_api.dependencias import datos_maestros, repositorio
 from minsur_api.main import crear_app
 from minsur_api.repositorio import RepositorioEnMemoria
+from minsur_ingest.capex import CON_DATO_DE_CAPEX
 from minsur_ingest.opex import CON_DATO_DE_GASTOS
 
 CABECERAS = {"Authorization": "Bearer token-de-desarrollo"}
@@ -136,6 +137,26 @@ def plantilla_opex(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def plantilla_capex(tmp_path: Path) -> Path:
+    """El libro de capital, con dos naturalezas llenas en cada unidad."""
+    generador = _generador()
+    ruta = tmp_path / "capex.xlsx"
+    libro = generador.Workbook()  # type: ignore[attr-defined]
+    libro.remove(libro.active)
+    for nombre in ("Mina Alfa", "Refineria"):
+        generador.hoja_capex_de_unidad(libro, nombre, 2027, 3)  # type: ignore[attr-defined]
+    libro.save(ruta)
+
+    libro = load_workbook(ruta)
+    for nombre in ("Mina Alfa", "Refineria"):
+        _escribir(libro[nombre], "No depreciable", [0.0, 0.0, 400.0])
+        _escribir(libro[nombre], "Equipos de cómputo", [30.0, 0.0, 0.0])
+        _escribir(libro[nombre], "Maquinaria, equipos y vehículos", [9_000.0, 1_500.0, 0.0])
+    libro.save(ruta)
+    return ruta
+
+
+@pytest.fixture
 def repo() -> RepositorioEnMemoria:
     return RepositorioEnMemoria()
 
@@ -165,13 +186,19 @@ def _crear_caso(cliente: TestClient) -> str:
 
 
 def _subir(
-    cliente: TestClient, id_caso: str, ruta: Path, opex: Path | None = None
+    cliente: TestClient,
+    id_caso: str,
+    ruta: Path,
+    opex: Path | None = None,
+    capex: Path | None = None,
 ) -> dict[str, object]:
     abiertos = [ruta.open("rb")]
     archivos = {"caso": (ruta.name, abiertos[0], "application/vnd.ms-excel")}
-    if opex is not None:
-        abiertos.append(opex.open("rb"))
-        archivos["opex"] = (opex.name, abiertos[1], "application/vnd.ms-excel")
+    for clave, libro in (("opex", opex), ("capex", capex)):
+        if libro is None:
+            continue
+        abiertos.append(libro.open("rb"))
+        archivos[clave] = (libro.name, abiertos[-1], "application/vnd.ms-excel")
     try:
         respuesta = cliente.post(
             f"/api/desarrollo/casos/{id_caso}/insumos", files=archivos, headers=CABECERAS
@@ -283,10 +310,14 @@ class TestCargaDeInsumos:
 
 class TestBloquesIntermedios:
     def _bloques(
-        self, cliente: TestClient, plantilla: Path, opex: Path | None = None
+        self,
+        cliente: TestClient,
+        plantilla: Path,
+        opex: Path | None = None,
+        capex: Path | None = None,
     ) -> dict[str, Any]:
         id_caso = _crear_caso(cliente)
-        _subir(cliente, id_caso, plantilla, opex)
+        _subir(cliente, id_caso, plantilla, opex, capex)
         cliente.post(f"/api/casos/{id_caso}/evaluar", headers=CABECERAS)
         respuesta = cliente.get(f"/api/casos/{id_caso}/corrida/bloques", headers=CABECERAS)
         assert respuesta.status_code == 200, respuesta.text
@@ -517,6 +548,128 @@ class TestBloquesIntermedios:
         assert "Año con operación" not in etiquetas
         assert "Planilla" in etiquetas
         assert etiquetas[-1] == "Gestión Social Deducible"
+
+    def _capex(self, cliente: TestClient, plantilla: Path, capex: Path) -> dict[str, Any]:
+        cuerpo = self._bloques(cliente, plantilla, capex=capex)
+        bloque: dict[str, Any] = next(b for b in cuerpo["bloques"] if b["clave"] == "capex")
+        return bloque
+
+    def test_capex_sigue_el_orden_de_la_hoja(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # El libro abre con la etapa consolidada, sigue con la clasificacion
+        # contable de cada unidad -lo unico que la hoja carga- y cierra con el
+        # cruce de las dos clasificaciones y su total.
+        titulos = [g["titulo"] for g in self._capex(cliente, plantilla, plantilla_capex)["grupos"]]
+
+        assert titulos[0] == "Detalle Capex"
+        assert titulos[-1] == "Capex por Naturaleza TOTAL"
+        assert [t for t in titulos if t.startswith("Clasificación ")] == [
+            "Clasificación Mina Alfa",
+            "Clasificación Refineria",
+        ]
+        assert titulos.index("Capex por Naturaleza") > titulos.index("Clasificación Refineria")
+
+    def test_la_clasificacion_contable_va_completa(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # Las cinco naturalezas en todas las unidades, con su guion en la fila
+        # vacia: la lista es la misma para todas y lo que importa es que cada
+        # concepto caiga siempre en la misma linea.
+        bloque = self._capex(cliente, plantilla, plantilla_capex)
+        grupo = next(g for g in bloque["grupos"] if g["titulo"].startswith("Clasificación "))
+        series = grupo["secciones"][0]["series"]
+
+        assert [s["etiqueta"] for s in series[:-1]] == [f.etiqueta for f in CON_DATO_DE_CAPEX]
+        assert series[-1]["etiqueta"] == "Total"
+        assert series[-1]["total"] is True
+        assert all(s["origen"] == "dato" for s in series[:-1])
+        assert any(not any(s["valores"]) for s in series[:-1]), "alguna naturaleza va en cero"
+
+    def test_el_cruce_lleva_las_cinco_naturalezas_por_etapa(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # El libro muestra cuatro filas porque el computo comparte codigo con la
+        # maquinaria. Aqui van cinco: lo que llega sumado no se separa.
+        bloque = self._capex(cliente, plantilla, plantilla_capex)
+        grupo = next(g for g in bloque["grupos"] if g["titulo"] == "Capex por Naturaleza")
+
+        assert [s["titulo"] for s in grupo["secciones"]] == [
+            "Por Naturaleza - Inicial",
+            "Por Naturaleza - Sostenimiento",
+            "Por Naturaleza - Cierre",
+        ]
+        for seccion in grupo["secciones"]:
+            etiquetas = [s["etiqueta"] for s in seccion["series"]]
+            assert etiquetas == [f.etiqueta for f in CON_DATO_DE_CAPEX] + ["Total"]
+        computo = next(
+            s for s in grupo["secciones"][2]["series"] if s["concepto"] == "equipos_de_computo"
+        )
+        assert computo["nota"], "la fila dice que el libro la lleva sumada"
+
+    def test_los_dos_cuadres_de_la_hoja_cierran_en_cero(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # Con una sola clasificacion cargada se cumplen por construccion. Se
+        # muestran igual, como indicador, y si alguno dejara de cerrar seria
+        # senal de que el capital que se pinta no es el que entro al calculo.
+        bloque = self._capex(cliente, plantilla, plantilla_capex)
+        series = [
+            serie
+            for grupo in bloque["grupos"]
+            for seccion in grupo["secciones"]
+            for serie in seccion["series"]
+        ]
+        cuadres = [s for s in series if s["etiqueta"] in ("Tipo vs Detalle", "check")]
+
+        assert len(cuadres) == 2
+        for cuadre in cuadres:
+            assert cuadre["valores"] == pytest.approx([0.0] * len(cuadre["valores"]))
+            assert cuadre["nota"], "la fila declara que se cumple por construccion"
+
+    def test_el_capital_se_muestra_en_miles(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # El libro lleva esta hoja en `$k` y la ingesta convierte a dolares al
+        # leer. La pantalla deshace esa conversion por la unidad de medida, de
+        # modo que rotularla `US$` mostraba la hoja mil veces mas grande.
+        bloque = self._capex(cliente, plantilla, plantilla_capex)
+        medidas = {
+            serie["medida"]
+            for grupo in bloque["grupos"]
+            for seccion in grupo["secciones"]
+            for serie in seccion["series"]
+        }
+        assert medidas == {"$k"}
+
+    def test_la_etapa_del_resumen_es_la_del_cruce(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # Las dos zonas dicen lo mismo desde sitios distintos: el resumen lo toma
+        # del capital que entro al calculo y el cruce lo deriva con la regla de
+        # etapa del motor. Si difieren, el capital que se pinta no es el que se
+        # deprecio, y ninguna de las dos filas de cuadre lo notaria: las dos
+        # comparan totales, y el total coincide aunque el reparto no.
+        bloque = self._capex(cliente, plantilla, plantilla_capex)
+        resumen = {
+            s["etiqueta"]: s["valores"] for s in bloque["grupos"][0]["secciones"][0]["series"]
+        }
+        cruce = next(g for g in bloque["grupos"] if g["titulo"] == "Capex por Naturaleza")
+
+        for etiqueta, seccion in zip(
+            ("Capex Inicial", "Sostenimiento", "Cierre Mina"), cruce["secciones"], strict=True
+        ):
+            assert seccion["series"][-1]["etiqueta"] == "Total"
+            assert resumen[etiqueta] == pytest.approx(seccion["series"][-1]["valores"]), etiqueta
+
+    def test_sin_unidad_de_proyecto_no_hay_bloque_por_proyecto(
+        self, cliente: TestClient, plantilla: Path, plantilla_capex: Path
+    ) -> None:
+        # El libro desdobla el cruce para el proyecto que evalua. Unidad de
+        # proyecto es la que declara umbral de capital inicial, y este caso no
+        # lo declara: el consolidado va solo, sin bloque suelto que lo duplique.
+        titulos = [g["titulo"] for g in self._capex(cliente, plantilla, plantilla_capex)["grupos"]]
+        assert [t for t in titulos if t.startswith("Capex por Naturaleza - ")] == []
 
     def test_la_ley_se_totaliza_ponderada_por_su_tonelaje(
         self, cliente: TestClient, plantilla: Path

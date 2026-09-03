@@ -193,11 +193,19 @@ en todos los casos.
 no cambian de ano a ano. Los equipos de computo no llevan la suya porque su clasificacion contable es
 la de la maquinaria.
 
-**Dos inputs mas por unidad, y los dos viven en la plantilla de supuestos.** Las **reservas de
+**Tres inputs mas por unidad, y los tres viven en la plantilla de supuestos.** Las **reservas de
 apertura**, en `kt`, que la via financiera agota: declararlas las convierte en dato y dejarlas
 vacias en calculo, que es la distincion que hace el libro entre una unidad en operacion y un
-proyecto. Y la **`Proyeccion SAP`**, en `k$` y una por via, que es la depreciacion ya contabilizada
-de los activos anteriores al caso.
+proyecto. La **`Proyeccion SAP`**, en `k$` y una por via, que es la depreciacion ya contabilizada
+de los activos anteriores al caso. Y el **umbral de capital inicial**, en ejercicios y una sola
+celda, que es lo que decide si el capital de la unidad es inicial o de sostenimiento.
+
+Ese umbral merece su parrafo, porque **vacio no significa cero**: significa que la unidad es base, y
+entonces su capital depreciable es sostenimiento siempre, produzca o no. Un numero la convierte en
+unidad de proyecto y dice hasta cuantos ejercicios con produccion su capital sigue siendo inicial.
+Es la regla `060`, y el modelo de referencia usa uno en un proyecto y dos en otro sin justificarlo,
+de modo que la plataforma no propone ninguno por defecto: lo declara el caso. Como en las reservas,
+un cero escrito a proposito no se distingue de la celda vacia.
 
 **Una clase de unidad mas: la relavera de deposito.** Recibe relave, no extrae mineral, y de ella
 solo hay capital y depreciacion; su costo operativo se carga en la linea `Relavera` de la mina a la

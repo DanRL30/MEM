@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import ClassVar
 
 import pytest
 from openpyxl import load_workbook
 
+from minsur_engine.capex import CapitalDeUnidad, clasificar_por_etapa
 from minsur_engine.caso import (
     Caso,
     DatosComunes,
@@ -104,15 +106,17 @@ def supuestos(tmp_path: Path) -> Path:
 
     libro = load_workbook(ruta)
     _llenar(libro["Comunes"], [float(i) for i in range(len(CON_DATO_DE_SUPUESTOS))])
-    # El sexto valor es la bandera de costo directo en la refineria: uno en X y
-    # cero en Y, para que las dos ramas de la regla `079` queden ejercitadas.
+    # Dos filas eligen que rama se ejercita. La quinta es el umbral de capital
+    # inicial: X es unidad de proyecto y a Y, con la celda en cero, el motor la
+    # trata como unidad base. La septima es la bandera de costo directo en la
+    # refineria, uno en X y cero en Y, que son las dos ramas de la regla `079`.
     _llenar(
         libro["Proyecto X"],
-        [30_000.0, 37_000.0, 12_000.0, 400.0, 95.0, 1.0, 25.0, 100.0, 3.0, 100.0],
+        [30_000.0, 37_000.0, 12_000.0, 400.0, 1.0, 95.0, 1.0, 25.0, 100.0, 3.0, 100.0],
     )
     _llenar(
         libro["Proyecto Y"],
-        [18_000.0, 52_000.0, 0.0, 0.0, 70.0, 0.0, 20.0, 50.0, 2.0, 85.0],
+        [18_000.0, 52_000.0, 0.0, 0.0, 0.0, 70.0, 0.0, 20.0, 50.0, 2.0, 85.0],
     )
     libro.save(ruta)
     return ruta
@@ -329,6 +333,53 @@ class TestAplicarAlCaso:
         assert mina.ley_pagable_declarada["Cu"] == pytest.approx((0.25, 0.25, 0.25))
         assert mina.ley_pagable_declarada["Ag"] == (100.0, 100.0, 100.0)
         assert mina.refinacion_declarada["Ag"] == (3.0, 3.0, 3.0)
+
+    def test_el_umbral_de_capital_inicial_distingue_proyecto_de_unidad_base(
+        self, comite: Path, supuestos: Path
+    ) -> None:
+        # Regla `060`: el capital depreciable de una unidad base es sostenimiento
+        # siempre, produzca o no, y el de un proyecto es inicial mientras su
+        # cuenta de ejercicios con produccion no pase el umbral. Vacio -y un cero,
+        # que esta plantilla no distingue de vacio- significa unidad base.
+        del_caso = leer_supuestos(supuestos).supuestos
+        assert del_caso is not None
+        caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
+
+        assert caso.unidades[0].umbral_de_capital_inicial == 1
+        assert caso.unidades[1].umbral_de_capital_inicial is None
+
+    def test_el_umbral_reclasifica_el_capital_ya_leido(self, comite: Path, supuestos: Path) -> None:
+        # El libro de capex se lee antes que el de supuestos y clasifica la
+        # etapa al leer, con el umbral todavia vacio: el capital de un proyecto
+        # salia entero a sostenimiento y el `Capex Inicial` del flujo valia cero.
+        # Nada lo acusaba, porque las dos clasificaciones seguian cuadrando.
+        horizonte = Horizonte(primer_ano=2027, anos=3)
+        naturalezas = {"maquinaria": (100.0, 200.0, 300.0)}
+        caso = self._caso()
+        unidades = tuple(
+            replace(
+                unidad,
+                capital=CapitalDeUnidad(
+                    unidad=unidad.nombre,
+                    por_naturaleza=naturalezas,
+                    por_etapa=clasificar_por_etapa(horizonte, naturalezas, anos_activos=(1, 2)),
+                ),
+            )
+            for unidad in caso.unidades
+        )
+        del_caso = leer_supuestos(supuestos).supuestos
+        assert del_caso is not None
+
+        capital = replace(caso, unidades=unidades)
+        antes = capital.unidades[0].capital
+        assert antes is not None
+        assert sum(antes.por_etapa["inicial"]) == 0.0
+
+        aplicado = aplicar(capital, del_caso, leer_comite_de_precios(comite).comite)
+        primera = aplicado.unidades[0].capital
+        assert primera is not None
+        assert primera.por_etapa["inicial"] == (100.0, 200.0, 0.0)
+        assert primera.total_por_etapa() == pytest.approx(primera.total_por_naturaleza())
 
     def test_la_bandera_de_costo_directo_en_la_refineria(
         self, comite: Path, supuestos: Path

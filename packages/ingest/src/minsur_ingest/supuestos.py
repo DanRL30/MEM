@@ -22,13 +22,14 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 
+from minsur_engine.capex import clasificar_por_etapa
 from minsur_engine.caso import (
     Caso,
     MetalDelConcentrado,
     TerminosDelConcentrado,
     UnidadProductiva,
 )
-from minsur_engine.horizonte import Horizonte, Serie
+from minsur_engine.horizonte import Horizonte, Serie, anos_con_dato
 from minsur_ingest.incidencias import Incidencia
 from minsur_ingest.sinonimos import normalizar
 
@@ -176,6 +177,15 @@ FILAS_POR_UNIDAD = (
     # Recursos que pasan a reserva, ano a ano: es lo que permite el acuerdo 9 de
     # la minuta del 27/08/2026. A diferencia de las reservas, no es un saldo.
     FilaDeSupuesto("Conversion de Recursos", "kt", "conversion_de_recursos"),
+    # Hasta cuantos ejercicios con produccion el capital de esta unidad es
+    # inicial. **Vacio significa unidad base**, y entonces su capital depreciable
+    # es sostenimiento siempre, produzca o no: es la regla `060`, y no es una
+    # puerta por produccion aplicada a todas por igual. El libro usa uno en un
+    # proyecto y dos en otro sin justificarlo, de modo que aqui no hay valor por
+    # defecto que proponer: lo declara el caso.
+    FilaDeSupuesto(
+        "Umbral de Capital Inicial", "anos", "umbral_de_capital_inicial", constante=True
+    ),
     FilaDeSupuesto("Refineria", SECCION),
     FilaDeSupuesto("Recuperacion de Sn en la refineria", "%", "recuperacion_en_la_refineria"),
     # Uno si el costo de refinar el concentrado de esta unidad ya esta en los
@@ -420,7 +430,7 @@ def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProdu
             recuperaciones[unidad.nombre] = {"Sn": serie}
 
     capacidad = supuestos.comunes.get("capacidad_de_la_refineria", ())
-    return tuple(
+    con_supuestos = tuple(
         replace(
             unidad,
             recuperacion_en_la_refineria=recuperaciones,
@@ -449,9 +459,41 @@ def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProdu
             costo_directo_en_la_refineria=_bandera(
                 propios_de[unidad.nombre].get("costo_directo_en_la_refineria", ())
             ),
+            umbral_de_capital_inicial=_umbral(
+                propios_de[unidad.nombre], unidad.umbral_de_capital_inicial
+            ),
         )
         for unidad in caso.unidades
     )
+    return tuple(_con_la_etapa_al_dia(caso.horizonte, unidad) for unidad in con_supuestos)
+
+
+def _con_la_etapa_al_dia(horizonte: Horizonte, unidad: UnidadProductiva) -> UnidadProductiva:
+    """Reclasifica el capital si el umbral que decide su etapa acaba de cambiar.
+
+    `minsur_ingest.capex.aplicar` clasifica el capital al leer el libro, y esa
+    clasificacion depende del umbral de capital inicial, que llega en **otro**
+    libro. Cargados en el orden habitual —capex antes que supuestos— el capital
+    quedaba clasificado con el umbral todavia vacio, de modo que el de un
+    proyecto salia entero a sostenimiento y el `Capex Inicial` del flujo valia
+    cero. Ningun error lo acusaba: las dos clasificaciones seguian cuadrando
+    entre si, porque la que estaba mal era la derivada.
+
+    Rehacerla aqui, en vez de reordenar las cargas, es lo que hace que el
+    resultado no dependa de en que orden se suban los libros: el siguiente
+    supuesto que gobierne un calculo derivado no vuelve a abrir este hueco.
+    """
+    if unidad.capital is None:
+        return unidad
+    etapas = clasificar_por_etapa(
+        horizonte,
+        unidad.capital.por_naturaleza,
+        anos_activos=anos_con_dato(unidad.produccion.mineral_tratado),
+        umbral_inicial=unidad.umbral_de_capital_inicial,
+    )
+    if etapas == dict(unidad.capital.por_etapa):
+        return unidad
+    return replace(unidad, capital=replace(unidad.capital, por_etapa=etapas))
 
 
 def _bandera(serie: Serie) -> bool:
@@ -548,6 +590,24 @@ def _constante(serie: Serie) -> float | None:
         if valor:
             return valor
     return None
+
+
+def _umbral(propios: dict[str, Serie], declarado: int | None) -> int | None:
+    """Umbral de capital inicial de una unidad, si la plantilla lo declara.
+
+    Es una cuenta de ejercicios, de modo que se redondea al entero: la celda es
+    numerica y nada impide escribir 1,5, que no significa nada. **Una fila vacia
+    no es un umbral de cero: es una unidad base**, y las dos cosas dan capital
+    distinto, porque el de una unidad base es sostenimiento siempre.
+
+    Un cero escrito a proposito no se distingue de la celda vacia, que es la
+    misma convencion de las reservas: la plantilla no tiene forma de separarlos
+    y el motor lo lee como unidad base. La diferencia solo importaria en un
+    proyecto cuyo capital fuera inicial unicamente antes de su primer ejercicio
+    productivo, que el modelo de referencia no contiene.
+    """
+    valor = _constante(propios.get("umbral_de_capital_inicial", ()))
+    return round(valor) if valor is not None else declarado
 
 
 def _reservas(propios: dict[str, Serie], declaradas: float | None) -> float | None:

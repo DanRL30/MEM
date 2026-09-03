@@ -236,6 +236,15 @@ class Corrida:
     """Lo que el recálculo no pudo corroborar. Viaja con la corrida al congelarse."""
 
     capex: Serie
+    capital_por_unidad: tuple[CapitalDeUnidad, ...]
+    """El capital que entro al calculo, unidad a unidad y ya ajustado.
+
+    No es `caso.unidades[*].capital`: ese es el declarado, y el que se deprecia
+    y llega al flujo lleva aplicada la banda de precision del estimado -la regla
+    `033`-. Presentar el declarado junto a un flujo calculado con el ajustado
+    descuadraria la hoja sin que nada lo acusara.
+    """
+
     depreciacion_tributaria_por_mina: dict[str, Serie]
     depreciacion_financiera_por_mina: dict[str, Serie]
 
@@ -478,6 +487,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         anos_activos_por_unidad=_anos_activos(caso),
         discrepancias=corroborar(caso),
         capex=total_capex,
+        capital_por_unidad=tuple(capital),
         depreciacion_tributaria_por_mina=depreciacion_tributaria,
         depreciacion_financiera_por_mina=depreciacion_financiera,
         depreciacion_tributaria_por_componente=detalle_tributario,
