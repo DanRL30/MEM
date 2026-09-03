@@ -67,6 +67,24 @@
     radial-gradient(50rem 34rem at 92% 4%, rgba(0, 61, 165, 0.12), transparent 62%);
 }
 
+/* --- El modelo de caja ----------------------------------------------------
+ * El reajuste que el navegador no trae. Sin el, un control con `width: 100%`
+ * mide su cien por cien **mas** su relleno y su borde, de modo que se sale de
+ * su contenedor por la derecha: los campos del formulario de escenario se
+ * salian de la tarjeta exactamente los veintiseis pixeles de sus dos rellenos
+ * de doce y sus dos bordes de uno.
+ *
+ * Va global y no solo en los controles porque el fallo no es de los controles:
+ * es del modelo de caja por defecto, y reaparece en cualquier elemento con
+ * ancho declarado y relleno.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   background-image: var(--lavado-marca);
   background-attachment: fixed;
