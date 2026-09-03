@@ -165,9 +165,9 @@ Hoy `apps/web/tests/` solo contiene `App.test.tsx`. Un filtro por una vista que 
 selecciona nada y vitest termina en 1 con `No test files found`: es un filtro vacio, no una
 regresion.
 
-Dos pruebas tardan cerca de minuto y medio, y casi todo ese tiempo es el montaje del entorno jsdom
-en Windows -- 70 s de los 83 s medidos el 02/09/2026-. No esta colgado: vitest no imprime nada
-hasta que termina de preparar el entorno.
+Dos pruebas tardan entre uno y dos minutos, y casi todo ese tiempo es el montaje del entorno jsdom
+en Windows -34 s de 45 s en una medicion, 70 s de 83 s en otra-. No esta colgado: vitest no imprime
+nada hasta que termina de preparar el entorno, y lo que varia es la maquina, no la suite.
 
 Las pruebas de extremo a extremo estan declaradas y sin poblar. `pnpm test:e2e` apunta a
 `tests/e2e/playwright.config.ts`, que todavia no existe; el directorio solo tiene su `.gitkeep`.
@@ -221,14 +221,14 @@ verificacion previa a un commit.
 
 ## 3. Estado verificado de las comprobaciones
 
-Reejecutadas el 02/09/2026 sobre el arbol completo, las puertas de
-[ci.yml](infra/pipelines/ci.yml) -convenciones, `ruff check`, `ruff format`, `mypy` en estricto,
-`pytest`, y `pnpm lint`, `typecheck`, `test` y `build`- **estan todas en verde**. Cualquier fallo es
-una regresion introducida despues, no deuda heredada.
+Las nueve puertas de [ci.yml](infra/pipelines/ci.yml) -convenciones, `ruff check`, `ruff format`,
+`mypy` en estricto, `pytest`, y `pnpm lint`, `typecheck`, `test` y `build`- **pasan sobre el arbol
+que se entrega**. Cualquier fallo es una regresion introducida despues, no deuda heredada.
 
-Aqui no va la cuenta de pruebas ni de archivos: es un numero que envejece en el commit siguiente y
-que el propio comando informa mejor. Lo que este archivo fija es el invariante -el arbol se entrega
-en verde- y lo que cuesta reaprender si se pierde, que es lo que sigue.
+Aqui no va la cuenta de pruebas ni de archivos, ni la fecha de la ultima ejecucion: son datos que
+envejecen en el commit siguiente y que el propio comando informa mejor. Lo que este archivo fija es
+el invariante -el arbol se entrega en verde- y lo que cuesta reaprender si se pierde, que es lo que
+sigue.
 
 Dos cosas que conviene saber sobre como se llego aqui, porque explican decisiones que de otro modo
 parecen arbitrarias:
@@ -471,7 +471,7 @@ La tolerancia de corroboracion **no es la del contraste N1**: aquella compara el
 libro y la fija Finanzas (`R-31`); esta compara el dato del usuario contra el recalculo del propio
 sistema, y el 0,5 % de `TOLERANCIA_POR_DEFECTO` es propuesta de INVA.
 
-### Seis decisiones del motor que no se deducen leyendolo
+### Ocho decisiones del motor que no se deducen leyendolo
 
 - **El unico lazo del motor esta en `impuestos.py`, y no se itera.** La hoja `Impuestos` se muerde
   la cola: el fondo de jubilacion minera es gasto de la misma utilidad operativa que sirve para
@@ -503,6 +503,26 @@ sistema, y el 0,5 % de `TOLERANCIA_POR_DEFECTO` es propuesta de INVA.
   varian los primeros ejercicios porque hay mejor informacion sobre ellos. `ParametrosCorporativos`
   conserva la tasa de referencia y `DatosComunes.osinergmin` y `.oefa` la sobrescriben cuando el
   caso las declara.
+- **El descuento es a fin de ano y se aparta del estandar a proposito.** `1/(1 + r)^t` con `t`
+  entero desde el primer ejercicio del horizonte: es la regla `005` y es lo que hace el modelo
+  vigente. `DM-STD-PE-27` en su seccion 5.1 pide mitad de ano contra una fecha base, y dos
+  evaluaciones historicas de 2024 lo hacian -sus exponentes van de -7,5 a 27,5, de modo que los
+  ejercicios anteriores a la base se capitalizan en vez de descontarse-. Contra esas dos hojas la
+  unica diferencia entre el motor y el libro es exactamente el factor de traslado de la fecha base.
+  Eso invierte el sentido de la discrepancia: no es una exigencia que nadie haya aplicado nunca,
+  es una practica que existio y que el modelo vigente abandono, y por eso es una pregunta legitima
+  de la certificacion. Lo decide el [ADR 0010](docs/adr/0010-convencion-de-descuento.md).
+- **La TIR no siempre existe, y no tenerla es el resultado correcto.** `tir()` entrega la tasa solo
+  si el primer ejercicio con movimiento es un desembolso y hay al menos una raiz no negativa
+  -entre varias, la menor-; en cualquier otro supuesto declara que no hay TIR. Las tres hojas del
+  modelo vigente describen operaciones en marcha, con un unico cambio de signo y su raiz entre el
+  -49 % y el -58 %: el libro tampoco las publica, porque su `IRR` no converge desde la semilla de
+  Excel y el `IFERROR` escribe un guion. Hasta el 03/09/2026 el motor entregaba esa raiz, y una
+  tasa del -49 % presentada como «TIR del caso» induce a error sobre un caso que el modelo declara
+  sin ella. Lo fija `test_n0_a_n3.py::TestN3::test_un_caso_sin_desembolso_no_define_tir` y lo decide
+  el [ADR 0011](docs/adr/0011-cuando-el-motor-entrega-tir.md). El calculo va por barrido y
+  biseccion, no con la semilla de Excel, porque dos corridas de la misma serie tienen que dar el
+  mismo numero: es condicion del sellado.
 
 ### Lo que ya esta construido: el dominio
 
