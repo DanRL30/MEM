@@ -104,11 +104,16 @@ def supuestos(tmp_path: Path) -> Path:
 
     libro = load_workbook(ruta)
     _llenar(libro["Comunes"], [float(i) for i in range(len(CON_DATO_DE_SUPUESTOS))])
+    # El sexto valor es la bandera de costo directo en la refineria: uno en X y
+    # cero en Y, para que las dos ramas de la regla `079` queden ejercitadas.
     _llenar(
         libro["Proyecto X"],
-        [30_000.0, 37_000.0, 12_000.0, 400.0, 95.0, 25.0, 100.0, 3.0, 100.0],
+        [30_000.0, 37_000.0, 12_000.0, 400.0, 95.0, 1.0, 25.0, 100.0, 3.0, 100.0],
     )
-    _llenar(libro["Proyecto Y"], [18_000.0, 52_000.0, 0.0, 0.0, 70.0, 20.0, 50.0, 2.0, 85.0])
+    _llenar(
+        libro["Proyecto Y"],
+        [18_000.0, 52_000.0, 0.0, 0.0, 70.0, 0.0, 20.0, 50.0, 2.0, 85.0],
+    )
     libro.save(ruta)
     return ruta
 
@@ -324,6 +329,19 @@ class TestAplicarAlCaso:
         assert mina.ley_pagable_declarada["Cu"] == pytest.approx((0.25, 0.25, 0.25))
         assert mina.ley_pagable_declarada["Ag"] == (100.0, 100.0, 100.0)
         assert mina.refinacion_declarada["Ag"] == (3.0, 3.0, 3.0)
+
+    def test_la_bandera_de_costo_directo_en_la_refineria(
+        self, comite: Path, supuestos: Path
+    ) -> None:
+        # Regla `079`: cada unidad declara si el costo de refinar su concentrado
+        # ya esta en el bloque de la refineria o si va por la tarifa. Una celda
+        # constante, uno o cero, porque la plantilla no tiene casilla.
+        del_caso = leer_supuestos(supuestos).supuestos
+        assert del_caso is not None
+        caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
+
+        assert caso.unidades[0].costo_directo_en_la_refineria is True
+        assert caso.unidades[1].costo_directo_en_la_refineria is False
         assert caso.terminos.concentrado is not None
         assert caso.terminos.concentrado.metales[0].ley_pagable == ()
 

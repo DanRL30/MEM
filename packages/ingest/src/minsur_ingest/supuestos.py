@@ -179,6 +179,15 @@ FILAS_POR_UNIDAD = (
     FilaDeSupuesto("Conversion de Recursos", "kt", "conversion_de_recursos"),
     FilaDeSupuesto("Refineria", SECCION),
     FilaDeSupuesto("Recuperacion de Sn en la refineria", "%", "recuperacion_en_la_refineria"),
+    # Uno si el costo de refinar el concentrado de esta unidad ya esta en los
+    # conceptos del bloque de la refineria; cero, o vacio, si va por la tarifa
+    # por tonelada fina. Es la regla `079`, y una sola celda: no cambia por ano.
+    FilaDeSupuesto(
+        "Costo Directo en la Refineria",
+        "fraccion",
+        "costo_directo_en_la_refineria",
+        constante=True,
+    ),
     FilaDeSupuesto("Concentrado", SECCION),
     # Las tres salen de la ley del concentrado de esta unidad, de modo que van
     # con ella y no en la pestana comun: dos minas con distinta ley de cobre no
@@ -300,6 +309,9 @@ def aplicar(caso: Caso, supuestos: SupuestosDelCaso, comite: ComiteDePrecios | N
             fletes_por_tonelada=comunes.get("transporte", caso.datos_comunes.fletes_por_tonelada),
             gasto_de_ventas_por_tonelada=comunes.get(
                 "gasto_de_ventas_conc_sn", caso.datos_comunes.gasto_de_ventas_por_tonelada
+            ),
+            costo_de_fundicion=comunes.get(
+                "costo_de_fundicion", caso.datos_comunes.costo_de_fundicion
             ),
             exploraciones=comunes.get("exploraciones", caso.datos_comunes.exploraciones),
             planilla_sobre_cash_cost=comunes.get(
@@ -438,9 +450,22 @@ def _con_supuestos(caso: Caso, supuestos: SupuestosDelCaso) -> tuple[UnidadProdu
                 propios_de[unidad.nombre], {"Cu": "ley_pagable_cu", "Ag": "ley_pagable_ag"}
             ),
             refinacion_declarada=_por_metal(propios_de[unidad.nombre], {"Ag": "refinacion_ag"}),
+            costo_directo_en_la_refineria=_bandera(
+                propios_de[unidad.nombre].get("costo_directo_en_la_refineria", ())
+            ),
         )
         for unidad in caso.unidades
     )
+
+
+def _bandera(serie: Serie) -> bool:
+    """Una celda constante que vale uno o cero, leida como bandera.
+
+    La plantilla no tiene casilla de verificacion: sus celdas son numericas y
+    validadas como tales. Un uno es si y cualquier otra cosa, incluido el vacio,
+    es no.
+    """
+    return bool(serie) and serie[0] == 1.0
 
 
 def _por_metal(propios: dict[str, Serie], campos: Mapping[str, str]) -> dict[str, Serie]:

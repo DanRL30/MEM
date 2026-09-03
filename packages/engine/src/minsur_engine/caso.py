@@ -214,6 +214,17 @@ class UnidadProductiva:
     y el de la plata, de la ley pagable de esta unidad.
     """
 
+    costo_directo_en_la_refineria: bool = False
+    """Si el costo de refinar su concentrado ya está en el bloque de la refinería.
+
+    El libro cobra la refinería de dos maneras y esta bandera dice por cuál va
+    cada origen: el que la declara lleva su costo en los conceptos de la propia
+    planta, y el que no, a la tarifa por tonelada fina. Es la regla `079`.
+
+    Vacía significa que no lleva costo directo, que es el caso de un proyecto
+    nuevo: entra por la tarifa hasta que alguien decida lo contrario.
+    """
+
     recuperacion_en_la_refineria: Mapping[str, Mapping[str, Serie]] = field(default_factory=dict)
     """Solo en la unidad de la refinería: su recuperación por origen y por metal.
 
@@ -380,6 +391,20 @@ class DatosComunes:
     otros_flujo: Serie = ()
     fletes_por_tonelada: Serie = ()
     gasto_de_ventas_por_tonelada: Serie = ()
+
+    costo_de_fundicion: Serie = ()
+    """Tarifa de la refinería por tonelada fina, para el concentrado que no
+    lleva costo directo en su bloque.
+
+    La hoja de opex del libro cobra la refinería de dos maneras: los orígenes de
+    su bloque directo llevan los conceptos de la propia planta, y el resto se
+    cobra a esta tarifa por lo que refina cada uno. Es la regla `079`.
+
+    **Hoy solo se informa, no entra al flujo.** Qué orígenes van por el bloque
+    directo lo tiene que declarar el caso, y esa declaración está pendiente:
+    hasta que llegue, sumar esto al cash cost cobraría dos veces la misma
+    tonelada en los orígenes que ya están dentro del bloque.
+    """
     dias_por_cobrar: Serie = ()
     dias_por_pagar: Serie = ()
     dias_del_ano_comercial: float = 360.0

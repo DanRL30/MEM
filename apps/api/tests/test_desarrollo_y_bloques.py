@@ -418,6 +418,57 @@ class TestBloquesIntermedios:
         assert "Fundición" not in etiquetas
         assert "Línea de transmisión" not in etiquetas
 
+    def test_el_reparto_de_la_refineria_se_informa_y_no_entra_al_flujo(
+        self, cliente: TestClient, plantilla: Path, plantilla_opex: Path
+    ) -> None:
+        # Regla 079. El supuesto `Costo de Fundicion` se pedia en la plantilla y
+        # la ingesta lo descartaba; ahora llega al motor. El bloque lo reparte
+        # por origen, pero no se suma al cash cost: que origenes van por el
+        # bloque directo lo tiene que declarar el caso, y sumarlo antes cobraria
+        # dos veces la tonelada de uno que ya esta dentro.
+        cuerpo = self._bloques(cliente, plantilla, plantilla_opex)
+        opex = next(b for b in cuerpo["bloques"] if b["clave"] == "opex")
+        supuestos = [g for g in opex["grupos"] if g["titulo"].startswith("Supuestos ")]
+
+        # La plantilla de la prueba no declara la tarifa, asi que el bloque no
+        # se emite: sin tarifa no hay reparto que mostrar.
+        assert supuestos == []
+
+    def test_la_unidad_con_costo_directo_no_paga_tarifa(self) -> None:
+        # La bandera la declara cada unidad en su pestana de supuestos, y con
+        # ella el bloque directo cubre a unas y la tarifa a las otras. Que
+        # unidades son no puede estar escrito en el codigo: un proyecto nuevo
+        # entra por la tarifa hasta que alguien decida lo contrario.
+        from minsur_engine.caso import ProduccionDeUnidad, UnidadProductiva
+
+        sin_declarar = UnidadProductiva(
+            nombre="Proyecto X", tipo="mina", produccion=ProduccionDeUnidad(mineral_tratado=(1.0,))
+        )
+        assert sin_declarar.costo_directo_en_la_refineria is False
+
+    def test_el_total_del_cash_cost_va_en_su_propia_fila(
+        self, cliente: TestClient, plantilla: Path, plantilla_opex: Path
+    ) -> None:
+        # En el libro cierra los bloques de cash cost y no entra en el de
+        # produccion: es una fila suelta entre los dos.
+        cuerpo = self._bloques(cliente, plantilla, plantilla_opex)
+        opex = next(b for b in cuerpo["bloques"] if b["clave"] == "opex")
+        produccion = next(g for g in opex["grupos"] if g["titulo"] == "Producción")
+
+        assert "Total Cash Cost" not in [
+            s["etiqueta"] for seccion in produccion["secciones"] for s in seccion["series"]
+        ]
+        suelta = next(
+            g
+            for g in opex["grupos"]
+            if any(
+                s["etiqueta"] == "Total Cash Cost"
+                for seccion in g["secciones"]
+                for s in seccion["series"]
+            )
+        )
+        assert opex["grupos"].index(suelta) < opex["grupos"].index(produccion)
+
     def test_el_costo_unitario_sale_de_dividir_lo_de_arriba(
         self, cliente: TestClient, plantilla: Path, plantilla_opex: Path
     ) -> None:

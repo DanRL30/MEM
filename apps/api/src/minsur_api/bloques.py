@@ -355,6 +355,58 @@ def _grupos_de_cash_cost(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDel
     return grupos
 
 
+def _grupo_de_supuestos_de_la_refineria(corrida: CorridaAlmacenada) -> list[GrupoDelBloque]:
+    """El reparto del costo de la refinería por origen. Es la regla `079`.
+
+    El libro cobra la refinería de dos maneras: los orígenes de su bloque
+    directo llevan los conceptos de la propia planta, y el resto se cobra a una
+    tarifa por tonelada fina aplicada a lo que refina cada uno.
+
+    Cada unidad declara por cuál va: la que marca `costo_directo_en_la_refineria`
+    ya lleva su costo en los conceptos del bloque, y no sale aquí. La lista no se
+    escribe en el código: la declara el caso, unidad a unidad.
+
+    **Se informa y no entra al flujo.** Sumarlo al cash cost cambia el NPV, y esa
+    es una decisión de Finanzas que la regla `079` deja abierta.
+    """
+    resultado = corrida.resultado
+    refineria = resultado.caso.refineria
+    tarifa = resultado.caso.datos_comunes.costo_de_fundicion
+    if refineria is None or not _tiene_dato(tarifa):
+        return []
+
+    series = [
+        _serie("Costo / tmf", tarifa, medida="$/tmf", origen="dato"),
+        _serie("Recuperación Pisco", resultado.refineria.refinado, medida="tmf"),
+    ]
+    directos = {
+        unidad.nombre for unidad in resultado.caso.unidades if unidad.costo_directo_en_la_refineria
+    }
+    por_tarifa = [a for a in resultado.refineria.aportes if a.unidad not in directos]
+    for aporte in por_tarifa:
+        series.append(
+            _serie(
+                f"Sub total {refineria.nombre} {aporte.unidad}",
+                [tarifa[i] * fina for i, fina in enumerate(aporte.refinado[: len(tarifa)])],
+                medida=MEDIDA_OPEX,
+            )
+        )
+    directo = resultado.cash_cost_por_unidad.get(refineria.nombre, ())
+    total = [
+        (directo[i] if i < len(directo) else 0.0)
+        + sum(tarifa[i] * a.refinado[i] for a in por_tarifa if i < len(a.refinado))
+        for i in range(len(tarifa))
+    ]
+    series.append(_serie(f"Total {refineria.nombre}", total, medida=MEDIDA_OPEX))
+
+    return [
+        GrupoDelBloque(
+            titulo=f"Supuestos {_rotulo_de_refineria(refineria.nombre)}",
+            secciones=_una_seccion(series),
+        )
+    ]
+
+
 def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDelBloque]:
     """Lo que el libro calcula debajo de los bloques: producción y costo unitario.
 
@@ -364,9 +416,7 @@ def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> l
     resultado = corrida.resultado
     tratado = resultado.mineral_tratado_por_unidad
 
-    produccion = [
-        _serie("Total Cash Cost", resultado.cash_cost, medida=MEDIDA_OPEX),
-    ]
+    produccion: list[SerieAnual] = []
     for unidad in resultado.caso.unidades:
         if unidad.nombre in tratado:
             produccion.append(
@@ -416,7 +466,17 @@ def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> l
             )
         )
 
-    grupos = [GrupoDelBloque(titulo="Producción", secciones=_una_seccion(produccion))]
+    # `Total Cash Cost` cierra los bloques de cash cost y no entra en el de
+    # producción: en el libro es una fila suelta entre los dos.
+    grupos = [
+        GrupoDelBloque(
+            titulo="",
+            secciones=_una_seccion(
+                [_serie("Total Cash Cost", resultado.cash_cost, medida=MEDIDA_OPEX)]
+            ),
+        ),
+        GrupoDelBloque(titulo="Producción", secciones=_una_seccion(produccion)),
+    ]
     if unitarios:
         grupos.append(GrupoDelBloque(titulo="Cash cost por tonelada tratada", secciones=unitarios))
     if por_fina:
@@ -471,6 +531,7 @@ def _bloque_de_opex(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorrida:
         hoja="InputsOpex",
         grupos=[
             *_grupos_de_cash_cost(corrida, anos),
+            *_grupo_de_supuestos_de_la_refineria(corrida),
             *_grupo_de_produccion_y_unitarios(corrida, anos),
             *_grupos_de_gastos(corrida),
         ],
