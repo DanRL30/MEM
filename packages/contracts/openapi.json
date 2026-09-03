@@ -992,6 +992,18 @@
       "SerieAnual": {
         "description": "Una línea del libro, con un valor por año del horizonte.\n\nLa etiqueta y la medida son las del libro corporativo, no una traducción de\nla interfaz: salen del mismo catálogo con el que se emite la plantilla y con\nel que se lee. El usuario ve en pantalla la fila que llenó, con su nombre.\n\n`concepto` es el campo del motor que la alimenta y no se muestra. Está para\nque una discrepancia se pueda seguir de la celda al módulo que la produce.",
         "properties": {
+          "acumulado": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "El total del horizonte, en la columna de la derecha. Lo resuelve la API porque no siempre es una suma: una ley es el promedio ponderado por el tonelaje de su fila, y un ratio no tiene total",
+            "title": "Acumulado"
+          },
           "concepto": {
             "default": "",
             "description": "Campo del motor que alimenta la línea",
@@ -1045,6 +1057,12 @@
             ],
             "description": "Lo que el sistema esperaba para una línea que el usuario carga y el motor sabe rehacer. Va debajo de la cargada; sin ella la alerta no dice qué esperaba",
             "title": "Recalculada"
+          },
+          "total": {
+            "default": false,
+            "description": "Si la fila cierra un bloque o es una linea de calculo. El libro las sombrea, y quien lee la hoja las busca por ese sombreado",
+            "title": "Total",
+            "type": "boolean"
           },
           "valores": {
             "items": {

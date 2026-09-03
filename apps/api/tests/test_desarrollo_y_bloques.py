@@ -518,6 +518,36 @@ class TestBloquesIntermedios:
         assert "Planilla" in etiquetas
         assert etiquetas[-1] == "Gestión Social Deducible"
 
+    def test_la_ley_se_totaliza_ponderada_por_su_tonelaje(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # El modelo da total tambien en las leyes, y no es una suma: sumar
+        # treinta y seis porcentajes no es nada. Es el promedio ponderado por el
+        # tonelaje de su fila, que es como el propio libro consolida la ley de
+        # dos corrientes. La relacion entre una ley y su tonelaje es posicional.
+        cuerpo = self._bloques(cliente, plantilla)
+        produccion = next(b for b in cuerpo["bloques"] if b["clave"] == "produccion")
+        mina = next(g for g in produccion["grupos"] if g["titulo"] == "Mina Alfa")
+        series = [s for seccion in mina["secciones"] for s in seccion["series"]]
+
+        extraido = next(s for s in series if s["etiqueta"] == "Mineral extraído")
+        ley = next(s for s in series if s["etiqueta"] == "Ley Sn")
+
+        assert extraido["acumulado"] == pytest.approx(sum(extraido["valores"]))
+        # Con la ley constante en los ejercicios con dato, el ponderado es esa
+        # misma ley y no su suma.
+        assert ley["acumulado"] == pytest.approx(max(ley["valores"]))
+        assert ley["acumulado"] < sum(ley["valores"])
+
+    def test_un_ratio_no_lleva_total(
+        self, cliente: TestClient, plantilla: Path, plantilla_opex: Path
+    ) -> None:
+        cuerpo = self._bloques(cliente, plantilla, plantilla_opex)
+        opex = next(b for b in cuerpo["bloques"] if b["clave"] == "opex")
+        por_fina = next(g for g in opex["grupos"] if g["titulo"] == "Cash cost por tonelada fina")
+
+        assert all(s["acumulado"] is None for s in por_fina["secciones"][0]["series"])
+
     def test_cada_serie_tiene_un_valor_por_ano(self, cliente: TestClient, plantilla: Path) -> None:
         cuerpo = self._bloques(cliente, plantilla)
         anios = len(cuerpo["anios"])

@@ -128,6 +128,7 @@ describe("La hoja del libro", () => {
             medida: "t",
             concepto: "toneladas_finas",
             origen: "dato",
+            total: false,
             recalculada: [0, 13, 13],
             valores: [0, 13.5, 13.5],
           },
@@ -148,6 +149,7 @@ describe("La hoja del libro", () => {
             medida: "t",
             concepto: "toneladas_finas",
             origen: "dato",
+            total: false,
             recalculada: [0, 13, 13],
             valores: [0, 13.5, 13.5],
           },
@@ -175,6 +177,7 @@ describe("La hoja del libro", () => {
             medida: "t",
             concepto: "mineral_extraido",
             origen: "dato",
+            total: false,
             valores: [1404922, 0, 0],
           },
           {
@@ -182,6 +185,7 @@ describe("La hoja del libro", () => {
             medida: "%",
             concepto: "ley_de_cabeza",
             origen: "dato",
+            total: false,
             valores: [0.02, 0, 0],
           },
         ])}
@@ -206,16 +210,20 @@ describe("La hoja del libro", () => {
         anios={anios}
         grupos={grupo([
           {
+            acumulado: 90_000_000,
             etiqueta: "Mina",
             medida: "$k",
             concepto: "",
             origen: "dato",
+            total: false,
             valores: [90_000_000, 0, 0],
           },
         ])}
       />,
     );
-    expect(screen.getByText("90,000")).toBeDefined();
+    // Sale dos veces: en su ejercicio y en la columna del acumulado, que la API
+    // resuelve y la pantalla solo pinta.
+    expect(screen.getAllByText("90,000")).toHaveLength(2);
   });
 
   it("lleva la unidad de medida en su propia columna", () => {
@@ -228,6 +236,7 @@ describe("La hoja del libro", () => {
             medida: "oz/t",
             concepto: "ley_ag",
             origen: "dato",
+            total: false,
             valores: [1.5, 1.5, 1.5],
           },
         ])}
@@ -235,6 +244,37 @@ describe("La hoja del libro", () => {
     );
     expect(screen.getByRole("columnheader", { name: "Unidad" })).toBeDefined();
     expect(screen.getByText("oz/t")).toBeDefined();
+  });
+
+  it("sombrea la fila que cierra un bloque", () => {
+    // Es la que el ojo busca al recorrer la hoja. Quien decide cual es la API,
+    // no la pantalla: aqui solo se pinta lo que viene marcado.
+    render(
+      <TablaDelLibro
+        anios={anios}
+        grupos={grupo([
+          {
+            etiqueta: "Mina",
+            medida: "$k",
+            concepto: "",
+            origen: "dato",
+            total: false,
+            valores: [1, 1, 1],
+          },
+          {
+            etiqueta: "Total San Rafael",
+            medida: "$k",
+            concepto: "",
+            origen: "calculada",
+            total: true,
+            valores: [1, 1, 1],
+          },
+        ])}
+      />,
+    );
+    const filas = screen.getAllByRole("row");
+    expect(filas[3]?.className).toBe("");
+    expect(filas[4]?.className).toBe("fila-total");
   });
 
   it("avisa cuando el bloque no tiene ninguna linea con dato", () => {

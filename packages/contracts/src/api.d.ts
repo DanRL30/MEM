@@ -969,6 +969,11 @@ export interface components {
          */
         SerieAnual: {
             /**
+             * Acumulado
+             * @description El total del horizonte, en la columna de la derecha. Lo resuelve la API porque no siempre es una suma: una ley es el promedio ponderado por el tonelaje de su fila, y un ratio no tiene total
+             */
+            acumulado?: number | null;
+            /**
              * Concepto
              * @description Campo del motor que alimenta la línea
              * @default
@@ -1002,6 +1007,12 @@ export interface components {
              * @description Lo que el sistema esperaba para una línea que el usuario carga y el motor sabe rehacer. Va debajo de la cargada; sin ella la alerta no dice qué esperaba
              */
             recalculada?: number[] | null;
+            /**
+             * Total
+             * @description Si la fila cierra un bloque o es una linea de calculo. El libro las sombrea, y quien lee la hoja las busca por ese sombreado
+             * @default false
+             */
+            total: boolean;
             /** Valores */
             valores: number[];
         };

@@ -292,6 +292,21 @@ class SerieAnual(Base):
             "sabe rehacer. Va debajo de la cargada; sin ella la alerta no dice qué esperaba"
         ),
     )
+    acumulado: float | None = Field(
+        default=None,
+        description=(
+            "El total del horizonte, en la columna de la derecha. Lo resuelve la API "
+            "porque no siempre es una suma: una ley es el promedio ponderado por el "
+            "tonelaje de su fila, y un ratio no tiene total"
+        ),
+    )
+    total: bool = Field(
+        default=False,
+        description=(
+            "Si la fila cierra un bloque o es una linea de calculo. El libro las "
+            "sombrea, y quien lee la hoja las busca por ese sombreado"
+        ),
+    )
     nota: str | None = Field(
         default=None,
         description="Aviso al pie de la fila, cuando la plataforma se aparta del libro",

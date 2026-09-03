@@ -16,7 +16,10 @@
 // unidad de medida crecía hasta igualar a las de año y la hoja desbordaba su
 // contenedor.
 //
-// **Las cifras van sobre blanco**, sin relleno de color. El vidrio se queda en
+// **La fila que cierra un bloque va sombreada**, como en el libro: es la que el
+// ojo busca al recorrer la hoja, y sin ella todas las lineas pesan igual.
+//
+// **Las demas cifras van sobre blanco**, sin relleno de color. El vidrio se queda en
 // el cromo: un fondo translúcido cambia el contraste de la cifra según lo que
 // pase por debajo al desplazarse, y un contraste que depende del scroll no es
 // un contraste.
@@ -27,7 +30,7 @@
 
 import { Fragment } from "react";
 
-import type { GrupoDelBloque } from "../api/cliente";
+import type { GrupoDelBloque, SerieAnual } from "../api/cliente";
 
 interface Props {
   anios: number[];
@@ -110,6 +113,18 @@ function formatear(valor: number | undefined, medida: string): string {
   return valor.toLocaleString("es-PE", { maximumFractionDigits: 2 });
 }
 
+/**
+ * El acumulado del horizonte.
+ *
+ * Lo resuelve la API y aquí solo se pinta: no siempre es una suma. Una ley es el
+ * promedio ponderado por el tonelaje de su fila, y esa relación —qué tonelaje
+ * pondera a qué ley— vive en la estructura del libro, no en la pantalla.
+ */
+function totalDeLaFila(serie: SerieAnual): string {
+  if (serie.acumulado === null || serie.acumulado === undefined) return "";
+  return formatear(serie.acumulado, serie.medida);
+}
+
 export function TablaDelLibro({ anios, grupos, mostrarRecalculo = false }: Props) {
   const conFilas = grupos.filter((grupo) =>
     grupo.secciones.some((seccion) => seccion.series.length > 0),
@@ -118,8 +133,8 @@ export function TablaDelLibro({ anios, grupos, mostrarRecalculo = false }: Props
     return <p>Este bloque no tiene ninguna línea con dato en el caso cargado.</p>;
   }
 
-  // Las dos columnas fijas, los ejercicios y la sobrante.
-  const columnas = anios.length + 3;
+  // Las dos columnas fijas, los ejercicios, la del total y la sobrante.
+  const columnas = anios.length + 4;
 
   return (
     <div className="hoja-del-libro">
@@ -137,6 +152,9 @@ export function TablaDelLibro({ anios, grupos, mostrarRecalculo = false }: Props
                 {anio}
               </th>
             ))}
+            <th className="columna-total" scope="col">
+              Total
+            </th>
             <th className="columna-sobrante" scope="col" />
           </tr>
         </thead>
@@ -173,7 +191,7 @@ export function TablaDelLibro({ anios, grupos, mostrarRecalculo = false }: Props
 
                     {seccion.series.map((serie, indice) => (
                       <Fragment key={`${serie.etiqueta}-${String(indice)}`}>
-                        <tr>
+                        <tr className={serie.total ? "fila-total" : undefined}>
                           <th className="columna-concepto" scope="row" title={serie.nota ?? ""}>
                             {serie.etiqueta}
                           </th>
@@ -181,6 +199,7 @@ export function TablaDelLibro({ anios, grupos, mostrarRecalculo = false }: Props
                           {anios.map((anio, columna) => (
                             <td key={anio}>{formatear(serie.valores[columna], serie.medida)}</td>
                           ))}
+                          <td className="columna-total">{totalDeLaFila(serie)}</td>
                           <td className="columna-sobrante" />
                         </tr>
 
@@ -195,6 +214,7 @@ export function TablaDelLibro({ anios, grupos, mostrarRecalculo = false }: Props
                                 {formatear(serie.recalculada?.[columna], serie.medida)}
                               </td>
                             ))}
+                            <td className="columna-total" />
                             <td className="columna-sobrante" />
                           </tr>
                         ) : null}

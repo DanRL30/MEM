@@ -134,6 +134,7 @@ body {
   --libro-cabecera: #2d314d; /* Pantone 2767, el mismo del texto */
   --libro-banda-unidad: #d6dce4;
   --libro-banda-seccion: #becbd2;
+  --libro-fila-total: #ddebf7;
   --ancho-concepto: 22rem;
   --ancho-medida: 3.5rem;
   --ancho-ano: 6.5rem;
@@ -250,6 +251,15 @@ body {
  * Sin ella, `width: 100%` reparte el hueco entre todas y la columna de unidad
  * de medida crece hasta igualar a las de ano.
  */
+/* La columna del acumulado del horizonte, a la derecha del ultimo ejercicio.
+ * Va separada por una linea para que no se confunda con un ano mas, que es lo
+ * que hace el libro.
+ */
+.columna-total {
+  border-left: 2px solid var(--borde-sutil);
+  font-weight: var(--peso-encabezado);
+}
+
 /* Las dos reglas llevan el selector completo a proposito: `.hoja-del-libro td`
  * fija un ancho minimo de columna de ano, y con menos especificidad estas dos
  * no lo ganarian. Era lo que estiraba la columna de unidad de medida hasta
@@ -265,6 +275,16 @@ body {
   min-width: 0;
   padding: 0;
   width: 100%;
+}
+
+/* La fila que cierra un bloque, y las lineas de calculo que el libro pone
+ * detras de la produccion. Van sombreadas porque son las que se buscan al
+ * recorrer la hoja: el azul es el mismo que la plantilla usa para el dato.
+ */
+.fila-total th,
+.fila-total td {
+  background-color: var(--libro-fila-total);
+  font-weight: var(--peso-encabezado);
 }
 
 .fila-recalculo th,

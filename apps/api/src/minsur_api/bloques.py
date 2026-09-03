@@ -80,6 +80,12 @@ NOTA_DEL_CHECK = (
 # al salir: la pantalla muestra la unidad en la que el dato realmente está.
 DOLARES = "US$"
 
+# Lo que tiene sentido sumar a lo largo del horizonte. Una ley no: se pondera
+# por el tonelaje de su fila, que es como el propio libro consolida las leyes de
+# dos corrientes. Un ratio -un costo por tonelada- no tiene total.
+SUMABLES = frozenset({"t", "tt", "tmf", "kt", "$", "$k", "k$", "us$", "mus$", "miles de us$"})
+PONDERADAS = frozenset({"%", "oz/t", "g/t"})
+
 # Los diez conceptos que MINSUR pide ver siempre, aunque la unidad los tenga en
 # cero: son la estructura base de un bloque de cash cost, y con ellos fijos los
 # conceptos caen en la misma linea en todas las unidades. Los que vienen detras
@@ -136,6 +142,25 @@ def _series_de(fuente: Any) -> dict[str, tuple[float, ...]]:
     return salida
 
 
+def _acumulado(valores: Sequence[float], medida: str, peso: Sequence[float] | None) -> float | None:
+    """El total del horizonte, cuando significa algo.
+
+    Un tonelaje o un importe se suman. Una ley se pondera por el tonelaje de su
+    fila: es como el libro consolida la ley de dos corrientes, y sumarla daría
+    la suma de treinta y seis porcentajes, que no es nada. Un ratio sin tonelaje
+    con el que ponderar se queda sin total.
+    """
+    unidad = medida.strip().lower()
+    if unidad in SUMABLES:
+        return sum(valores)
+    if unidad in PONDERADAS and peso is not None:
+        base = sum(peso[: len(valores)])
+        if base == 0.0:
+            return 0.0
+        return sum(v * peso[i] for i, v in enumerate(valores) if i < len(peso)) / base
+    return None
+
+
 def _serie(
     etiqueta: str,
     valores: Sequence[float],
@@ -144,15 +169,19 @@ def _serie(
     concepto: str = "",
     origen: str = "calculada",
     recalculada: list[float] | None = None,
+    total: bool = False,
+    peso: Sequence[float] | None = None,
     nota: str | None = None,
 ) -> SerieAnual:
     return SerieAnual(
+        acumulado=_acumulado(valores, medida, peso),
         etiqueta=etiqueta,
         medida=medida,
         concepto=concepto,
         valores=[float(v) for v in valores],
         origen="dato" if origen == "dato" else "calculada",
         recalculada=recalculada,
+        total=total,
         nota=nota,
     )
 
@@ -187,22 +216,33 @@ def _grupos_de_unidades(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDelB
         recalculo = series_calculadas(unidad.produccion, anos)
         secciones: list[SeccionDelBloque] = []
         abierta: SeccionDelBloque | None = None
+        tonelaje: Sequence[float] | None = None
 
         for fila in FILAS_DE_PRODUCCION:
             if fila.es_seccion:
                 abierta = SeccionDelBloque(titulo=fila.etiqueta, series=[])
                 secciones.append(abierta)
                 continue
+            valores = getattr(unidad.produccion, fila.campo)
+            # La ley se pondera por el tonelaje de su fila. En el libro van en
+            # pares -un tonelaje y su ley debajo- y esa posicion es lo unico que
+            # las relaciona: la etiqueta `Ley Sn` se repite cinco veces.
+            if (fila.medida or "") in PONDERADAS:
+                peso = tonelaje
+            else:
+                peso = None
+                tonelaje = valores
             if fila.campo not in con_dato or abierta is None:
                 continue
             abierta.series.append(
                 _serie(
                     fila.etiqueta,
-                    getattr(unidad.produccion, fila.campo),
+                    valores,
                     medida=fila.medida or "",
                     concepto=fila.campo,
                     origen="dato",
                     recalculada=recalculo.get(fila.campo) if fila.calculada else None,
+                    peso=peso,
                 )
             )
 
@@ -352,7 +392,7 @@ def _grupos_de_cash_cost(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDel
         )
         total = resultado.cash_cost_por_unidad.get(unidad.nombre)
         if total is not None:
-            series.append(_serie(f"Total {unidad.nombre}", total, medida=MEDIDA_OPEX))
+            series.append(_serie(f"Total {unidad.nombre}", total, medida=MEDIDA_OPEX, total=True))
         grupos.append(
             GrupoDelBloque(titulo=f"Cash Cost - {unidad.nombre}", secciones=_una_seccion(series))
         )
@@ -402,7 +442,7 @@ def _grupo_de_supuestos_de_la_refineria(corrida: CorridaAlmacenada) -> list[Grup
         + sum(tarifa[i] * a.refinado[i] for a in por_tarifa if i < len(a.refinado))
         for i in range(len(tarifa))
     ]
-    series.append(_serie(f"Total {refineria.nombre}", total, medida=MEDIDA_OPEX))
+    series.append(_serie(f"Total {refineria.nombre}", total, medida=MEDIDA_OPEX, total=True))
 
     return [
         GrupoDelBloque(
@@ -460,6 +500,7 @@ def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> l
                     f"Total {ancla.nombre} / tt",
                     _serie_unitaria(total_del_ancla, base),
                     medida="$/tt",
+                    total=True,
                 )
             )
 
@@ -483,6 +524,7 @@ def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> l
                 f"Cash Cost {unidad.nombre} / tmf",
                 _serie_unitaria(total, finas),
                 medida="$/tmf",
+                total=True,
             )
         )
     refineria = resultado.caso.refineria
@@ -492,6 +534,7 @@ def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> l
                 f"Total Cash Cost {refineria.nombre} / tmf",
                 _serie_unitaria(resultado.cash_cost, resultado.refineria.refinado),
                 medida="$/tmf",
+                total=True,
             )
         )
 
@@ -499,7 +542,7 @@ def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> l
         GrupoDelBloque(
             titulo="",
             secciones=_una_seccion(
-                [_serie("Total Cash Cost", resultado.cash_cost, medida=MEDIDA_OPEX)]
+                [_serie("Total Cash Cost", resultado.cash_cost, medida=MEDIDA_OPEX, total=True)]
             ),
         ),
         GrupoDelBloque(titulo="Producción", secciones=_una_seccion(produccion)),
