@@ -15,6 +15,7 @@ import importlib.util
 import sys
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -252,22 +253,24 @@ class TestCargaDeInsumos:
 
 
 class TestBloquesIntermedios:
-    def test_los_bloques_van_en_el_orden_del_libro(
-        self, cliente: TestClient, plantilla: Path
-    ) -> None:
+    def _bloques(self, cliente: TestClient, plantilla: Path) -> dict[str, Any]:
         id_caso = _crear_caso(cliente)
         _subir(cliente, id_caso, plantilla)
         cliente.post(f"/api/casos/{id_caso}/evaluar", headers=CABECERAS)
-
         respuesta = cliente.get(f"/api/casos/{id_caso}/corrida/bloques", headers=CABECERAS)
         assert respuesta.status_code == 200, respuesta.text
-        cuerpo = respuesta.json()
+        cuerpo: dict[str, Any] = respuesta.json()
+        return cuerpo
+
+    def test_los_bloques_van_en_el_orden_del_libro(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        cuerpo = self._bloques(cliente, plantilla)
 
         # `Depreciacion` va antes que `Ventas` porque asi esta en el libro,
         # aunque la cadena de calculo no lo exija. Es el orden aprendido.
         assert [b["clave"] for b in cuerpo["bloques"]] == [
             "produccion",
-            "refineria",
             "opex",
             "capex",
             "depreciacion",
@@ -276,40 +279,79 @@ class TestBloquesIntermedios:
             "impuestos",
             "flujo",
         ]
-        assert [b["hoja"] for b in cuerpo["bloques"]][:5] == [
-            "InputsProd",
-            "InputsProd",
-            "InputsOpex",
-            "InputsCapex",
-            "Depreciacion",
+
+    def test_el_complejo_no_es_una_hoja_aparte(self, cliente: TestClient, plantilla: Path) -> None:
+        # En el libro Pisco es un bloque dentro de `InputsProd`, no una hoja. Lo
+        # fue una version anterior de la pantalla y no debe volver a serlo.
+        cuerpo = self._bloques(cliente, plantilla)
+        assert "refineria" not in [b["clave"] for b in cuerpo["bloques"]]
+
+        produccion = next(b for b in cuerpo["bloques"] if b["clave"] == "produccion")
+        assert [g["titulo"] for g in produccion["grupos"]][-2:] == ["Refineria", "Venta Sn Spot"]
+
+    def test_la_hoja_cierra_con_la_venta_spot_y_su_check(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        cuerpo = self._bloques(cliente, plantilla)
+        produccion = next(b for b in cuerpo["bloques"] if b["clave"] == "produccion")
+        spot = produccion["grupos"][-1]
+        etiquetas = [s["etiqueta"] for s in spot["secciones"][0]["series"]]
+        assert etiquetas == [
+            "Concentrado Excedente",
+            "Ley Promedio de Alimentación",
+            "Producción Sn Refinado",
+            "Check",
         ]
+        # El `Check` se cumple por construccion, asi que la fila lo dice: quien
+        # la lea no debe tomarla por una verificacion activa.
+        assert spot["secciones"][0]["series"][-1]["nota"]
+
+    def test_produccion_usa_el_vocabulario_del_libro(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # Las etiquetas y las medidas salen del catalogo de la ingesta, que es
+        # con el que se emite la plantilla y con el que se lee. El usuario ve en
+        # pantalla la fila que lleno, con su nombre y su unidad.
+        cuerpo = self._bloques(cliente, plantilla)
+        produccion = next(b for b in cuerpo["bloques"] if b["clave"] == "produccion")
+        mina = next(g for g in produccion["grupos"] if g["titulo"] == "Mina Alfa")
+
+        assert [s["titulo"] for s in mina["secciones"]][:2] == ["Mina", "Planta"]
+        primera = mina["secciones"][0]["series"][0]
+        assert primera["etiqueta"] == "Mineral extraído"
+        assert primera["medida"] == "t"
+        assert primera["concepto"] == "mineral_extraido"
+        assert primera["origen"] == "dato"
+
+        leyes = [s for s in mina["secciones"][1]["series"] if s["etiqueta"].startswith("Ley")]
+        assert leyes and all(s["medida"] in {"%", "oz/t"} for s in leyes)
 
     def test_cada_serie_tiene_un_valor_por_ano(self, cliente: TestClient, plantilla: Path) -> None:
-        id_caso = _crear_caso(cliente)
-        _subir(cliente, id_caso, plantilla)
-        cliente.post(f"/api/casos/{id_caso}/evaluar", headers=CABECERAS)
-        cuerpo = cliente.get(f"/api/casos/{id_caso}/corrida/bloques", headers=CABECERAS).json()
-
+        cuerpo = self._bloques(cliente, plantilla)
         anios = len(cuerpo["anios"])
         assert anios == 3
         for bloque in cuerpo["bloques"]:
-            for serie in bloque["series"]:
-                assert len(serie["valores"]) == anios, (bloque["clave"], serie["concepto"])
+            for grupo in bloque["grupos"]:
+                for seccion in grupo["secciones"]:
+                    for serie in seccion["series"]:
+                        assert len(serie["valores"]) == anios, (
+                            bloque["clave"],
+                            serie["etiqueta"],
+                        )
 
     def test_la_produccion_trae_su_recalculo_para_contrastar(
         self, cliente: TestClient, plantilla: Path
     ) -> None:
         # Es la alerta de control de calidad: sin el valor recalculado al lado,
-        # una diferencia no dice que esperaba el sistema.
-        id_caso = _crear_caso(cliente)
-        _subir(cliente, id_caso, plantilla)
-        cliente.post(f"/api/casos/{id_caso}/evaluar", headers=CABECERAS)
-        cuerpo = cliente.get(f"/api/casos/{id_caso}/corrida/bloques", headers=CABECERAS).json()
-
+        # una diferencia no dice que esperaba el sistema. Las ocho filas que lo
+        # llevan son las que el catalogo marca como calculadas.
+        cuerpo = self._bloques(cliente, plantilla)
         produccion = next(b for b in cuerpo["bloques"] if b["clave"] == "produccion")
-        con_recalculo = [s for s in produccion["series"] if s["recalculada"] is not None]
-        assert con_recalculo, "ninguna fila de produccion trae su recalculo"
-        assert all(s["origen"] == "dato" for s in produccion["series"])
+        mina = next(g for g in produccion["grupos"] if g["titulo"] == "Mina Alfa")
+        series = [s for seccion in mina["secciones"] for s in seccion["series"]]
+
+        assert [s["etiqueta"] for s in series if s["recalculada"] is not None]
+        assert all(s["origen"] == "dato" for s in series)
 
     def test_los_campos_con_dato_los_decide_el_motor(
         self, cliente: TestClient, plantilla: Path

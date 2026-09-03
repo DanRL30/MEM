@@ -34,7 +34,7 @@ import { Encabezado } from "../componentes/Encabezado";
 import { ListaDeIncidencias } from "../componentes/ListaDeIncidencias";
 import { PanelVidrio } from "../componentes/PanelVidrio";
 import { Pestanas, type Pestana } from "../componentes/Pestanas";
-import { TablaAnual } from "../componentes/TablaAnual";
+import { TablaDelLibro } from "../componentes/TablaDelLibro";
 import { TarjetaIndicador } from "../componentes/TarjetaIndicador";
 
 const CONTROL = "control";
@@ -177,8 +177,10 @@ export function ModelamientoDeEscenario() {
         style={{
           display: "grid",
           gap: "var(--espacio-5)",
-          margin: "0 auto",
-          maxWidth: "84rem",
+          // Sin `minmax(0, 1fr)` un hijo de rejilla no se encoge por debajo de
+          // su contenido, y la hoja -que mide lo que midan sus ejercicios-
+          // desborda la ventana en vez de desplazarse por dentro.
+          gridTemplateColumns: "minmax(0, 1fr)",
           padding: "var(--espacio-5)",
         }}
       >
@@ -200,9 +202,11 @@ export function ModelamientoDeEscenario() {
 
         {caso === null ? (
           <>
-            <PanelVidrio titulo="Nuevo escenario">
-              <AsistenteDeEscenario alCrear={alCrear} creando={ocupado} />
-            </PanelVidrio>
+            <div style={{ maxWidth: "48rem" }}>
+              <PanelVidrio titulo="Nuevo escenario">
+                <AsistenteDeEscenario alCrear={alCrear} creando={ocupado} />
+              </PanelVidrio>
+            </div>
             {existentes.length > 0 ? (
               <PanelVidrio tenue titulo="Escenarios abiertos">
                 <ul style={{ margin: 0, paddingLeft: "var(--espacio-5)" }}>
@@ -320,12 +324,7 @@ export function ModelamientoDeEscenario() {
               ) : null}
 
               {bloqueActivo && bloques ? (
-                <PanelVidrio
-                  acciones={<span className="pildora">Hoja {bloqueActivo.hoja}</span>}
-                  titulo={bloqueActivo.titulo}
-                >
-                  <TablaAnual anios={bloques.anios} series={bloqueActivo.series} />
-                </PanelVidrio>
+                <TablaDelLibro anios={bloques.anios} grupos={bloqueActivo.grupos} />
               ) : null}
             </div>
           </>

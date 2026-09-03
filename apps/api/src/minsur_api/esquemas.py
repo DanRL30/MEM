@@ -264,13 +264,22 @@ class ResultadoFidelidad(Base):
 
 
 class SerieAnual(Base):
-    """Una línea del libro, con un valor por año del horizonte."""
+    """Una línea del libro, con un valor por año del horizonte.
 
-    concepto: str
-    unidad: str | None = Field(
-        default=None,
-        description="Unidad productiva a la que pertenece la línea, si no es del caso entero",
+    La etiqueta y la medida son las del libro corporativo, no una traducción de
+    la interfaz: salen del mismo catálogo con el que se emite la plantilla y con
+    el que se lee. El usuario ve en pantalla la fila que llenó, con su nombre.
+
+    `concepto` es el campo del motor que la alimenta y no se muestra. Está para
+    que una discrepancia se pueda seguir de la celda al módulo que la produce.
+    """
+
+    etiqueta: str = Field(description="Nombre de la fila en el libro corporativo")
+    medida: str = Field(
+        default="",
+        description="Unidad de medida tal como la declara el libro: t, %, oz/t, $k",
     )
+    concepto: str = Field(default="", description="Campo del motor que alimenta la línea")
     valores: list[float]
     origen: Literal["dato", "calculada"] = Field(
         default="calculada",
@@ -283,6 +292,34 @@ class SerieAnual(Base):
             "sabe rehacer. Va debajo de la cargada; sin ella la alerta no dice qué esperaba"
         ),
     )
+    nota: str | None = Field(
+        default=None,
+        description="Aviso al pie de la fila, cuando la plataforma se aparta del libro",
+    )
+
+
+class SeccionDelBloque(Base):
+    """Un sub-bloque dentro de un grupo: `Mina`, `Planta`, `Concentrado de Cu`.
+
+    Sin título cuando el grupo no se subdivide, que es el caso del complejo y de
+    la venta spot.
+    """
+
+    titulo: str | None = None
+    series: list[SerieAnual]
+
+
+class GrupoDelBloque(Base):
+    """Una banda del libro: una unidad productiva, o un bloque propio del caso."""
+
+    titulo: str = Field(
+        default="",
+        description=(
+            "Nombre de la unidad, o del bloque: Pisco, Venta Sn Spot. Vacío cuando "
+            "las líneas son del caso entero y el libro no les pone banda"
+        ),
+    )
+    secciones: list[SeccionDelBloque]
 
 
 class BloqueDeCorrida(Base):
@@ -290,14 +327,11 @@ class BloqueDeCorrida(Base):
 
     clave: str
     etiqueta: str = Field(
-        description=(
-            "Rótulo corto de la pestaña. Es el nombre de la hoja salvo cuando dos "
-            "bloques salen de la misma, que es el caso del complejo"
-        )
+        description="Rótulo corto de la pestaña. Es el nombre de la hoja del libro"
     )
     titulo: str
     hoja: str = Field(description="Hoja del libro corporativo que reproduce este bloque")
-    series: list[SerieAnual]
+    grupos: list[GrupoDelBloque]
 
 
 class DiscrepanciaDeCorroboracion(Base):

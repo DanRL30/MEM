@@ -21,6 +21,8 @@ export type IncidenciaDePlantilla = Esquemas["IncidenciaDePlantilla"];
 export type BloquesDeCorrida = Esquemas["BloquesDeCorrida"];
 export type BloqueDeCorrida = Esquemas["BloqueDeCorrida"];
 export type SerieAnual = Esquemas["SerieAnual"];
+export type GrupoDelBloque = Esquemas["GrupoDelBloque"];
+export type SeccionDelBloque = Esquemas["SeccionDelBloque"];
 export type Tablero = Esquemas["Tablero"];
 export type Indicadores = Esquemas["Indicadores"];
 

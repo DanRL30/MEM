@@ -14,7 +14,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import App from "../src/App";
 import { Pestanas } from "../src/componentes/Pestanas";
-import { TablaAnual } from "../src/componentes/TablaAnual";
+import { TablaDelLibro } from "../src/componentes/TablaDelLibro";
+import type { SerieAnual } from "../src/api/cliente";
 import { TarjetaIndicador } from "../src/componentes/TarjetaIndicador";
 
 afterEach(cleanup);
@@ -108,33 +109,115 @@ describe("La tarjeta de indicador", () => {
   });
 });
 
-describe("La tabla anual", () => {
+describe("La hoja del libro", () => {
   const anios = [2027, 2028, 2029];
 
-  it("pone el recalculo justo debajo de la fila que audita", () => {
+  const grupo = (series: SerieAnual[]) => [
+    { titulo: "San Rafael", secciones: [{ titulo: "Mina", series }] },
+  ];
+
+  it("no intercala el recalculo salvo que se pida", () => {
+    // En `InputsProd` la hoja es para leer la cadena del proyecto. Duplicar
+    // cada fila calculada la alarga al doble; el contraste tiene otro sitio.
     render(
-      <TablaAnual
+      <TablaDelLibro
         anios={anios}
-        series={[
+        grupos={grupo([
           {
+            etiqueta: "Toneladas finas",
+            medida: "t",
             concepto: "toneladas_finas",
             origen: "dato",
             recalculada: [0, 13, 13],
-            unidad: "Mina Alfa",
             valores: [0, 13.5, 13.5],
           },
-        ]}
+        ])}
+      />,
+    );
+    expect(screen.queryByText("Esperado por el sistema")).toBeNull();
+  });
+
+  it("pone el recalculo justo debajo de la fila que audita cuando se pide", () => {
+    render(
+      <TablaDelLibro
+        anios={anios}
+        mostrarRecalculo
+        grupos={grupo([
+          {
+            etiqueta: "Toneladas finas",
+            medida: "t",
+            concepto: "toneladas_finas",
+            origen: "dato",
+            recalculada: [0, 13, 13],
+            valores: [0, 13.5, 13.5],
+          },
+        ])}
       />,
     );
     const filas = screen.getAllByRole("row");
-    // Cabecera, la fila cargada y su recalculo inmediatamente despues.
-    expect(filas).toHaveLength(3);
-    expect(filas[1]?.textContent).toContain("Mina Alfa");
-    expect(filas[2]?.textContent).toContain("Esperado por el sistema");
+    // Cabecera, banda de unidad, banda de seccion, la fila y su recalculo.
+    expect(filas).toHaveLength(5);
+    expect(filas[1]?.textContent).toContain("San Rafael");
+    expect(filas[2]?.textContent).toContain("Mina");
+    expect(filas[3]?.textContent).toContain("Toneladas finas");
+    expect(filas[4]?.textContent).toContain("Esperado por el sistema");
+  });
+
+  it("muestra un cero con guion en un tonelaje y como 0.0% en una ley", () => {
+    // Es el formato del libro: `#,##0;-#,##0;-;-` para los tonelajes, que
+    // convierte el cero en guion, y `0.0%` para las leyes, que si lo escribe.
+    render(
+      <TablaDelLibro
+        anios={anios}
+        grupos={grupo([
+          {
+            etiqueta: "Mineral extraído",
+            medida: "t",
+            concepto: "mineral_extraido",
+            origen: "dato",
+            valores: [1404922, 0, 0],
+          },
+          {
+            etiqueta: "Ley Sn",
+            medida: "%",
+            concepto: "ley_de_cabeza",
+            origen: "dato",
+            valores: [0.02, 0, 0],
+          },
+        ])}
+      />,
+    );
+    const filas = screen.getAllByRole("row");
+    const tonelaje = filas[3]?.textContent ?? "";
+    const ley = filas[4]?.textContent ?? "";
+
+    expect(tonelaje).toContain("1,404,922");
+    expect(tonelaje).toContain("-");
+    expect(ley).toContain("2.0%");
+    expect(ley).toContain("0.0%");
+  });
+
+  it("lleva la unidad de medida en su propia columna", () => {
+    render(
+      <TablaDelLibro
+        anios={anios}
+        grupos={grupo([
+          {
+            etiqueta: "Ley Ag",
+            medida: "oz/t",
+            concepto: "ley_ag",
+            origen: "dato",
+            valores: [1.5, 1.5, 1.5],
+          },
+        ])}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: "Unidad" })).toBeDefined();
+    expect(screen.getByText("oz/t")).toBeDefined();
   });
 
   it("avisa cuando el bloque no tiene ninguna linea con dato", () => {
-    render(<TablaAnual anios={anios} series={[]} />);
+    render(<TablaDelLibro anios={anios} grupos={[]} />);
     expect(screen.getByText(/no tiene ninguna línea con dato/)).toBeDefined();
   });
 });

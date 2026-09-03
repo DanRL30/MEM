@@ -60,21 +60,21 @@
             "type": "string"
           },
           "etiqueta": {
-            "description": "Rótulo corto de la pestaña. Es el nombre de la hoja salvo cuando dos bloques salen de la misma, que es el caso del complejo",
+            "description": "Rótulo corto de la pestaña. Es el nombre de la hoja del libro",
             "title": "Etiqueta",
             "type": "string"
+          },
+          "grupos": {
+            "items": {
+              "$ref": "#/components/schemas/GrupoDelBloque"
+            },
+            "title": "Grupos",
+            "type": "array"
           },
           "hoja": {
             "description": "Hoja del libro corporativo que reproduce este bloque",
             "title": "Hoja",
             "type": "string"
-          },
-          "series": {
-            "items": {
-              "$ref": "#/components/schemas/SerieAnual"
-            },
-            "title": "Series",
-            "type": "array"
           },
           "titulo": {
             "title": "Titulo",
@@ -86,7 +86,7 @@
           "etiqueta",
           "titulo",
           "hoja",
-          "series"
+          "grupos"
         ],
         "title": "BloqueDeCorrida",
         "type": "object"
@@ -460,6 +460,29 @@
           "lineas"
         ],
         "title": "EstadosFinancieros",
+        "type": "object"
+      },
+      "GrupoDelBloque": {
+        "description": "Una banda del libro: una unidad productiva, o un bloque propio del caso.",
+        "properties": {
+          "secciones": {
+            "items": {
+              "$ref": "#/components/schemas/SeccionDelBloque"
+            },
+            "title": "Secciones",
+            "type": "array"
+          },
+          "titulo": {
+            "default": "",
+            "description": "Nombre de la unidad, o del bloque: Pisco, Venta Sn Spot. Vacío cuando las líneas son del caso entero y el libro no les pone banda",
+            "title": "Titulo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "secciones"
+        ],
+        "title": "GrupoDelBloque",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -938,12 +961,65 @@
         "title": "Salud",
         "type": "object"
       },
+      "SeccionDelBloque": {
+        "description": "Un sub-bloque dentro de un grupo: `Mina`, `Planta`, `Concentrado de Cu`.\n\nSin título cuando el grupo no se subdivide, que es el caso del complejo y de\nla venta spot.",
+        "properties": {
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/SerieAnual"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "titulo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Titulo"
+          }
+        },
+        "required": [
+          "series"
+        ],
+        "title": "SeccionDelBloque",
+        "type": "object"
+      },
       "SerieAnual": {
-        "description": "Una línea del libro, con un valor por año del horizonte.",
+        "description": "Una línea del libro, con un valor por año del horizonte.\n\nLa etiqueta y la medida son las del libro corporativo, no una traducción de\nla interfaz: salen del mismo catálogo con el que se emite la plantilla y con\nel que se lee. El usuario ve en pantalla la fila que llenó, con su nombre.\n\n`concepto` es el campo del motor que la alimenta y no se muestra. Está para\nque una discrepancia se pueda seguir de la celda al módulo que la produce.",
         "properties": {
           "concepto": {
+            "default": "",
+            "description": "Campo del motor que alimenta la línea",
             "title": "Concepto",
             "type": "string"
+          },
+          "etiqueta": {
+            "description": "Nombre de la fila en el libro corporativo",
+            "title": "Etiqueta",
+            "type": "string"
+          },
+          "medida": {
+            "default": "",
+            "description": "Unidad de medida tal como la declara el libro: t, %, oz/t, $k",
+            "title": "Medida",
+            "type": "string"
+          },
+          "nota": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Aviso al pie de la fila, cuando la plataforma se aparta del libro",
+            "title": "Nota"
           },
           "origen": {
             "default": "calculada",
@@ -970,18 +1046,6 @@
             "description": "Lo que el sistema esperaba para una línea que el usuario carga y el motor sabe rehacer. Va debajo de la cargada; sin ella la alerta no dice qué esperaba",
             "title": "Recalculada"
           },
-          "unidad": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Unidad productiva a la que pertenece la línea, si no es del caso entero",
-            "title": "Unidad"
-          },
           "valores": {
             "items": {
               "type": "number"
@@ -991,7 +1055,7 @@
           }
         },
         "required": [
-          "concepto",
+          "etiqueta",
           "valores"
         ],
         "title": "SerieAnual",

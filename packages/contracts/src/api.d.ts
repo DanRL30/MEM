@@ -497,16 +497,16 @@ export interface components {
             clave: string;
             /**
              * Etiqueta
-             * @description Rótulo corto de la pestaña. Es el nombre de la hoja salvo cuando dos bloques salen de la misma, que es el caso del complejo
+             * @description Rótulo corto de la pestaña. Es el nombre de la hoja del libro
              */
             etiqueta: string;
+            /** Grupos */
+            grupos: components["schemas"]["GrupoDelBloque"][];
             /**
              * Hoja
              * @description Hoja del libro corporativo que reproduce este bloque
              */
             hoja: string;
-            /** Series */
-            series: components["schemas"]["SerieAnual"][];
             /** Titulo */
             titulo: string;
         };
@@ -674,6 +674,20 @@ export interface components {
             lineas: {
                 [key: string]: number[];
             };
+        };
+        /**
+         * GrupoDelBloque
+         * @description Una banda del libro: una unidad productiva, o un bloque propio del caso.
+         */
+        GrupoDelBloque: {
+            /** Secciones */
+            secciones: components["schemas"]["SeccionDelBloque"][];
+            /**
+             * Titulo
+             * @description Nombre de la unidad, o del bloque: Pisco, Venta Sn Spot. Vacío cuando las líneas son del caso entero y el libro no les pone banda
+             * @default
+             */
+            titulo: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -930,12 +944,52 @@ export interface components {
             version_motor?: string | null;
         };
         /**
+         * SeccionDelBloque
+         * @description Un sub-bloque dentro de un grupo: `Mina`, `Planta`, `Concentrado de Cu`.
+         *
+         *     Sin título cuando el grupo no se subdivide, que es el caso del complejo y de
+         *     la venta spot.
+         */
+        SeccionDelBloque: {
+            /** Series */
+            series: components["schemas"]["SerieAnual"][];
+            /** Titulo */
+            titulo?: string | null;
+        };
+        /**
          * SerieAnual
          * @description Una línea del libro, con un valor por año del horizonte.
+         *
+         *     La etiqueta y la medida son las del libro corporativo, no una traducción de
+         *     la interfaz: salen del mismo catálogo con el que se emite la plantilla y con
+         *     el que se lee. El usuario ve en pantalla la fila que llenó, con su nombre.
+         *
+         *     `concepto` es el campo del motor que la alimenta y no se muestra. Está para
+         *     que una discrepancia se pueda seguir de la celda al módulo que la produce.
          */
         SerieAnual: {
-            /** Concepto */
+            /**
+             * Concepto
+             * @description Campo del motor que alimenta la línea
+             * @default
+             */
             concepto: string;
+            /**
+             * Etiqueta
+             * @description Nombre de la fila en el libro corporativo
+             */
+            etiqueta: string;
+            /**
+             * Medida
+             * @description Unidad de medida tal como la declara el libro: t, %, oz/t, $k
+             * @default
+             */
+            medida: string;
+            /**
+             * Nota
+             * @description Aviso al pie de la fila, cuando la plataforma se aparta del libro
+             */
+            nota?: string | null;
             /**
              * Origen
              * @description Si la línea la carga el usuario o la produce el motor
@@ -948,11 +1002,6 @@ export interface components {
              * @description Lo que el sistema esperaba para una línea que el usuario carga y el motor sabe rehacer. Va debajo de la cargada; sin ella la alerta no dice qué esperaba
              */
             recalculada?: number[] | null;
-            /**
-             * Unidad
-             * @description Unidad productiva a la que pertenece la línea, si no es del caso entero
-             */
-            unidad?: string | null;
             /** Valores */
             valores: number[];
         };

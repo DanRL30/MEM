@@ -115,76 +115,160 @@ body {
   }
 }
 
-/* --- Las tablas no llevan vidrio ------------------------------------------ */
+/* --- La hoja del libro -----------------------------------------------------
+ * Reproduce la disposicion de `InputsProd`: concepto, unidad de medida y un
+ * ejercicio por columna. Los colores de las bandas y de la cabecera no son una
+ * interpretacion: son los que `scripts/generar_plantilla_inputs.py` escribe en
+ * la plantilla, que a su vez los toma del libro de MINSUR.
+ *
+ * Las celdas de cifra van sobre blanco. El libro las tine de azul y naranja
+ * segun sean dato o recalculo, y esa distincion importa al llenar la plantilla;
+ * en pantalla, donde no se edita, se leen mejor limpias.
+ *
+ * Ninguna superficie de aqui lleva vidrio. Una cifra a 14 px sobre fondo
+ * translucido cambia de contraste segun lo que pase por debajo al desplazarse,
+ * y un contraste que depende del scroll no es un contraste.
+ */
 
-.tabla-solida {
+:root {
+  --libro-cabecera: #2d314d; /* Pantone 2767, el mismo del texto */
+  --libro-banda-unidad: #d6dce4;
+  --libro-banda-seccion: #becbd2;
+  --ancho-concepto: 22rem;
+  --ancho-medida: 3.5rem;
+  --ancho-ano: 6.5rem;
+}
+
+/* Sin alto maximo: la hoja crece hasta donde llegue y es la pagina la que se
+ * desplaza. Con un contenedor propio habia dos barras verticales -la de la hoja
+ * y la de la pagina- y ninguna de las dos hacia lo que el ojo esperaba.
+ *
+ * En horizontal si desplaza ella: treinta y seis ejercicios no caben en ninguna
+ * pantalla, y ahi es donde las dos primeras columnas se quedan fijas.
+ */
+.hoja-del-libro {
   background-color: var(--fondo-lienzo);
   border: 1px solid var(--borde-sutil);
   border-radius: var(--radio-tarjeta);
-  overflow: auto;
+  overflow-x: auto;
 }
 
-.tabla-solida table {
-  border-collapse: collapse;
+.fila-espaciadora td {
+  background-color: var(--fondo-lienzo);
+  border-bottom: none;
+  height: var(--espacio-4);
+}
+
+/* `width: 100%` con un ancho minimo por columna: con pocos ejercicios la hoja
+ * llena el area y no deja un hueco a la derecha; con treinta y seis, el minimo
+ * manda y la hoja se desplaza. Sin el 100 % la tabla mide lo que midan sus
+ * cifras y el area sobrante queda vacia.
+ */
+.hoja-del-libro table {
+  border-collapse: separate;
+  border-spacing: 0;
   width: 100%;
 }
 
-.tabla-solida th,
-.tabla-solida td {
+.hoja-del-libro th,
+.hoja-del-libro td {
   border-bottom: 1px solid var(--borde-sutil);
+  font-variant-numeric: tabular-nums;
   height: var(--fila-media);
-  padding: 0 var(--espacio-3);
+  padding: 0 var(--espacio-2);
   white-space: nowrap;
 }
 
-.tabla-solida td {
+.hoja-del-libro td {
+  min-width: var(--ancho-ano);
   text-align: right;
 }
 
-.tabla-solida th {
-  text-align: left;
+/* Las dos primeras columnas y la cabecera de anos quedan fijas. Es el
+ * `freeze_panes` de la propia plantilla: con treinta y seis ejercicios, una
+ * cifra del extremo derecho no dice de que concepto es ni de que ano.
+ */
+.hoja-del-libro thead th {
+  background-color: var(--libro-cabecera);
+  color: var(--marca-blanco);
+  font-weight: var(--peso-encabezado);
+  text-align: center;
 }
 
-/* La cabecera se queda fija: en veinte ejercicios, una columna sin ano visible
- * obliga a subir a comprobar cual es. La primera columna hace lo mismo en
- * horizontal con el nombre del concepto.
- */
-.tabla-solida thead th {
+.columna-concepto {
   background-color: var(--fondo-lienzo);
+  left: 0;
+  min-width: var(--ancho-concepto);
   position: sticky;
-  top: 0;
+  text-align: left;
+  width: var(--ancho-concepto);
   z-index: 1;
 }
 
-.tabla-solida th:first-child,
-.tabla-solida td:first-child {
+.columna-medida {
   background-color: var(--fondo-lienzo);
-  left: 0;
+  color: var(--texto-principal);
+  font-size: var(--texto-etiqueta);
+  left: var(--ancho-concepto);
+  min-width: var(--ancho-medida);
   position: sticky;
   text-align: left;
+  width: var(--ancho-medida);
+  z-index: 1;
+}
+
+.hoja-del-libro thead .columna-concepto,
+.hoja-del-libro thead .columna-medida {
+  background-color: var(--libro-cabecera);
   z-index: 2;
 }
 
-.tabla-solida thead th:first-child {
-  z-index: 3;
-}
-
-/* --- Origen del dato ------------------------------------------------------
- * La codificacion viene de la vista con la que se reviso el calculo: azul lo
- * que el usuario carga, naranja lo que carga y el sistema ademas recalcula.
- * El color es relleno y nunca color de texto: ninguno de los dos alcanza 4,5
- * a 1 sobre blanco, y colorear la cifra incumpliria WCAG AA.
+/* --- Bandas ---------------------------------------------------------------
+ * El rotulo va en la parte fija para que no se pierda al desplazarse: en el
+ * libro vive en una columna congelada.
  */
-.origen-dato {
-  background-color: rgba(64, 110, 248, 0.14);
+
+.banda-unidad td,
+.banda-unidad .banda-rotulo {
+  background-color: var(--libro-banda-unidad);
 }
 
-.origen-recalculada {
-  background-color: rgba(245, 138, 46, 0.16);
+.banda-seccion td,
+.banda-seccion .banda-rotulo {
+  background-color: var(--libro-banda-seccion);
 }
 
+.banda-rotulo {
+  font-weight: var(--peso-encabezado);
+  left: 0;
+  position: sticky;
+  text-align: left;
+  z-index: 1;
+}
+
+/* La columna sobrante absorbe el ancho que queda cuando el horizonte es corto.
+ * Sin ella, `width: 100%` reparte el hueco entre todas y la columna de unidad
+ * de medida crece hasta igualar a las de ano.
+ */
+/* Las dos reglas llevan el selector completo a proposito: `.hoja-del-libro td`
+ * fija un ancho minimo de columna de ano, y con menos especificidad estas dos
+ * no lo ganarian. Era lo que estiraba la columna de unidad de medida hasta
+ * igualarla con las de ano y sacaba la hoja de su contenedor.
+ */
+.hoja-del-libro td.columna-medida {
+  min-width: var(--ancho-medida);
+  width: var(--ancho-medida);
+}
+
+.hoja-del-libro td.columna-sobrante,
+.hoja-del-libro th.columna-sobrante {
+  min-width: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.fila-recalculo th,
 .fila-recalculo td {
-  color: var(--texto-principal);
   font-style: italic;
   opacity: 0.75;
 }
