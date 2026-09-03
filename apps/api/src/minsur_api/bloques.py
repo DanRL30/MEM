@@ -126,6 +126,11 @@ PONDERADAS = frozenset({"%", "oz/t", "g/t"})
 # silencio lo que se ve.
 BASE_DEL_CASH_COST = tuple(fila.etiqueta for fila in CON_DATO_DE_CASH_COST[:10])
 
+# Las dos filas de gastos que el motor deriva y la plantilla no pide, las reglas
+# `026` y `027`. Se marcan como calculadas para no dar a entender que alguien
+# las cargo.
+DERIVADOS_DE_GASTOS = frozenset({PLANILLA, GESTION_SOCIAL_DEDUCIBLE})
+
 
 def _rotulo_de_refineria(nombre: str) -> str:
     """`Refinería Pisco` a partir de una unidad llamada `Pisco`.
@@ -628,33 +633,61 @@ def _grupo_de_produccion_y_unitarios(corrida: CorridaAlmacenada, anos: int) -> l
     return grupos
 
 
+def _conceptos_de_gastos() -> list[str]:
+    """La lista de gastos, en el orden del libro y con las dos que se derivan.
+
+    **Es la misma para los bloques por unidad y para la tabla de cierre.** El
+    modelo muestra los mismos conceptos en las dos, y tenerlas escritas por
+    separado dejaba los bloques por unidad con ocho filas y el cierre con diez:
+    quien compara una unidad contra el total contaba lineas distintas.
+
+    `Planilla` y `Gestión Social Deducible` no salen del catálogo porque la
+    plantilla no las pide —las deriva el motor, reglas `026` y `027`—, y van
+    donde el modelo las pone: la planilla detrás de las servidumbres y la
+    gestión social deducible al final.
+    """
+    conceptos = [fila.etiqueta for fila in FILAS_DE_GASTOS if not fila.es_seccion]
+    if SERVIDUMBRES in conceptos:
+        conceptos.insert(conceptos.index(SERVIDUMBRES) + 1, PLANILLA)
+    conceptos.append(GESTION_SOCIAL_DEDUCIBLE)
+    return conceptos
+
+
 def _grupos_de_gastos(corrida: CorridaAlmacenada, anos: int) -> list[GrupoDelBloque]:
     """Los gastos, al cierre de la hoja.
 
     Van al final y no dentro del bloque de cada unidad, que es donde los pone el
     libro: no son cash cost, viven en `UnidadProductiva.gastos` aparte de
     `costos`, y cada fila va a un sitio distinto del flujo.
+
+    Se leen de `gastos_por_unidad`, que es lo que el motor calculó, y no de lo
+    que el caso trae cargado: las dos filas derivadas no existen en el segundo,
+    y sin ellas el bloque de una unidad no cuadra con la tabla que cierra la
+    hoja.
     """
+    por_unidad = corrida.resultado.gastos_por_unidad
+    conceptos = _conceptos_de_gastos()
     grupos: list[GrupoDelBloque] = []
     for unidad in corrida.resultado.caso.unidades:
+        gastos = por_unidad.get(unidad.nombre)
+        if not gastos:
+            continue
         # Los gastos van con su estructura completa, con guion en la fila vacia.
         # No es como el cash cost, donde ocultar lo vacio devuelve la lista de
         # conceptos de cada unidad: aqui la lista es la misma para todas y lo
         # que importa es que cada concepto caiga siempre en la misma linea.
         series = [
             _serie(
-                fila.etiqueta,
-                _o_en_ceros(unidad.gastos.get(fila.etiqueta), anos),
-                medida=fila.medida or "",
-                origen="dato",
+                concepto,
+                _o_en_ceros(gastos.get(concepto), anos),
+                medida=MEDIDA_OPEX,
+                origen="dato" if concepto not in DERIVADOS_DE_GASTOS else "calculada",
             )
-            for fila in FILAS_DE_GASTOS
-            if not fila.es_seccion
+            for concepto in conceptos
         ]
-        if unidad.gastos:
-            grupos.append(
-                GrupoDelBloque(titulo=f"Gastos - {unidad.nombre}", secciones=_una_seccion(series))
-            )
+        grupos.append(
+            GrupoDelBloque(titulo=f"Gastos - {unidad.nombre}", secciones=_una_seccion(series))
+        )
     return grupos
 
 
@@ -679,15 +712,11 @@ def _grupo_del_total_de_gastos(corrida: CorridaAlmacenada, anos: int) -> list[Gr
         return [sum(s[i] for s in aportes if i < len(s)) for i in range(anos)]
 
     series: list[SerieAnual] = []
-    conceptos = [fila.etiqueta for fila in FILAS_DE_GASTOS if not fila.es_seccion]
-    if SERVIDUMBRES in conceptos:
-        conceptos.insert(conceptos.index(SERVIDUMBRES) + 1, PLANILLA)
-    conceptos.append(GESTION_SOCIAL_DEDUCIBLE)
 
     # Aquí la estructura va completa, con su guion en la fila vacía: es la tabla
     # de cierre y el modelo la muestra entera, de modo que cada concepto cae
     # siempre en la misma línea.
-    for concepto in conceptos:
+    for concepto in _conceptos_de_gastos():
         series.append(_serie(concepto, consolidado(concepto) or [0.0] * anos, medida=MEDIDA_OPEX))
 
     if not por_unidad:

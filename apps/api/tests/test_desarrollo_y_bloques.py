@@ -538,12 +538,22 @@ class TestBloquesIntermedios:
         # A diferencia del cash cost, la lista de gastos es la misma para todas
         # las unidades: ocultar lo vacio no devolveria la lista de nadie y solo
         # movería cada concepto de linea segun el proyecto.
+        #
+        # Y es la misma que la de la tabla de cierre, las dos filas derivadas
+        # incluidas. Con listas distintas, quien comparaba una unidad contra el
+        # total contaba lineas distintas.
         cuerpo = self._bloques(cliente, plantilla, plantilla_opex)
         opex = next(b for b in cuerpo["bloques"] if b["clave"] == "opex")
         primero = next(g for g in opex["grupos"] if g["titulo"].startswith("Gastos - "))
+        cierre = next(g for g in opex["grupos"] if g["titulo"] == "Total Gastos")
         series = primero["secciones"][0]["series"]
+        etiquetas = [s["etiqueta"] for s in series]
 
-        assert [s["etiqueta"] for s in series] == [f.etiqueta for f in CON_DATO_DE_GASTOS]
+        assert etiquetas == [s["etiqueta"] for s in cierre["secciones"][0]["series"]]
+        del_catalogo = [f.etiqueta for f in CON_DATO_DE_GASTOS]
+        assert [e for e in etiquetas if e in del_catalogo] == del_catalogo
+        assert etiquetas.index("Planilla") == etiquetas.index("Servidumbres y usufructos") + 1
+        assert etiquetas[-1] == "Gestión Social Deducible"
         assert any(all(v == 0 for v in s["valores"]) for s in series)
 
     def test_la_hoja_cierra_con_el_total_de_gastos(
