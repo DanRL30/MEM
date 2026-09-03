@@ -155,7 +155,10 @@ class TestDepreciacion:
         con_gate = depreciacion_de_unidad(horizonte, unidad, TASAS, produccion=produccion)
         assert sin_gate[0] > 0.0
         assert con_gate[:2] == (0.0, 0.0)
-        assert con_gate[2] == pytest.approx(sin_gate[2])
+        # La puerta difiere y libera: el primer ejercicio con produccion
+        # reconoce su cuota y las dos que quedaron esperando.
+        assert con_gate[2] == pytest.approx(sum(sin_gate[:3]))
+        assert sum(con_gate) == pytest.approx(sum(sin_gate)), "la puerta pierde capital"
 
     def test_lo_no_depreciable_se_deduce_entero_en_su_ano(self, horizonte: Horizonte) -> None:
         # El nombre viene del libro y engana: no es que no se deprecie, es que

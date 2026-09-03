@@ -325,10 +325,12 @@ class TestGastosDerivados:
         # Capitalizar es diferir, no perder: sale de caja el primer ano y rebaja
         # la base a lo largo de la vida del activo. El libro lo deprecia al 5 %,
         # y la puerta de la regla 013 lo retrasa hasta el primer ano con
-        # produccion, que aqui es el segundo.
+        # produccion, que aqui es el segundo. Ahi se reconocen las dos cuotas:
+        # la del ejercicio y la que quedo esperando.
         corrida = calcular(_con_opex(libro_de_opex), MAESTROS)
         componentes = corrida.depreciacion_tributaria_por_componente["Mina Alfa"]
-        assert componentes["Estudios capitalizables"][1] == pytest.approx(3_500.0)
+        assert componentes["Estudios capitalizables"][1] == pytest.approx(7_000.0)
+        assert componentes["Estudios capitalizables"][0] == 0.0
 
 
 class TestIncidencias:

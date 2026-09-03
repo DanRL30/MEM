@@ -440,12 +440,30 @@ def _en_anos_con_produccion(horizonte: Horizonte, depreciacion: Serie, produccio
 def _sin_depreciar_antes_de_producir(
     horizonte: Horizonte, depreciacion: Serie, produccion: Serie
 ) -> Serie:
+    """La puerta de la regla `013`: **difiere y libera, no anula.**
+
+    El libro no descarta la cuota de los ejercicios anteriores al primero con
+    producción acumulada: la guarda y la reconoce entera en ese primer ejercicio.
+    Su fórmula lo dice sin rodeos —`IF(produccion acumulada = 0, 0, SUM(todo el
+    cronograma hasta el ano) - SUM(lo ya reconocido))`—, y la diferencia con
+    anularla no es de matiz: en el caso 7 vale 382 851,4 k$ concentrados en un
+    solo ejercicio.
+
+    Una unidad que no produce nunca deja el saldo diferido y no deprecia, que es
+    lo mismo que hacía antes.
+    """
     _verificar_produccion(horizonte, produccion)
     acumulada = 0.0
+    diferida = 0.0
     resultado: list[float] = []
     for i, valor in enumerate(depreciacion):
         acumulada += produccion[i]
-        resultado.append(valor if acumulada != 0.0 else 0.0)
+        if acumulada == 0.0:
+            diferida += valor
+            resultado.append(0.0)
+        else:
+            resultado.append(valor + diferida)
+            diferida = 0.0
     return tuple(resultado)
 
 

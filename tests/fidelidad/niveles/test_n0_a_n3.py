@@ -404,10 +404,13 @@ class TestN1:
         contrastar(simple.cash_cost, (0.0, 200_000.0, 200_000.0), "cash cost")
 
     def test_depreciacion_no_corre_antes_de_producir(self, simple: Corrida) -> None:
-        # La inversion es del primer ano y la produccion empieza en el segundo:
-        # la cuota del primer ejercicio se anula (regla 013) y solo queda una.
+        # La inversion es del primer ano y la produccion empieza en el segundo.
+        # La regla 013 **difiere y libera**: la cuota del primer ejercicio no se
+        # pierde, se reconoce entera en el segundo junto con la suya. Anularla
+        # dejaba fuera medio millon de capital depreciable.
         por_mina = simple.depreciacion_tributaria_por_mina["Mina Unica"]
-        contrastar(por_mina, (0.0, 500_000.0, 0.0), "depreciacion tributaria")
+        contrastar(por_mina, (0.0, 1_000_000.0, 0.0), "depreciacion tributaria")
+        assert coincide(sum(por_mina), 1_000_000.0), "la via tributaria pierde capital"
 
     def test_regalia_manda_la_minima_sobre_ventas(self, simple: Corrida) -> None:
         # Con escala plana al 1 % del margen, la regalia por margen queda por
@@ -415,10 +418,12 @@ class TestN1:
         contrastar(simple.regalias, (0.0, 10_000.0, 10_000.0), "regalia")
 
     def test_participacion_de_trabajadores(self, simple: Corrida) -> None:
-        contrastar(simple.participacion_trabajadores, (0.0, 23_200.0, 63_200.0), "participacion")
+        # El segundo ejercicio absorbe la depreciacion diferida y cierra en
+        # perdida, de modo que no hay participacion que repartir.
+        contrastar(simple.participacion_trabajadores, (0.0, 0.0, 46_400.0), "participacion")
 
     def test_impuesto_a_la_renta(self, simple: Corrida) -> None:
-        contrastar(simple.impuesto_renta, (0.0, 78_278.25, 213_240.75), "impuesto a la renta")
+        contrastar(simple.impuesto_renta, (0.0, 0.0, 156_556.5), "impuesto a la renta")
 
     def test_las_sumas_de_la_hoja_de_impuestos_cierran(self, combinado: Corrida) -> None:
         # `Impuestos!20`, `!41`, `!47`, `!59` y `!67` son sumas de las filas que
@@ -519,9 +524,10 @@ class TestN1:
         # D-04: MINSUR pidio el calculo separado por mina en todos los casos.
         por_mina = combinado.depreciacion_tributaria_por_mina
         assert set(por_mina) == {"Proyecto X"}, "solo la unidad con capital deprecia"
-        # 600 000 al 50 %, con la produccion arrancando en el tercer ano.
+        # 600 000 al 50 %, con la produccion arrancando en el tercer ano: las
+        # dos cuotas se acumulan y se liberan juntas en ese ejercicio.
         contrastar(
-            por_mina["Proyecto X"], (0.0, 0.0, 300_000.0, 0.0, 0.0), "depreciacion Proyecto X"
+            por_mina["Proyecto X"], (0.0, 0.0, 600_000.0, 0.0, 0.0), "depreciacion Proyecto X"
         )
 
     def test_la_via_financiera_agota_el_capital_contra_las_reservas(
@@ -543,10 +549,10 @@ class TestN1:
         componentes = con_agotamiento.depreciacion_tributaria_por_componente["Mina Larga"]
         contrastar(
             componentes["edificaciones"],
-            (0.0, 50_000.0, 50_000.0, 50_000.0),
+            (0.0, 100_000.0, 50_000.0, 50_000.0),
             "edificaciones tributaria",
         )
-        contrastar(componentes["maquinaria"], (0.0, 200_000.0, 0.0, 0.0), "maquinaria tributaria")
+        contrastar(componentes["maquinaria"], (0.0, 400_000.0, 0.0, 0.0), "maquinaria tributaria")
 
     def test_un_ano_sin_produccion_pierde_la_cuota_financiera(
         self, con_agotamiento: Corrida
@@ -556,7 +562,7 @@ class TestN1:
         # libro. El cuarto ejercicio no produce, y ahi las dos se separan.
         contrastar(
             con_agotamiento.depreciacion_tributaria_por_mina["Mina Larga"],
-            (0.0, 250_000.0, 50_000.0, 50_000.0),
+            (0.0, 500_000.0, 50_000.0, 50_000.0),
             "depreciacion tributaria",
         )
         contrastar(
@@ -576,7 +582,7 @@ class TestN1:
         assert coincide(sum(financiera), 600_000.0), "el agotamiento no reparte todo el capital"
         contrastar(
             con_agotamiento.depreciacion_tributaria_por_mina["Proyecto Y"],
-            (0.0, 0.0, 60_000.0, 60_000.0),
+            (0.0, 0.0, 120_000.0, 60_000.0),
             "depreciacion tributaria Proyecto Y",
         )
 
@@ -599,10 +605,10 @@ class TestN2:
         contrastar(polimetalico.flujo.ebitda_ajustado[1:2], (esperado,), "EBITDA del polimetalico")
 
     def test_ebitda_ajustado(self, simple: Corrida) -> None:
-        contrastar(simple.flujo.ebitda_ajustado, (0.0, 775_350.0, 732_850.0), "EBITDA ajustado")
+        contrastar(simple.flujo.ebitda_ajustado, (0.0, 800_000.0, 750_700.0), "EBITDA ajustado")
 
     def test_flujo_operativo(self, simple: Corrida) -> None:
-        contrastar(simple.flujo.flujo_operativo, (0.0, 687_071.75, 509_609.25), "flujo operativo")
+        contrastar(simple.flujo.flujo_operativo, (0.0, 790_000.0, 584_143.5), "flujo operativo")
 
     def test_flujo_de_inversiones(self, simple: Corrida) -> None:
         contrastar(
@@ -612,7 +618,7 @@ class TestN2:
     def test_flujo_economico(self, simple: Corrida) -> None:
         contrastar(
             simple.flujo.flujo_economico,
-            (-1_000_000.0, 687_071.75, 509_609.25),
+            (-1_000_000.0, 790_000.0, 584_143.5),
             "flujo economico",
         )
 
@@ -637,7 +643,7 @@ class TestN2:
         )
         contrastar(
             con_agotamiento.flujo.flujo_economico,
-            (-1_400_000.0, 507_949.75, 1_313_064.875, 293_846.375),
+            (-1_400_000.0, 596_681.0, 1_334_360.375, 293_846.375),
             "flujo economico",
         )
 
@@ -656,7 +662,7 @@ class TestN3:
         assert not coincide(polimetalico.indicadores.npv, sin_venta.indicadores.npv)
 
     def test_npv(self, simple: Corrida) -> None:
-        esperado = -1_000_000.0 + 687_071.75 / 1.1 + 509_609.25 / 1.21
+        esperado = -1_000_000.0 + 790_000.0 / 1.1 + 584_143.5 / 1.21
         assert coincide(simple.indicadores.npv, esperado), (
             f"NPV: se obtuvo {simple.indicadores.npv:,.2f} y se esperaba {esperado:,.2f}"
         )
@@ -676,9 +682,9 @@ class TestN3:
         assert primera.indicadores.npv == segunda.indicadores.npv
 
     def test_payback(self, simple: Corrida) -> None:
-        # Se invierte 1 000 000 y el segundo ano devuelve 687 071,75: falta
-        # recuperar 312 928,25 de los 509 609,25 del tercero.
-        esperado = 2.0 + 312_928.25 / 509_609.25
+        # Se invierte 1 000 000 y el segundo ano devuelve 790 000: falta
+        # recuperar 210 000 de los 584 143,50 del tercero.
+        esperado = 2.0 + 210_000.0 / 584_143.5
         assert simple.indicadores.payback.alcanzado
         assert abs(simple.indicadores.payback.anos - esperado) <= TOLERANCIA_PAYBACK
 
@@ -692,7 +698,7 @@ class TestN3:
         assert combinado.indicadores.capital_intensity == pytest.approx(600_000.0 / 800.0)
 
     def test_npv_del_caso_con_agotamiento(self, con_agotamiento: Corrida) -> None:
-        esperado = -1_400_000.0 + 507_949.75 / 1.1 + 1_313_064.875 / 1.21 + 293_846.375 / 1.331
+        esperado = -1_400_000.0 + 596_681.0 / 1.1 + 1_334_360.375 / 1.21 + 293_846.375 / 1.331
         assert coincide(con_agotamiento.indicadores.npv, esperado), (
             f"NPV: se obtuvo {con_agotamiento.indicadores.npv:,.2f} y se esperaba {esperado:,.2f}"
         )

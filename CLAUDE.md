@@ -371,7 +371,9 @@ no vende: solo lleva capital y depreciacion, y su costo operativo se carga en la
 la mina a la que sirve. No confundirlo con una relavera de reprocesamiento, que es una mina con
 origen de relave. `UnidadProductiva.produce` decide quien lleva pestana de produccion, y es tambien
 la puerta de la regla `013`: aplicarla a una unidad que no produce por diseno le anularia el escudo
-fiscal entero en vez de retrasarlo.
+fiscal entero en vez de retrasarlo. **Esa puerta difiere y libera, no anula**: la cuota de los
+ejercicios anteriores al primero con produccion se reconoce entera en ese primer ejercicio, que es
+lo que hace el libro y lo que impide perder capital depreciable por el camino.
 
 ### La depreciacion tiene dos vias y dos metodos, no dos juegos de tasas
 
