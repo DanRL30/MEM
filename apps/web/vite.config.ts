@@ -31,5 +31,6 @@ export default defineConfig({
     // un parrafo que se le parece.
     environment: "jsdom",
     include: ["tests/**/*.test.{ts,tsx}"],
+    setupFiles: ["./tests/entorno.ts"],
   },
 });

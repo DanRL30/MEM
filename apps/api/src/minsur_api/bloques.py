@@ -261,28 +261,50 @@ def _grupo_de_la_refineria(refineria: BloqueDeLaRefineria, nombre: str) -> Grupo
     """
     series: list[SerieAnual] = []
 
-    # Cinco pares alimentado/ley, uno por origen, en el orden de las minas.
+    # Cinco pares alimentado/ley, uno por origen, en el orden de las minas. Cada
+    # ley se totaliza ponderada por el concentrado de su propia fila.
     for aporte in refineria.aportes:
         series.append(
             _serie(f"Concentrado Alimentado {aporte.unidad}", aporte.concentrado, medida="t")
         )
-        series.append(_serie(f"Ley de Sn en Concentrado {aporte.unidad}", aporte.ley, medida="%"))
+        series.append(
+            _serie(
+                f"Ley de Sn en Concentrado {aporte.unidad}",
+                aporte.ley,
+                medida="%",
+                peso=aporte.concentrado,
+            )
+        )
 
     series.extend(
         [
             _serie("Concentrado Alimentado", refineria.concentrado_alimentado, medida="t"),
-            _serie("Ley de Sn en Concentrado", refineria.ley_de_alimentacion, medida="%"),
+            _serie(
+                "Ley de Sn en Concentrado",
+                refineria.ley_de_alimentacion,
+                medida="%",
+                peso=refineria.concentrado_alimentado,
+            ),
             _serie("Toneladas Alimentadas+escoria", refineria.toneladas_alimentadas, medida="t"),
-            _serie("Ley Promedio de Alimentación", refineria.ley_de_alimentacion, medida="%"),
+            _serie(
+                "Ley Promedio de Alimentación",
+                refineria.ley_de_alimentacion,
+                medida="%",
+                peso=refineria.toneladas_alimentadas,
+            ),
         ]
     )
 
+    # La recuperación se pondera por lo que cada origen entrega: una recuperación
+    # media sin pesar por el concentrado daría el mismo valor a una unidad que
+    # aporta el ochenta por ciento y a otra que aporta el dos.
     for aporte in refineria.aportes:
         series.append(
             _serie(
                 f"Recuperación Sn {aporte.unidad}",
                 aporte.recuperacion,
                 medida="%",
+                peso=aporte.concentrado,
                 nota=NOTA_DE_RECUPERACION,
             )
         )
@@ -306,7 +328,12 @@ def _grupo_de_venta_spot(refineria: BloqueDeLaRefineria) -> GrupoDelBloque:
         secciones=_una_seccion(
             [
                 _serie("Concentrado Excedente", refineria.concentrado_excedente, medida="t"),
-                _serie("Ley Promedio de Alimentación", refineria.ley_del_excedente, medida="%"),
+                _serie(
+                    "Ley Promedio de Alimentación",
+                    refineria.ley_del_excedente,
+                    medida="%",
+                    peso=refineria.concentrado_excedente,
+                ),
                 _serie("Producción Sn Refinado", refineria.refinado_del_excedente, medida="t"),
                 _serie("Check", refineria.check, medida="t", nota=NOTA_DEL_CHECK),
             ]

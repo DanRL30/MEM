@@ -539,6 +539,31 @@ class TestBloquesIntermedios:
         assert ley["acumulado"] == pytest.approx(max(ley["valores"]))
         assert ley["acumulado"] < sum(ley["valores"])
 
+    def test_las_leyes_de_la_refineria_tambien_se_totalizan(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # Toda ley del bloque lleva su total, ponderado por el tonelaje de su
+        # fila: la del concentrado de un origen por lo que ese origen entrega, y
+        # la recuperacion tambien. Una media sin pesar daria el mismo valor a
+        # una unidad que aporta el ochenta por ciento y a otra que aporta el dos.
+        cuerpo = self._bloques(cliente, plantilla)
+        produccion = next(b for b in cuerpo["bloques"] if b["clave"] == "produccion")
+        # Por su contenido y no por su rotulo: el nombre de la unidad lo pone el
+        # caso, y aqui la refineria se llama `Refineria`.
+        series = [
+            serie
+            for grupo in produccion["grupos"]
+            for seccion in grupo["secciones"]
+            for serie in seccion["series"]
+            if serie["etiqueta"].startswith(("Concentrado ", "Ley ", "Recuperación Sn "))
+        ]
+
+        leyes = [s for s in series if s["medida"] == "%"]
+        assert leyes, "el bloque de la refineria tiene leyes"
+        assert all(s["acumulado"] is not None for s in leyes), [
+            s["etiqueta"] for s in leyes if s["acumulado"] is None
+        ]
+
     def test_un_ratio_no_lleva_total(
         self, cliente: TestClient, plantilla: Path, plantilla_opex: Path
     ) -> None:
