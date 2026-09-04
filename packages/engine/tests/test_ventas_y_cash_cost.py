@@ -212,3 +212,32 @@ class TestCashCost:
     def test_gasto_de_ventas_y_flete_son_volumen_por_tarifa(self) -> None:
         assert gasto_de_ventas(1_200.0, 15.0) == pytest.approx(18_000.0)
         assert flete(1_200.0, 40.0) == pytest.approx(48_000.0)
+
+
+class TestLaLiquidacionSeGuardaEntera:
+    """Lo que la hoja del libro muestra sale de aqui y no se puede recomponer.
+
+    De las treinta filas con que el libro deriva el valor neto salia solo el
+    resultado. Guardar la liquidacion es lo que permite decir si una diferencia
+    viene de las toneladas, de la ley pagable o de los cargos.
+    """
+
+    def test_cada_metal_recuerda_la_ley_con_la_que_se_pago(self) -> None:
+        # Puede venir declarada por el caso o calculada por el motor, y quien
+        # mira la liquidacion no tiene forma de saber cual de las dos se uso.
+        liquidacion = concentrado_de_prueba()
+        por_nombre = {m.nombre: m for m in liquidacion.metales}
+
+        assert por_nombre["Cu"].ley_pagable == 0.25
+        assert por_nombre["Ag"].ley_pagable == 100.0
+
+    def test_la_ley_guardada_reproduce_el_valor_pagable(self) -> None:
+        # Es la identidad que hace legitimo mostrarla: si la fila que se pinta no
+        # es la que se uso, la hoja cuadraria y la derivacion mentiria.
+        liquidacion = concentrado_de_prueba(toneladas_vendidas=1_000.0)
+        for metal in liquidacion.metales:
+            contenido = metal.ley_pagable
+            if metal.nombre == "Ag":
+                contenido /= GRAMOS_POR_ONZA_TROY
+            precio = 9_000.0 if metal.nombre == "Cu" else 30.0
+            assert metal.valor_pagable == pytest.approx(contenido * precio * 1_000.0)

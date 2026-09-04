@@ -884,6 +884,59 @@ class TestBloquesIntermedios:
         assert medidas <= {"$k", "t", "%", ""}
         assert "$k" in medidas
 
+    def test_ventas_sigue_el_orden_de_la_hoja(self, cliente: TestClient, plantilla: Path) -> None:
+        # El libro abre con las cuatro lineas de venta y sus precios, sigue con
+        # la liquidacion del concentrado y cierra con lo que vende cada unidad.
+        cuerpo = self._bloques(cliente, plantilla)
+        ventas = next(b for b in cuerpo["bloques"] if b["clave"] == "ventas")
+        grupo = ventas["grupos"][0]
+
+        assert grupo["titulo"] == "Ventas Netas"
+        assert [s["titulo"] for s in grupo["secciones"]] == [
+            "Ventas Sn refinado",
+            "Ventas Sn Spot",
+            None,
+            "Ventas concentrado Cu",
+            None,
+        ]
+        assert [s["etiqueta"] for s in grupo["secciones"][0]["series"]] == [
+            "Volumen Sn",
+            "Precio total",
+            "Precio Spot Sn",
+            "Premio Sn",
+            "Venta Sn Refinado",
+        ]
+
+    def test_la_ranura_reservada_no_se_emite(self, cliente: TestClient, plantilla: Path) -> None:
+        # La fila 26 del libro, rotulada `xxx`, es la segunda de sus tres ranuras
+        # reservadas: sin formula y en cero siempre. Es la regla `042`.
+        cuerpo = self._bloques(cliente, plantilla)
+        ventas = next(b for b in cuerpo["bloques"] if b["clave"] == "ventas")
+        etiquetas = [
+            serie["etiqueta"]
+            for grupo in ventas["grupos"]
+            for seccion in grupo["secciones"]
+            for serie in seccion["series"]
+        ]
+
+        assert "xxx" not in etiquetas
+        assert "Venta Total" in etiquetas
+        assert "Ajustes finales" in etiquetas
+
+    def test_la_venta_se_muestra_en_miles(self, cliente: TestClient, plantilla: Path) -> None:
+        # Como el libro y como las otras hojas de dinero. Antes iba en `US$`.
+        cuerpo = self._bloques(cliente, plantilla)
+        ventas = next(b for b in cuerpo["bloques"] if b["clave"] == "ventas")
+        medidas = {
+            serie["medida"]
+            for grupo in ventas["grupos"]
+            for seccion in grupo["secciones"]
+            for serie in seccion["series"]
+        }
+
+        assert "$k" in medidas
+        assert "US$" not in medidas
+
     def test_la_ley_se_totaliza_ponderada_por_su_tonelaje(
         self, cliente: TestClient, plantilla: Path
     ) -> None:

@@ -125,6 +125,22 @@ class _Ventas:
     por_unidad: dict[str, Serie]
     por_camino: dict[str, Serie]
     volumen_pagable_por_unidad: dict[str, dict[str, Serie]]
+    liquidaciones_por_unidad: dict[str, tuple[LiquidacionConcentrado, ...]]
+    """El embarque de cada ejercicio, entero, para las unidades que liquidan.
+
+    De el salian solo el valor neto y el volumen pagable, y con ellos la hoja
+    del libro llega sin derivacion: no se puede decir si una diferencia viene de
+    las toneladas, de la ley pagable o de los cargos. Se guarda el objeto y no
+    sus lineas sueltas porque la liquidacion es una sola cosa.
+    """
+
+    volumenes_del_estano: dict[str, Serie]
+    """Las series con que el libro deriva sus dos lineas de venta de estano.
+
+    Son del conjunto y no de una unidad: el volumen refinado sale de la
+    refineria, el del excedente tambien, y el precio, el premio y el factor son
+    terminos del caso. El libro las escribe una sola vez por el mismo motivo.
+    """
 
 
 @dataclass(frozen=True)
@@ -196,6 +212,17 @@ class Corrida:
     """Lo que vende cada unidad, sin agrupar."""
 
     ventas_por_camino: dict[str, Serie]
+    liquidaciones_por_unidad: dict[str, tuple[LiquidacionConcentrado, ...]]
+    """La liquidacion del concentrado polimetalico, embarque a embarque.
+
+    Es la mitad de la hoja `Ventas` del libro, y hasta ahora se calculaba y se
+    descartaba: de las treinta filas con que deriva el valor neto salia solo el
+    resultado.
+    """
+
+    volumenes_del_estano: dict[str, Serie]
+    """Volumenes, precios, premio y factor con que se derivan las dos lineas de
+    venta de estano. Son del caso, no de una unidad."""
     """Las cuatro lineas de venta del libro, antes de totalizarlas.
 
     El estano refinado, el estano en concentrado, el concentrado polimetalico y
@@ -528,6 +555,8 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         concentrado_liquidado_por_unidad=resultado_de_ventas.concentrado_liquidado_por_unidad,
         ventas_por_unidad=resultado_de_ventas.por_unidad,
         ventas_por_camino=resultado_de_ventas.por_camino,
+        liquidaciones_por_unidad=resultado_de_ventas.liquidaciones_por_unidad,
+        volumenes_del_estano=resultado_de_ventas.volumenes_del_estano,
         volumen_pagable_por_unidad=resultado_de_ventas.volumen_pagable_por_unidad,
         bolsa_de_egresos=bolsa,
         cuentas_por_cobrar=cuentas.por_cobrar,
@@ -635,6 +664,9 @@ def _ventas(caso: Caso, bloque: BloqueDeLaRefineria) -> _Ventas:
     liquidado: dict[str, Serie] = {}
     por_unidad: dict[str, Serie] = {}
     volumen_pagable: dict[str, dict[str, Serie]] = {}
+    embarques: dict[str, tuple[LiquidacionConcentrado, ...]] = {}
+    volumen_refinado_total = [0.0] * anos
+    volumen_concentrado_total = [0.0] * anos
     for unidad in caso.unidades:
         # La refinería no declara su refinado: se calculo desde las minas. Una
         # unidad que vende directo si lo declara, porque no pasa por refineria.
@@ -655,10 +687,15 @@ def _ventas(caso: Caso, bloque: BloqueDeLaRefineria) -> _Ventas:
                 volumen_concentrado[i] + bloque.refinado_del_excedente[i] for i in range(anos)
             )
 
+        for i in range(anos):
+            volumen_refinado_total[i] += volumen_refinado[i]
+            volumen_concentrado_total[i] += volumen_concentrado[i]
+
         liquidaciones = _liquidar_concentrado_de(caso, unidad)
         if liquidaciones is not None:
             liquidado[unidad.nombre] = tuple(x.valor_neto for x in liquidaciones)
             volumen_pagable[unidad.nombre] = _volumen_pagable(liquidaciones)
+            embarques[unidad.nombre] = tuple(liquidaciones)
 
         propia = [0.0] * anos
         for i in range(anos):
@@ -689,6 +726,16 @@ def _ventas(caso: Caso, bloque: BloqueDeLaRefineria) -> _Ventas:
             "Ajustes finales": ajustes,
         },
         volumen_pagable_por_unidad=volumen_pagable,
+        liquidaciones_por_unidad=embarques,
+        volumenes_del_estano={
+            "Volumen Sn refinado": tuple(volumen_refinado_total),
+            "Volumen Sn en concentrado": tuple(volumen_concentrado_total),
+            "Precio Spot Sn": precio_refinado,
+            "Premio Sn": premio,
+            "Precio Spot Sn en concentrado": precio_concentrado,
+            "Factor Metal Pagable": factor,
+            "Ajustes finales": ajustes,
+        },
     )
 
 

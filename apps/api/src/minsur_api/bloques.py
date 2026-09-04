@@ -56,6 +56,7 @@ from minsur_engine.depreciacion import (
 )
 from minsur_engine.horizonte import Serie, anos_con_dato
 from minsur_engine.refineria import BloqueDeLaRefineria
+from minsur_engine.ventas import LiquidacionConcentrado
 from minsur_ingest.capex import (
     CON_DATO_DE_CAPEX,
     MEDIDA as MEDIDA_CAPEX,
@@ -1370,34 +1371,399 @@ def _bloque_de_depreciacion(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCo
     )
 
 
-def _bloque_de_ventas(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
+# El libro calcula las penalidades del concentrado, las suma a su total de
+# cargos y **no** las descuenta del valor neto que alimenta la venta. Es la
+# regla `010`, y no dice por que.
+NOTA_DE_LAS_PENALIDADES = (
+    "El libro las calcula y las suma a `Total Concentrado Cu`, pero el valor "
+    "neto que alimenta la venta se arma sin ellas. Se reproduce tal cual."
+)
+
+# La formula del libro para la ley pagable de la plata multiplica por cien una
+# ley que viene en onzas troy por tonelada, mientras su deduccion va en gramos.
+# El factor entre las dos unidades es 31,1035, no 100. Es la regla `045`.
+NOTA_DE_LA_LEY_DE_LA_PLATA = (
+    "La fórmula del libro mezcla onzas troy con gramos. No se reproduce ni se "
+    "corrige: la fila se carga como dato y no se corrobora."
+)
+
+MEDIDA_VENTAS = "$k"
+"""El libro lleva esta hoja en miles, como las de opex, capital y depreciacion."""
+
+# Las unidades en que el motor entrega el contenido pagable de cada metal. La
+# plata se cotiza y se paga por onza troy; rotularla en toneladas, como se hacia
+# hasta ahora, sumaba onzas bajo etiqueta de tonelada en la columna de total.
+MEDIDA_DEL_VOLUMEN_PAGABLE = {"Ag": "oz"}
+
+
+def _fila(etiqueta: str, valores: Sequence[float], medida: str, **extras: object) -> SerieAnual:
+    """Una fila de la hoja de ventas, con la etiqueta y la unidad del libro."""
+    return _serie(etiqueta, valores, medida=medida, **extras)  # type: ignore[arg-type]
+
+
+def _cerrada(
+    titulo: str | None, series: list[SerieAnual], etiqueta: str, anos: int
+) -> SeccionDelBloque:
+    """Una seccion con su fila de cierre, sombreada como en el libro."""
+    return SeccionDelBloque(
+        titulo=titulo,
+        series=[
+            *series,
+            _serie(
+                etiqueta,
+                _suma([s.valores for s in series if s.medida == MEDIDA_VENTAS], anos),
+                medida=MEDIDA_VENTAS,
+                total=True,
+            ),
+        ],
+    )
+
+
+def _grupo_de_ventas_netas(corrida: CorridaAlmacenada, anos: int) -> GrupoDelBloque:
+    """`Ventas Netas`, las filas 7 a 27 del libro.
+
+    **El mismo estaño se vende por dos vías y a dos precios distintos**:
+    refinado, al spot más un premio; y en concentrado, al spot por el factor de
+    metal pagable. La segunda es la del excedente que la refinería no alcanza a
+    tratar, y por eso su volumen sale del bloque de la refinería y no de una
+    mina.
+
+    El `Precio total` del concentrado polimetálico es el precio implícito que el
+    libro obtiene dividiendo el valor neto entre las toneladas, para volver a
+    multiplicarlo por ellas en la línea siguiente. El rodeo se cancela —es la
+    regla `043`— y se muestra porque la hoja lo muestra.
+    """
     resultado = corrida.resultado
-    caminos = [
-        _serie("Ventas del caso", resultado.ventas, medida=DOLARES),
-        *(
-            _serie(camino, valores, medida=DOLARES)
-            for camino, valores in resultado.ventas_por_camino.items()
+    volumenes = resultado.volumenes_del_estano
+    caminos = resultado.ventas_por_camino
+
+    def serie(clave: str) -> Sequence[float]:
+        return _o_en_ceros(volumenes.get(clave), anos)
+
+    refinado, premio = serie("Precio Spot Sn"), serie("Premio Sn")
+    spot, factor = serie("Precio Spot Sn en concentrado"), serie("Factor Metal Pagable")
+    del_concentrado = _o_en_ceros(caminos.get("Venta Cu + Ag"), anos)
+    volumen_del_concentrado = _suma([_toneladas_liquidadas(corrida, anos)], anos)
+
+    venta_refinado = _o_en_ceros(caminos.get("Venta Sn Refinado"), anos)
+    venta_en_concentrado = _o_en_ceros(caminos.get("Venta Sn Concentrado"), anos)
+    ajustes = _o_en_ceros(caminos.get("Ajustes finales"), anos)
+    secciones = [
+        SeccionDelBloque(
+            titulo="Ventas Sn refinado",
+            series=[
+                _fila("Volumen Sn", serie("Volumen Sn refinado"), "t"),
+                _fila("Precio total", [refinado[i] + premio[i] for i in range(anos)], "$/t"),
+                _fila("Precio Spot Sn", refinado, "$/t"),
+                _fila("Premio Sn", premio, "$/t"),
+                _fila("Venta Sn Refinado", venta_refinado, MEDIDA_VENTAS, total=True),
+            ],
+        ),
+        SeccionDelBloque(
+            titulo="Ventas Sn Spot",
+            series=[
+                _fila("Volumen Sn", serie("Volumen Sn en concentrado"), "t"),
+                _fila("Precio total", [spot[i] * factor[i] for i in range(anos)], "$/t"),
+                _fila("Precio Spot Sn", spot, "$/t"),
+                _fila("Factor Metal Pagable", factor, "%", peso=serie("Volumen Sn en concentrado")),
+                _fila("Venta Sn Concentrado", venta_en_concentrado, MEDIDA_VENTAS, total=True),
+            ],
+        ),
+        SeccionDelBloque(
+            titulo=None,
+            series=[
+                _fila(
+                    "Venta Sn Total",
+                    _suma([venta_refinado, venta_en_concentrado], anos),
+                    MEDIDA_VENTAS,
+                    total=True,
+                )
+            ],
+        ),
+        SeccionDelBloque(
+            titulo="Ventas concentrado Cu",
+            series=[
+                _fila("Volumen concentrado", volumen_del_concentrado, "t"),
+                _fila(
+                    "Precio total",
+                    _precio_implicito(del_concentrado, volumen_del_concentrado, anos),
+                    "$/t",
+                ),
+                _fila("Venta Cu + Ag", del_concentrado, MEDIDA_VENTAS, total=True),
+            ],
+        ),
+        SeccionDelBloque(
+            titulo=None,
+            series=[
+                _fila("Ajustes finales", ajustes, MEDIDA_VENTAS, origen="dato"),
+                _fila("Venta Total", resultado.ventas, MEDIDA_VENTAS, total=True),
+            ],
         ),
     ]
-    grupos = [GrupoDelBloque(titulo="", secciones=_una_seccion(caminos))]
-    for unidad in resultado.caso.unidades:
-        series: list[SerieAnual] = []
-        if unidad.nombre in resultado.ventas_por_unidad:
-            series.append(
-                _serie("Ventas", resultado.ventas_por_unidad[unidad.nombre], medida=DOLARES)
-            )
-        if unidad.nombre in resultado.concentrado_liquidado_por_unidad:
-            series.append(
-                _serie(
-                    "Concentrado liquidado",
-                    resultado.concentrado_liquidado_por_unidad[unidad.nombre],
-                    medida=DOLARES,
+    return GrupoDelBloque(titulo="Ventas Netas", secciones=secciones)
+
+
+def _toneladas_liquidadas(corrida: CorridaAlmacenada, anos: int) -> list[float]:
+    """Concentrado polimetálico embarcado, sumando las unidades que lo venden."""
+    return _suma(
+        [
+            [embarque.toneladas_vendidas for embarque in embarques]
+            for embarques in corrida.resultado.liquidaciones_por_unidad.values()
+        ],
+        anos,
+    )
+
+
+def _precio_implicito(valor: Sequence[float], toneladas: Sequence[float], anos: int) -> list[float]:
+    """El precio que el libro deriva dividiendo, con su `IFERROR` en cero.
+
+    Un embarque nulo deja la división sin denominador, y ahí el libro devuelve
+    cero: es lo mismo que dejar el término fuera, porque la línea siguiente lo
+    multiplica por esas mismas cero toneladas.
+    """
+    return [
+        valor[i] / toneladas[i] if i < len(toneladas) and toneladas[i] else 0.0 for i in range(anos)
+    ]
+
+
+def _por_metal(
+    embarques: Sequence[LiquidacionConcentrado], metal: str, campo: str, anos: int
+) -> list[float]:
+    """Una fila de la liquidación, para un metal y a lo largo del horizonte."""
+    valores = []
+    for i in range(anos):
+        if i >= len(embarques):
+            valores.append(0.0)
+            continue
+        liquidados = [m for m in embarques[i].metales if m.nombre == metal]
+        valores.append(sum(float(getattr(m, campo)) for m in liquidados))
+    return valores
+
+
+def _terminos_del_metal(corrida: CorridaAlmacenada, metal: str) -> object | None:
+    """Las condiciones de contrato de un metal, que son del caso."""
+    concentrado = corrida.resultado.caso.terminos.concentrado
+    if concentrado is None:
+        return None
+    return next((m for m in concentrado.metales if m.nombre == metal), None)
+
+
+def _grupo_de_la_liquidacion(
+    corrida: CorridaAlmacenada, unidad: UnidadProductiva, anos: int
+) -> GrupoDelBloque:
+    """`Resumen Ventas Provisionales`, las filas 29 a 72 del libro.
+
+    El libro la lleva una sola vez porque hoy solo una unidad vende concentrado
+    polimetálico. Aquí va una por unidad: la ley pagable sale de la ley del
+    concentrado de una unidad concreta y el cargo de refinación de la plata sale
+    de esa ley pagable, de modo que **dos minas con distinta ley de cobre no
+    caben en una fila única**. Es la regla de oro de la refinería aplicada a la
+    venta, y con una sola unidad se ve igual que el libro.
+
+    **Dos asimetrías del libro se reproducen tal cual**: el contenido pagable se
+    valoriza sobre las toneladas vendidas y los cargos se cobran sobre las netas
+    de merma —la regla `011`—, y las penalidades no llegan al valor neto —la
+    `010`—.
+    """
+    embarques = corrida.resultado.liquidaciones_por_unidad[unidad.nombre]
+    concentrado = corrida.resultado.caso.terminos.concentrado
+    vendidas = [e.toneladas_vendidas for e in embarques]
+    netas = [e.toneladas_netas for e in embarques]
+    merma = _o_en_ceros(concentrado.merma if concentrado else (), anos)
+
+    def del_caso(metal: str, campo: str) -> Sequence[float]:
+        terminos = _terminos_del_metal(corrida, metal)
+        return _o_en_ceros(getattr(terminos, campo, ()) if terminos else (), anos)
+
+    def declarada(mapa: Mapping[str, Serie], metal: str) -> Sequence[float]:
+        return _o_en_ceros(mapa.get(metal, ()), anos)
+
+    secciones = [
+        SeccionDelBloque(
+            titulo="Concentrado Cu",
+            series=[
+                _fila("Toneladas vendidas", vendidas, "t"),
+                _fila("Merma", merma, "%", peso=vendidas),
+                _fila("Toneladas vendidas netas", netas, "t"),
+                _fila("Precio Cu", del_caso("Cu", "precio"), "$/t"),
+                _fila("Precio Ag", del_caso("Ag", "precio"), "$/oz"),
+            ],
+        ),
+        SeccionDelBloque(
+            titulo="Leyes",
+            series=[
+                _fila("Cu", _o_en_ceros(unidad.produccion.ley_cu, anos), "%", origen="dato"),
+                _fila("Ag", _o_en_ceros(unidad.produccion.ley_ag, anos), "oz/t", origen="dato"),
+            ],
+        ),
+        SeccionDelBloque(
+            titulo="Deducciones Mínimas",
+            series=[
+                _fila("Cu", del_caso("Cu", "deduccion_minima"), "%", origen="dato"),
+                _fila("Ag", del_caso("Ag", "deduccion_minima"), "g/t", origen="dato"),
+            ],
+        ),
+        SeccionDelBloque(
+            titulo="Factor Metal Pagable",
+            series=[
+                _fila("Cu", del_caso("Cu", "factor_pagable"), "%", origen="dato"),
+                _fila("Ag", del_caso("Ag", "factor_pagable"), "%", origen="dato"),
+            ],
+        ),
+        SeccionDelBloque(
+            titulo="Ley Pagable",
+            series=[
+                # La que se uso de verdad, venga declarada o calculada. Leer solo
+                # el mapa de lo declarado dejaba la fila en cero justo cuando el
+                # motor la habia derivado, que es el caso habitual.
+                _fila("Cu", _por_metal(embarques, "Cu", "ley_pagable", anos), "%", peso=vendidas),
+                _fila(
+                    "Ag",
+                    _por_metal(embarques, "Ag", "ley_pagable", anos),
+                    "g/t",
+                    peso=vendidas,
+                    nota=NOTA_DE_LA_LEY_DE_LA_PLATA,
+                ),
+            ],
+        ),
+        SeccionDelBloque(
+            titulo="Tratamiento (TC)",
+            series=[_fila("Maquila", [e.maquila for e in embarques], MEDIDA_VENTAS)],
+        ),
+        SeccionDelBloque(
+            titulo="Refinación (RC)",
+            series=[
+                _fila(
+                    "Cu", _por_metal(embarques, "Cu", "cargo_de_refinacion", anos), MEDIDA_VENTAS
+                ),
+                _fila(
+                    "Ag", _por_metal(embarques, "Ag", "cargo_de_refinacion", anos), MEDIDA_VENTAS
+                ),
+            ],
+        ),
+        _cerrada(
+            "Valor pagable del concentrado",
+            [
+                _fila("Cu", _por_metal(embarques, "Cu", "valor_pagable", anos), MEDIDA_VENTAS),
+                _fila("Ag", _por_metal(embarques, "Ag", "valor_pagable", anos), MEDIDA_VENTAS),
+            ],
+            "Valor Pagable",
+            anos,
+        ),
+        _cerrada(
+            "TC/RC y penalidades",
+            [
+                _fila(
+                    "Cu",
+                    [
+                        -(
+                            e.maquila
+                            + sum(m.cargo_de_refinacion for m in e.metales if m.nombre == "Cu")
+                        )
+                        for e in embarques
+                    ],
+                    MEDIDA_VENTAS,
+                ),
+                _fila(
+                    "Ag",
+                    [-v for v in _por_metal(embarques, "Ag", "cargo_de_refinacion", anos)],
+                    MEDIDA_VENTAS,
+                ),
+                _fila(
+                    "Penalidades",
+                    [-e.penalidades for e in embarques],
+                    MEDIDA_VENTAS,
+                    nota=NOTA_DE_LAS_PENALIDADES,
+                ),
+            ],
+            "Total Concentrado Cu",
+            anos,
+        ),
+        _cerrada(
+            "Valor neto del concentrado",
+            [
+                _fila(
+                    "Cu",
+                    [
+                        m - c
+                        for m, c in zip(
+                            _por_metal(embarques, "Cu", "valor_pagable", anos),
+                            [
+                                e.maquila
+                                + sum(x.cargo_de_refinacion for x in e.metales if x.nombre == "Cu")
+                                for e in embarques
+                            ],
+                            strict=False,
+                        )
+                    ],
+                    MEDIDA_VENTAS,
+                ),
+                _fila(
+                    "Ag",
+                    _por_metal(embarques, "Ag", "valor_neto", anos),
+                    MEDIDA_VENTAS,
+                ),
+            ],
+            "Valor neto",
+            anos,
+        ),
+        SeccionDelBloque(
+            titulo="Volumen Pagable",
+            series=[
+                _fila(
+                    metal,
+                    valores,
+                    MEDIDA_DEL_VOLUMEN_PAGABLE.get(metal, "t"),
                 )
+                for metal, valores in corrida.resultado.volumen_pagable_por_unidad.get(
+                    unidad.nombre, {}
+                ).items()
+            ],
+        ),
+    ]
+    return GrupoDelBloque(
+        titulo=f"Resumen Ventas Provisionales - {unidad.nombre}", secciones=secciones
+    )
+
+
+def _bloque_de_ventas(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorrida:
+    """La hoja de ventas, en el orden del libro.
+
+    Primero las cuatro líneas de venta con sus volúmenes y sus precios, después
+    la liquidación del concentrado polimetálico de cada unidad, y al final lo que
+    vende cada una.
+
+    **La hoja es cálculo, no captura**: de sus setenta y dos filas con rótulo
+    solo dos llevan un número escrito a mano, y una de ellas es la ranura
+    reservada que no se reproduce.
+
+    **La fila 26, rotulada `xxx`, no se emite.** Es la segunda de las tres
+    ranuras reservadas del libro —tras `InputsCapex!10` y antes de `Otros!40`—,
+    no tiene fórmula y vale cero siempre. Es la regla `042`, y `Venta Total`
+    suma sin ella.
+    """
+    resultado = corrida.resultado
+    grupos = [_grupo_de_ventas_netas(corrida, anos)]
+    grupos.extend(
+        _grupo_de_la_liquidacion(corrida, unidad, anos)
+        for unidad in resultado.caso.unidades
+        if unidad.nombre in resultado.liquidaciones_por_unidad
+    )
+    # El libro consolida y no abre la venta por unidad. Va al cierre porque una
+    # diferencia contra el modelo tiene que poder atribuirse a un origen, que es
+    # la misma razon por la que la depreciacion se lleva separada por mina.
+    por_unidad = [
+        _fila(unidad.nombre, resultado.ventas_por_unidad[unidad.nombre], MEDIDA_VENTAS)
+        for unidad in resultado.caso.unidades
+        if unidad.nombre in resultado.ventas_por_unidad
+    ]
+    if por_unidad:
+        grupos.append(
+            GrupoDelBloque(
+                titulo="Ventas por unidad",
+                secciones=[_cerrada(None, por_unidad, "Venta Total", anos)],
             )
-        for metal, valores in resultado.volumen_pagable_por_unidad.get(unidad.nombre, {}).items():
-            series.append(_serie(f"Volumen pagable {metal}", valores, medida="t"))
-        if series:
-            grupos.append(GrupoDelBloque(titulo=unidad.nombre, secciones=_una_seccion(series)))
+        )
     return BloqueDeCorrida(
         clave="ventas",
         etiqueta="Ventas",
@@ -1509,7 +1875,7 @@ def bloques_de(corrida: CorridaAlmacenada) -> BloquesDeCorrida:
             _bloque_de_opex(corrida, len(anios)),
             _bloque_de_capex(corrida, len(anios)),
             _bloque_de_depreciacion(corrida, len(anios)),
-            _bloque_de_ventas(corrida),
+            _bloque_de_ventas(corrida, len(anios)),
             _bloque_de_otros(corrida),
             _bloque_de_impuestos(corrida),
             _bloque_de_flujo(corrida),

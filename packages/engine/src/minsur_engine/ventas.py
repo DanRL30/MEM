@@ -80,6 +80,14 @@ class LiquidacionMetal:
     nombre: str
     valor_pagable: float
     cargo_de_refinacion: float
+    ley_pagable: float = 0.0
+    """La ley con la que se pago, en la unidad en que viene la del metal.
+
+    Es la fila `Ley Pagable` del libro, y viaja con la liquidacion porque el
+    caso puede declararla o dejar que el motor la calcule: sin ella, quien mira
+    la liquidacion no sabe cual de las dos se uso.
+    """
+
     volumen_pagable: float = 0.0
     """Contenido que el comprador paga, en toneladas para el cobre y en onzas
     troy para la plata. Es la línea `Volumen Pagable` del libro."""
@@ -211,6 +219,7 @@ def liquidar_concentrado(
         liquidaciones.append(
             LiquidacionMetal(
                 nombre=metal.nombre,
+                ley_pagable=metal.ley_pagable,
                 # El contenido se valoriza sobre las toneladas vendidas...
                 valor_pagable=contenido * metal.precio * toneladas_vendidas,
                 # ...y los cargos se cobran sobre las netas de merma.
