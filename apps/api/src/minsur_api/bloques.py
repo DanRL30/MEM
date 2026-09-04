@@ -113,11 +113,6 @@ NOTA_DEL_COMPUTO = (
     "contable. La plataforma lo lleva aparte: lo que llega sumado no se separa."
 )
 
-# Las series monetarias del motor están en dólares. El libro lleva varias de sus
-# hojas en miles, pero la conversión es de la ingesta al entrar y no se deshace
-# al salir: la pantalla muestra la unidad en la que el dato realmente está.
-DOLARES = "US$"
-
 # Lo que tiene sentido sumar a lo largo del horizonte. Una ley no: se pondera
 # por el tonelaje de su fila, que es como el propio libro consolida las leyes de
 # dos corrientes. Un ratio -un costo por tonelada- no tiene total.
@@ -2607,21 +2602,171 @@ def _bloque_de_impuestos(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
     )
 
 
+# --- FC NZ --------------------------------------------------------------------
+
+NOTA_DEL_EBITDA = (
+    "El asterisco es del libro, que no lo explica en ninguna nota: advierte que "
+    "la participación de trabajadores ya está restada aquí y no con los tributos."
+)
+NOTA_DE_LA_GESTION_SOCIAL_DEL_FLUJO = (
+    "Es la celda que la hoja `Otros` rotula `Donaciones` y que en `InputsOpex` se "
+    "llama `Gestión Social`. Un concepto con dos nombres, no dos conceptos."
+)
+NOTA_DE_LOS_OTROS_GASTOS = (
+    "El libro la construye restando posiciones —el total de otros gastos menos su "
+    "primera fila— y no sumando conceptos. Lleva la servidumbre, los reguladores "
+    "con el fondo de jubilación, la fila tecleada `Otros` y la regalía de los "
+    "ejercicios en pérdida."
+)
+NOTA_DE_LOS_IMPUESTOS_DEL_FLUJO = (
+    "Es `Pago Impuestos` de la hoja `Otros`. No lleva la regalía de un ejercicio "
+    "en pérdida: esa viaja en `Otros Gastos`, que es donde el libro la reparte."
+)
+NOTA_DE_LOS_INTERESES = (
+    "El flujo operativo los descuenta y el económico los devuelve, de modo que el "
+    "resultado no dependa de cómo se financie el proyecto."
+)
+NOTA_DEL_FLUJO_ECONOMICO = (
+    "No es el operativo más las inversiones: el libro devuelve además los "
+    "intereses que el operativo había restado. Es un flujo anterior al "
+    "financiamiento."
+)
+NOTA_DEL_FACTOR = (
+    "El libro escribe un cero en el factor del primer ejercicio, con lo que lo "
+    "deja fuera del NPV, y además suma el NPV desde la segunda columna: son dos "
+    "candados independientes. La plataforma descuenta desde el primer ejercicio. "
+    "Es la consulta a Finanzas sobre a qué fecha se valora, sin respuesta."
+)
+NOTA_DEL_DESCONTADO = (
+    "Su columna de total es el NPV del caso. El libro le dedica una fila propia; "
+    "aquí es el acumulado de esta, que es lo mismo y no se puede desincronizar."
+)
+NOTA_DE_LA_BANDERA_DE_GASTOS = (
+    "Uno en los ejercicios con costo operativo. Es la única de las banderas que "
+    "se consume fuera de esta hoja: sujeta la servidumbre del flujo operativo."
+)
+
+
+@dataclass(frozen=True)
+class _FilaDelFlujo:
+    """Una fila de la hoja `FC NZ`: su rótulo del libro y su campo del motor."""
+
+    etiqueta: str
+    campo: str
+    medida: str = MEDIDA_OTROS
+    total: bool = False
+    nota: str | None = None
+
+
+FILAS_DEL_FLUJO = (
+    _FilaDelFlujo("Ventas", "ventas"),
+    _FilaDelFlujo("Cash Cost", "cash_cost"),
+    _FilaDelFlujo("Participaciones", "participaciones"),
+    _FilaDelFlujo("Fletes", "fletes"),
+    _FilaDelFlujo("Gasto de Ventas", "gasto_de_ventas"),
+    _FilaDelFlujo("Gasto Administrativo", "gasto_administrativo"),
+    _FilaDelFlujo("Gestión Social", "gestion_social", nota=NOTA_DE_LA_GESTION_SOCIAL_DEL_FLUJO),
+    _FilaDelFlujo("Otros Gastos", "otros_gastos", nota=NOTA_DE_LOS_OTROS_GASTOS),
+    _FilaDelFlujo("EBITDA ajustado *", "ebitda_ajustado", total=True, nota=NOTA_DEL_EBITDA),
+    _FilaDelFlujo("Δ WK", "variacion_capital_trabajo"),
+    _FilaDelFlujo("Impuestos", "impuestos", nota=NOTA_DE_LOS_IMPUESTOS_DEL_FLUJO),
+    _FilaDelFlujo("Intereses", "intereses", nota=NOTA_DE_LOS_INTERESES),
+    _FilaDelFlujo("Otros", "otros"),
+    _FilaDelFlujo("Flujo Operativo", "flujo_operativo", total=True),
+    _FilaDelFlujo("Capex Inicial", "capex_inicial"),
+    _FilaDelFlujo("Capex Sostenimiento", "capex_sostenimiento"),
+    _FilaDelFlujo("Estudios", "estudios"),
+    _FilaDelFlujo("Exploraciones", "exploraciones"),
+    _FilaDelFlujo("Predios", "predios"),
+    _FilaDelFlujo("Flujo Inversiones", "flujo_de_inversiones", total=True),
+    _FilaDelFlujo("Flujo Económico", "flujo_economico", total=True, nota=NOTA_DEL_FLUJO_ECONOMICO),
+)
+"""`FC NZ!14:35`, en el orden del libro y con cuatro cierres.
+
+Ninguno de los cuatro suma todo lo que tiene encima. `Flujo Operativo` suma el
+`EBITDA` -que ya es un total- mas las cuatro filas intermedias, y `Flujo
+Economico` ni siquiera es una suma: devuelve los intereses. Cada cierre se
+verifica contra los sumandos que declara el motor.
+"""
+
+FILAS_DEL_DESCUENTO = (
+    _FilaDelFlujo("Año", "ano", medida=""),
+    _FilaDelFlujo("Factor de descuento", "factor_de_descuento", medida="", nota=NOTA_DEL_FACTOR),
+    _FilaDelFlujo("Flujo Económico - descontado", "flujo_descontado", nota=NOTA_DEL_DESCONTADO),
+)
+"""`FC NZ!38:40`. Las filas `41` y `42` no se emiten; ver `_bloque_de_flujo`."""
+
+BANDERAS_DEL_FLUJO = (
+    _FilaDelFlujo("Periodo proyecto", "periodo_proyecto", medida=""),
+    _FilaDelFlujo(
+        "Periodo con gastos",
+        "periodo_con_gastos",
+        medida="",
+        nota=NOTA_DE_LA_BANDERA_DE_GASTOS,
+    ),
+    _FilaDelFlujo("Periodo operativo", "periodo_operativo", medida=""),
+)
+"""`FC NZ!6`, `!8` y `!10`. Las filas `7` y `9` del libro estan muertas."""
+
+
+def _banda_del_flujo(titulo: str, filas: Sequence[_FilaDelFlujo], fuente: Any) -> GrupoDelBloque:
+    return GrupoDelBloque(
+        titulo=titulo,
+        secciones=_una_seccion(
+            [
+                _serie(
+                    fila.etiqueta,
+                    getattr(fuente, fila.campo),
+                    medida=fila.medida,
+                    concepto=fila.campo,
+                    total=fila.total,
+                    nota=fila.nota,
+                )
+                for fila in filas
+            ]
+        ),
+    )
+
+
 def _bloque_de_flujo(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
+    """La hoja `FC NZ`, en el orden del libro y con su signo.
+
+    Las tres banderas de periodo, el flujo con sus cuatro cierres y el bloque de
+    descuento. Antes eran cuatro series planas en dólares: las diecisiete líneas
+    de entrada se componían dentro de `corrida.calcular` y morían ahí, de modo
+    que una discrepancia en el flujo no se podía atribuir a la fila que la
+    causaba.
+
+    **Cuatro filas del libro no se emiten, y las cuatro por el mismo motivo: no
+    dicen lo que su rótulo promete.**
+
+    - La `7`, `Periodo pre-operativo`, son treinta y seis ceros tecleados que no
+      lee ninguna celda del libro; la `9`, `Año cierre`, se calcula contra un
+      umbral incrustado en su propia fórmula y tampoco la lee nadie.
+    - La `41`, `NPV`, es la suma de la fila que tiene encima, y aquí esa suma es
+      su columna de total. Emitirla como serie obligaría a repetir el mismo
+      número en las treinta y seis columnas.
+    - La `42`, `TIR económica`, no es una serie anual. Viaja con los indicadores,
+      que además declaran su ausencia con el motivo cuando el caso no la define.
+
+    **Y el segundo bloque de descuento, las filas `45` a `49`, tampoco.** El
+    libro lo lleva oculto y agrupado, repite los cinco rótulos del visible
+    rebaseados a otro ejercicio y da un NPV casi del doble bajo la misma
+    etiqueta. Son dos valoraciones a fechas distintas conviviendo sin que
+    ninguna esté rotulada como tal, y publicar la segunda sería elegir por
+    Finanzas.
+    """
     flujo = corrida.resultado.flujo
+    grupos = [_banda_del_flujo("Flujo Económico", FILAS_DEL_FLUJO, flujo)]
+    if flujo.banderas is not None:
+        grupos.insert(0, _banda_del_flujo("", BANDERAS_DEL_FLUJO, flujo.banderas))
+    grupos.append(_banda_del_flujo("", FILAS_DEL_DESCUENTO, flujo))
     return BloqueDeCorrida(
         clave="flujo",
         etiqueta="FC NZ",
         titulo="Flujo operativo, de inversiones y económico",
         hoja="FC NZ",
-        grupos=_un_grupo(
-            [
-                _serie("EBITDA ajustado", flujo.ebitda_ajustado, medida=DOLARES),
-                _serie("Flujo operativo", flujo.flujo_operativo, medida=DOLARES),
-                _serie("Flujo de inversiones", flujo.flujo_de_inversiones, medida=DOLARES),
-                _serie("Flujo económico", flujo.flujo_economico, medida=DOLARES),
-            ]
-        ),
+        grupos=grupos,
     )
 
 

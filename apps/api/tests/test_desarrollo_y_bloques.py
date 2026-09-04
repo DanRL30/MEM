@@ -1436,6 +1436,158 @@ class TestLaHojaImpuestos:
         assert impuesto["Utilidad Imponible"]["nota"]
 
 
+class TestLaHojaFcNz:
+    """La pestana `FC NZ`, con la forma del libro.
+
+    Tres banderas de periodo, el flujo con sus cuatro cierres y el bloque de
+    descuento. Hasta el 04/09/2026 emitia cuatro series planas en dolares: las
+    diecisiete lineas de entrada se componian dentro de `corrida.calcular` y
+    morian ahi.
+    """
+
+    def _flujo(self, cliente: TestClient, plantilla: Path) -> dict[str, Any]:
+        id_caso = _crear_caso(cliente)
+        _subir(cliente, id_caso, plantilla)
+        cliente.post(f"/api/casos/{id_caso}/evaluar", headers=CABECERAS)
+        cuerpo = cliente.get(f"/api/casos/{id_caso}/corrida/bloques", headers=CABECERAS).json()
+        bloque: dict[str, Any] = next(b for b in cuerpo["bloques"] if b["clave"] == "flujo")
+        return bloque
+
+    def _series(self, bloque: dict[str, Any]) -> list[dict[str, Any]]:
+        return [
+            serie
+            for grupo in bloque["grupos"]
+            for seccion in grupo["secciones"]
+            for serie in seccion["series"]
+        ]
+
+    def test_sigue_el_orden_de_las_bandas_del_libro(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # Una sola banda con titulo, que es lo que tiene el libro: las banderas y
+        # el bloque de descuento van sin rotulo de banda.
+        bloque = self._flujo(cliente, plantilla)
+
+        assert [g["titulo"] for g in bloque["grupos"]] == ["", "Flujo Económico", ""]
+
+    def test_lleva_los_rotulos_del_libro(self, cliente: TestClient, plantilla: Path) -> None:
+        etiquetas = [s["etiqueta"] for s in self._series(self._flujo(cliente, plantilla))]
+
+        assert etiquetas[3:12] == [
+            "Ventas",
+            "Cash Cost",
+            "Participaciones",
+            "Fletes",
+            "Gasto de Ventas",
+            "Gasto Administrativo",
+            "Gestión Social",
+            "Otros Gastos",
+            "EBITDA ajustado *",
+        ]
+        # `Flujo Inversiones`, sin «de», y el asterisco del EBITDA son del libro.
+        assert "Flujo Inversiones" in etiquetas
+        assert "Δ WK" in etiquetas
+
+    def test_los_cuatro_cierres_cuadran(self, cliente: TestClient, plantilla: Path) -> None:
+        """Ninguno suma todo lo que tiene encima, y el ultimo no es una suma.
+
+        `Flujo Operativo` suma el EBITDA -que ya es un total- mas las cuatro
+        filas intermedias, y `Flujo Economico` devuelve ademas los intereses que
+        el operativo habia restado.
+        """
+        bloque = self._flujo(cliente, plantilla)
+        filas = {s["etiqueta"]: s["valores"] for s in self._series(bloque)}
+        orden = [s["etiqueta"] for s in self._series(bloque)]
+
+        def suma(desde: str, hasta: str, ano: int) -> float:
+            i, j = orden.index(desde), orden.index(hasta)
+            return sum(filas[e][ano] for e in orden[i : j + 1])
+
+        for ano in range(len(filas["Ventas"])):
+            assert filas["EBITDA ajustado *"][ano] == pytest.approx(
+                suma("Ventas", "Otros Gastos", ano)
+            ), f"EBITDA, ano {ano}"
+            assert filas["Flujo Operativo"][ano] == pytest.approx(
+                suma("EBITDA ajustado *", "Otros", ano)
+            ), f"flujo operativo, ano {ano}"
+            assert filas["Flujo Inversiones"][ano] == pytest.approx(
+                suma("Capex Inicial", "Predios", ano)
+            ), f"flujo de inversiones, ano {ano}"
+            assert filas["Flujo Económico"][ano] == pytest.approx(
+                filas["Flujo Operativo"][ano]
+                + filas["Flujo Inversiones"][ano]
+                - filas["Intereses"][ano]
+            ), f"flujo economico, ano {ano}"
+
+    def test_el_acumulado_del_descontado_es_el_npv(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # El libro le da una fila propia al NPV; aqui es la columna de total de la
+        # fila que lo suma, que es lo mismo y no se puede desincronizar.
+        id_caso = _crear_caso(cliente)
+        _subir(cliente, id_caso, plantilla)
+        evaluacion = cliente.post(f"/api/casos/{id_caso}/evaluar", headers=CABECERAS).json()
+        cuerpo = cliente.get(f"/api/casos/{id_caso}/corrida/bloques", headers=CABECERAS).json()
+        bloque = next(b for b in cuerpo["bloques"] if b["clave"] == "flujo")
+        descontado = next(
+            s for s in self._series(bloque) if s["etiqueta"] == "Flujo Económico - descontado"
+        )
+
+        # El indicador viaja en millones y la hoja en dolares: que las dos
+        # representaciones coincidan es parte de lo que se comprueba.
+        esperado = evaluacion["indicadores"]["npv_musd"] * 1_000_000.0
+        assert descontado["acumulado"] == pytest.approx(esperado)
+        assert descontado["nota"]
+
+    def test_el_factor_del_primer_ejercicio_vale_uno(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # El libro teclea un cero ahi y suma el NPV desde la segunda columna: dos
+        # candados independientes. La plataforma descuenta desde el primero y lo
+        # declara en la nota de la fila.
+        bloque = self._flujo(cliente, plantilla)
+        factor = next(s for s in self._series(bloque) if s["etiqueta"] == "Factor de descuento")
+
+        assert factor["valores"][0] == pytest.approx(1.0)
+        assert factor["nota"]
+
+    def test_las_filas_que_no_dicen_lo_que_prometen_no_se_emiten(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # Las dos banderas muertas, el NPV -que es el acumulado de la fila de
+        # arriba-, la TIR -que no es una serie anual- y el segundo bloque de
+        # descuento, que el libro lleva oculto.
+        etiquetas = [s["etiqueta"] for s in self._series(self._flujo(cliente, plantilla))]
+
+        assert "Periodo pre-operativo" not in etiquetas
+        assert "Año cierre" not in etiquetas
+        assert "NPV" not in etiquetas
+        assert "TIR económica" not in etiquetas
+
+    def test_las_banderas_van_sin_medida_y_el_dinero_en_miles(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        bloque = self._flujo(cliente, plantilla)
+        por_etiqueta = {s["etiqueta"]: s for s in self._series(bloque)}
+
+        assert {s["medida"] for s in self._series(bloque)} == {"$k", ""}
+        assert por_etiqueta["Periodo con gastos"]["medida"] == ""
+        assert por_etiqueta["Periodo con gastos"]["nota"]
+        assert por_etiqueta["Ventas"]["medida"] == "$k"
+
+    def test_los_egresos_llevan_el_signo_del_libro(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # La hoja los escribe en negativo y los suma. Si llegaran en positivo,
+        # cada cierre tendria que restarse a mano y dejaria de ser una suma.
+        bloque = self._flujo(cliente, plantilla)
+        por_etiqueta = {s["etiqueta"]: s for s in self._series(bloque)}
+
+        assert all(v >= 0.0 for v in por_etiqueta["Ventas"]["valores"])
+        assert all(v <= 0.0 for v in por_etiqueta["Cash Cost"]["valores"])
+        assert all(v <= 0.0 for v in por_etiqueta["Capex Sostenimiento"]["valores"])
+
+
 class TestLaEscalaDeLaHojaImpuestos:
     def test_el_dinero_va_en_miles_y_las_tasas_en_por_ciento(
         self, cliente: TestClient, plantilla: Path

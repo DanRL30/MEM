@@ -10,7 +10,9 @@ modulo responsable, de modo que una discrepancia se localiza en un archivo.
 | Ventas por metal | `ventas.py` | `test_n0_a_n3.py::TestN1::test_ventas_del_concentrado` |
 | Cash cost | `cash_cost.py` | `::test_cash_cost` |
 | Reservas | `produccion.py` | `::test_reservas` |
-| EBITDA ajustado | `flujos.py` | `::test_ebitda` |
+| EBITDA ajustado | `flujos.py` | `test_flujos_e_indicadores.py::TestLaHojaSaleEntera::test_los_tres_cierres_suman_sus_filas` |
+| Lineas del flujo, fila a fila (`FC NZ!14:35`) | `flujos.py` | `::test_los_egresos_salen_con_el_signo_del_libro` |
+| Descuento y flujo descontado (`FC NZ!38:40`) | `flujos.py` | `::test_el_flujo_descontado_reconstruye_el_npv` |
 | Depreciacion tributaria y financiera, por mina | `depreciacion.py` | `::test_depreciacion` |
 | EBIT | `flujos.py` | `::test_ebit` |
 | Base de regalias, fila a fila (`8:19`) | `impuestos.py` | `test_n0_a_n3.py::TestN1::test_las_sumas_de_la_hoja_de_impuestos_cierran` |
@@ -31,8 +33,8 @@ modulo responsable, de modo que una discrepancia se localiza en un archivo.
 | Egresos de la hoja `Otros` (`15:34`, `43:55`) | `otros.py` | `test_n0_a_n3.py::TestN1::test_la_hoja_otros_cierra_sus_totales` |
 | Pago de impuestos (`36:41`) | `otros.py` | `test_n0_a_n3.py::TestN1::test_la_regalia_va_a_un_bloque_o_al_otro_segun_el_resultado` |
 
-Las filas de ventas, las nueve de la hoja `Impuestos`, las dos de la hoja `Otros` y la de capital
-de trabajo citan pruebas que existen. Las demas apuntan a un `test_n1_bloques.py` que nunca se escribio: el contraste vive hoy en
+Las filas de ventas, las nueve de la hoja `Impuestos`, las dos de la hoja `Otros`, las tres de
+`FC NZ` y la de capital de trabajo citan pruebas que existen. Las demas apuntan a un `test_n1_bloques.py` que nunca se escribio: el contraste vive hoy en
 `tests/fidelidad/niveles/test_n0_a_n3.py`. Queda registrado y se corrige al cerrar cada bloque.
 
 **Las nueve filas de `Impuestos` sustituyen a las tres que habia** -base imponible, impuestos y
