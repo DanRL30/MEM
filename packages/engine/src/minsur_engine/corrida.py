@@ -24,7 +24,12 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
-from minsur_engine import capital_trabajo, impuestos as impuestos_, refineria
+from minsur_engine import (
+    capital_trabajo,
+    impuestos as impuestos_,
+    otros as otros_,
+    refineria,
+)
 from minsur_engine.capex import (
     CapitalDeUnidad,
     capex_de_etapa,
@@ -242,17 +247,14 @@ class Corrida:
     no lleguen a conclusiones distintas del mismo caso.
     """
 
-    bolsa_de_egresos: Serie
-    """`Otros!55`. Base de las cuentas por pagar y del IGV de compras.
+    otros: otros_.BloqueDeOtros
+    """La hoja `Otros` entera, fila a fila y con el signo del libro.
 
-    No vuelve al flujo: sus componentes ya llegan cada uno por su linea.
+    Hasta el 04/09/2026 de sus 93 filas salian cinco: la bolsa de egresos,
+    las dos cuentas comerciales, el bloque de IGV y la variacion. El resto se
+    calculaba dentro de `calcular` y moria ahi, de modo que una discrepancia
+    en el capital de trabajo no se podia atribuir a la fila que la causaba.
     """
-
-    cuentas_por_cobrar: capital_trabajo.SaldosDeCapitalTrabajo
-    cuentas_por_pagar: capital_trabajo.SaldosDeCapitalTrabajo
-    igv: capital_trabajo.BloqueDeIgv
-    """El bloque de IGV, calculado entero. Llega al flujo multiplicado por cero,
-    que es lo que hace el libro: regla 014."""
 
     mineral_tratado_por_unidad: dict[str, Serie]
 
@@ -310,7 +312,6 @@ class Corrida:
     impuestos: impuestos_.BloqueDeImpuestos
     """La hoja `Impuestos` entera, fila a fila y con el signo del libro."""
 
-    variacion_capital_trabajo: Serie
     flujo: FlujoDelCaso
     indicadores: Indicadores
 
@@ -325,6 +326,30 @@ class Corrida:
     @property
     def participacion_trabajadores(self) -> Serie:
         return self.impuestos.renta.participacion_trabajadores
+
+    # Las cinco lineas de la hoja `Otros` que la corrida ya publicaba antes de
+    # guardarla entera. Siguen llegando por su nombre para no obligar a la API,
+    # al tablero y al contraste a aprender una ruta nueva por un cambio que no
+    # es suyo.
+    @property
+    def bolsa_de_egresos(self) -> Serie:
+        return self.otros.compras.bolsa
+
+    @property
+    def cuentas_por_cobrar(self) -> capital_trabajo.SaldosDeCapitalTrabajo:
+        return self.otros.por_cobrar
+
+    @property
+    def cuentas_por_pagar(self) -> capital_trabajo.SaldosDeCapitalTrabajo:
+        return self.otros.por_pagar
+
+    @property
+    def igv(self) -> capital_trabajo.BloqueDeIgv:
+        return self.otros.igv
+
+    @property
+    def variacion_capital_trabajo(self) -> Serie:
+        return self.otros.variacion
 
 
 def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
@@ -413,16 +438,19 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     # El libro calcula el flete y el gasto de venta de los proyectos con una
     # tarifa por tonelada y trae de otro libro los de las unidades en marcha.
     # Las dos series conviven, que es la regla 054.
-    fletes = _sumadas(
-        _por_tonelada(comunes.fletes_por_tonelada, bloque.concentrado_alimentado, horizonte),
-        _serie(comunes.fletes_lom, horizonte, "fletes LOM"),
+    # Las dos mitades viven separadas y no fundidas: son dos filas del libro,
+    # y la hoja `Otros` las muestra una encima de otra porque una es dato y la
+    # otra sale de una tarifa. Sumadas, una diferencia no se puede atribuir.
+    fletes_lom = _serie(comunes.fletes_lom, horizonte, "fletes LOM")
+    fletes_del_concentrado = _por_tonelada(
+        comunes.fletes_por_tonelada, bloque.concentrado_alimentado, horizonte
     )
-    gasto_de_ventas = _sumadas(
-        _por_tonelada(
-            comunes.gasto_de_ventas_por_tonelada, bloque.concentrado_alimentado, horizonte
-        ),
-        _serie(comunes.gasto_de_ventas_lom, horizonte, "gasto de ventas LOM"),
+    fletes = _sumadas(fletes_del_concentrado, fletes_lom)
+    gasto_de_ventas_lom = _serie(comunes.gasto_de_ventas_lom, horizonte, "gasto de ventas LOM")
+    gasto_de_ventas_del_concentrado = _por_tonelada(
+        comunes.gasto_de_ventas_por_tonelada, bloque.concentrado_alimentado, horizonte
     )
+    gasto_de_ventas = _sumadas(gasto_de_ventas_del_concentrado, gasto_de_ventas_lom)
     administrativos = gastos.administrativos
     gestion_social = gastos.gestion_social
     otros_egresos = _serie(comunes.otros_egresos, horizonte, "otros egresos")
@@ -434,11 +462,9 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     )
     # La planilla es un gasto operativo derivado del cash cost de cada unidad, y
     # va donde el libro la deja: con los otros gastos del flujo operativo.
+    otros_tecleados = _serie(comunes.otros_gastos, horizonte, "otros gastos")
     otros_gastos = tuple(
-        _serie(comunes.otros_gastos, horizonte, "otros gastos")[i]
-        + gastos.planilla[i]
-        + gastos.donaciones[i]
-        + servidumbre_del_flujo[i]
+        otros_tecleados[i] + gastos.planilla[i] + gastos.donaciones[i] + servidumbre_del_flujo[i]
         for i in range(horizonte.anos)
     )
     # `Impuestos!16` y `!38` no leen la fila anterior: leen `Otros!49` y `!50`,
@@ -482,16 +508,21 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     resultados = bloque_de_impuestos.por_ano
 
     total_capex = capex_total(horizonte, capital)
-    bolsa = _bolsa_de_egresos(
+    compras = otros_.bolsa_de_egresos(
         horizonte,
-        cash_cost=cash_cost,
-        administrativos=administrativos,
+        opex=cash_cost,
+        gastos_administrativos=administrativos,
         fletes=fletes,
         gasto_de_ventas=gasto_de_ventas,
-        gastos=gastos,
-        capex=total_capex,
+        donaciones=gastos.donaciones,
         otros_egresos=otros_egresos,
+        servidumbre=gastos.servidumbres,
+        estudios=gastos.estudios,
+        planilla=gastos.planilla,
+        capex=total_capex,
+        exploraciones=exploraciones,
     )
+    bolsa = compras.bolsa
     igv = capital_trabajo.bloque_de_igv(
         horizonte,
         ventas=ventas,
@@ -500,8 +531,40 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         porcentaje_de_ventas=comunes.porcentaje_de_ventas_de_exportacion,
         porcentaje_de_compras=comunes.porcentaje_de_compras_locales,
     )
-    cuentas = _capital_de_trabajo(caso, ventas=ventas, bolsa=bolsa, igv=igv)
+    produce = _produce(caso)
+    cuentas = _capital_de_trabajo(caso, ventas=ventas, bolsa=bolsa, igv=igv, produce=produce)
     variacion_wk = cuentas.variacion
+    hoja_otros = otros_.calcular(
+        horizonte,
+        cash_cost_por_unidad=resultado_de_costos.por_unidad,
+        cash_cost=cash_cost,
+        gasto_de_ventas_lom=gasto_de_ventas_lom,
+        gasto_de_ventas_sobre_concentrado=gasto_de_ventas_del_concentrado,
+        fletes_lom=fletes_lom,
+        fletes_sobre_concentrado=fletes_del_concentrado,
+        donaciones=gastos.donaciones,
+        servidumbre_del_flujo=servidumbre_del_flujo,
+        otros_gastos=otros_tecleados,
+        impuestos=bloque_de_impuestos,
+        compras=compras,
+        igv=igv,
+        por_cobrar=cuentas.por_cobrar,
+        por_pagar=cuentas.por_pagar,
+        dias_por_cobrar=_serie(comunes.dias_por_cobrar, horizonte, "dias por cobrar"),
+        dias_por_pagar=_serie(comunes.dias_por_pagar, horizonte, "dias por pagar"),
+        dias_del_ano_comercial=comunes.dias_del_ano_comercial,
+        otras_por_cobrar=_serie(
+            comunes.otras_cuentas_por_cobrar, horizonte, "otras cuentas por cobrar"
+        ),
+        otras_por_pagar=_serie(
+            comunes.otras_cuentas_por_pagar, horizonte, "otras cuentas por pagar"
+        ),
+        variacion=variacion_wk,
+        porcentaje_de_ventas_de_exportacion=comunes.porcentaje_de_ventas_de_exportacion,
+        porcentaje_de_compras_locales=comunes.porcentaje_de_compras_locales,
+        produce=produce,
+        predios=predios,
+    )
 
     operativos = [
         ComponentesOperativos(
@@ -558,10 +621,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         liquidaciones_por_unidad=resultado_de_ventas.liquidaciones_por_unidad,
         volumenes_del_estano=resultado_de_ventas.volumenes_del_estano,
         volumen_pagable_por_unidad=resultado_de_ventas.volumen_pagable_por_unidad,
-        bolsa_de_egresos=bolsa,
-        cuentas_por_cobrar=cuentas.por_cobrar,
-        cuentas_por_pagar=cuentas.por_pagar,
-        igv=igv,
+        otros=hoja_otros,
         campos_con_dato_por_unidad={u.nombre: campos_con_dato(u.produccion) for u in caso.unidades},
         mineral_tratado_por_unidad=produccion_por_unidad,
         anos_activos_por_unidad=_anos_activos(caso),
@@ -575,7 +635,6 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         depreciacion_tributaria_por_componente=detalle_tributario,
         depreciacion_financiera_por_componente=detalle_financiero,
         impuestos=bloque_de_impuestos,
-        variacion_capital_trabajo=variacion_wk,
         flujo=flujo,
         indicadores=_indicadores(caso, parametros.tasa_descuento, flujo, total_capex),
     )
@@ -1184,42 +1243,6 @@ def _fraccion(serie: Serie, horizonte: Horizonte) -> Serie:
     return _serie(serie, horizonte, "fraccion deducible")
 
 
-def _bolsa_de_egresos(
-    horizonte: Horizonte,
-    *,
-    cash_cost: Serie,
-    administrativos: Serie,
-    fletes: Serie,
-    gasto_de_ventas: Serie,
-    gastos: _Gastos,
-    capex: Serie,
-    otros_egresos: Serie,
-) -> Serie:
-    """`Otros!43-55`: todo lo que el caso desembolsa en el ejercicio.
-
-    Es la base de las cuentas por pagar y del IGV de compras, y **no vuelve al
-    flujo**: cada componente llega por su propia linea. Incluye el capital, que
-    es lo que la separa de la suma de gastos operativos: dejarlo fuera mueve la
-    variacion del capital de trabajo por encima de la tolerancia de N1 justo en
-    el ano de mayor desembolso. Es la regla 052.
-    """
-    sumandos = (
-        cash_cost,
-        administrativos,
-        fletes,
-        gasto_de_ventas,
-        gastos.gestion_social,
-        gastos.donaciones,
-        gastos.servidumbres,
-        gastos.estudios,
-        gastos.planilla,
-        gastos.exploraciones,
-        capex,
-        otros_egresos,
-    )
-    return tuple(sum(serie[i] for serie in sumandos) for i in range(horizonte.anos))
-
-
 @dataclass(frozen=True)
 class _CapitalDeTrabajo:
     """Las dos cuentas comerciales y la variacion que entra al flujo."""
@@ -1229,8 +1252,24 @@ class _CapitalDeTrabajo:
     variacion: Serie
 
 
+def _produce(caso: Caso) -> tuple[bool, ...]:
+    """`Otros!90`: los ejercicios en que alguna unidad participa.
+
+    El libro la rotula con el nombre de una unidad concreta y aqui se deriva
+    de todas, que es el criterio que Finanzas fijo el 01/09/2026: un proyecto
+    que hoy no existe no cabe en el rotulo del libro. Es la regla `086`.
+    """
+    activos = {i for posiciones in unidades_activas(caso).values() for i in posiciones}
+    return tuple(i in activos for i in range(caso.horizonte.anos))
+
+
 def _capital_de_trabajo(
-    caso: Caso, *, ventas: Serie, bolsa: Serie, igv: capital_trabajo.BloqueDeIgv
+    caso: Caso,
+    *,
+    ventas: Serie,
+    bolsa: Serie,
+    igv: capital_trabajo.BloqueDeIgv,
+    produce: Sequence[bool],
 ) -> _CapitalDeTrabajo:
     """Capital de trabajo del caso, `Otros!57-84`.
 
@@ -1243,9 +1282,6 @@ def _capital_de_trabajo(
     """
     horizonte = caso.horizonte
     comunes = caso.datos_comunes
-    activos = {i for posiciones in unidades_activas(caso).values() for i in posiciones}
-    produce = tuple(i in activos for i in range(horizonte.anos))
-
     por_cobrar = capital_trabajo.cuenta(
         ventas,
         _serie(comunes.dias_por_cobrar, horizonte, "dias por cobrar"),

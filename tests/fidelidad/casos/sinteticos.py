@@ -14,6 +14,7 @@ importa para el contraste estructural:
     agotamiento         minas cuyo capital se agota contra sus reservas
     polimetálico        dos minas que liquidan concentrado de cobre con plata
     capital de trabajo  una mina con parada intermedia y cuentas que rotan
+    hoja `Otros`        una mina con las nueve bandas de egreso llenas
 
 Los casos certificados con datos reales son otra cosa: viven en el tenant de
 MINSUR, se referencian por manifiesto en `fixtures/certificados/` y sus pruebas
@@ -480,6 +481,104 @@ def caso_de_capital_de_trabajo() -> Caso:
             otras_cuentas_por_pagar=horizonte.serie(
                 [OTRAS_POR_PAGAR] * 5, nombre="otras cuentas por pagar"
             ),
+            tasa_igv=TASA_IGV,
+            porcentaje_de_ventas_de_exportacion=PORCENTAJE_DE_VENTAS,
+            porcentaje_de_compras_locales=PORCENTAJE_DE_COMPRAS,
+        ),
+    )
+
+
+# --- Hoja `Otros` --------------------------------------------------------------
+
+GESTION_SOCIAL_DEL_CASO = 60_000.0
+"""El gasto que el libro **no** lleva a su bolsa de egresos: la regla `081`."""
+
+DONACIONES_DEL_CASO = 10_000.0
+SERVIDUMBRE_DEL_CASO = 30_000.0
+PREDIOS_DEL_CASO = 25_000.0
+EXPLORACIONES_DEL_CASO = 50_000.0
+ESTUDIOS_DEL_CASO = 15_000.0
+ADMINISTRATIVOS_DEL_CASO = 40_000.0
+OTROS_GASTOS_DEL_CASO = 12_000.0
+OTROS_EGRESOS_DEL_CASO = 20_000.0
+FLETES_LOM = 8_000.0
+GASTO_DE_VENTAS_LOM = 6_000.0
+TARIFA_DE_FLETE = 4.0
+TARIFA_DE_GASTO_DE_VENTAS = 3.0
+
+
+def caso_de_la_hoja_otros(*, gestion_social: float = GESTION_SOCIAL_DEL_CASO) -> Caso:
+    """Una mina con las nueve bandas de la hoja `Otros` llenas.
+
+    **El primer ejercicio cierra en perdida y los otros dos en ganancia**, que es
+    lo unico que separa las dos filas de regalia del libro: la misma cifra va a
+    `Otros!33` o a `Otros!37` segun el signo de la utilidad operativa. Es la
+    regla `080`.
+
+    `gestion_social` es parametro y no constante para poder correr el mismo caso
+    con y sin ella: la bolsa de egresos tiene que salir identica en los dos, que
+    es la regla `081`. Con la gestion social dentro, las dos bolsas diferian en
+    exactamente ese gasto y nada lo acusaba.
+    """
+    horizonte = Horizonte(primer_ano=2027, anos=3)
+    naturaleza = {"maquinaria": horizonte.serie([1_000_000.0, 0.0, 0.0], nombre="maquinaria")}
+    # Venta baja contra costo alto en el primer ejercicio: con la regalia minima
+    # al 1 % de la venta, ese ano tiene regalia y no tiene utilidad operativa.
+    unidad = UnidadProductiva(
+        nombre="Mina de Nueve Bandas",
+        tipo="mina",
+        produccion=ProduccionDeUnidad(
+            mineral_tratado=horizonte.serie([1_000.0] * 3, nombre="tratado"),
+            mineral_extraido=horizonte.serie([1_000.0] * 3, nombre="extraido"),
+            concentrado_producido=horizonte.serie([500.0] * 3, nombre="concentrado"),
+            metal_refinado_vendido=horizonte.serie([20.0, 200.0, 200.0], nombre="refinado"),
+        ),
+        costos={"Mina": horizonte.serie([500_000.0] * 3, nombre="mina")},
+        gastos={
+            "Gastos administrativos": horizonte.serie(
+                [ADMINISTRATIVOS_DEL_CASO] * 3, nombre="administrativos"
+            ),
+            "Gestión Social": horizonte.serie([gestion_social] * 3, nombre="gestion social"),
+            "Donaciones": horizonte.serie([DONACIONES_DEL_CASO] * 3, nombre="donaciones"),
+            "Servidumbres y usufructos": horizonte.serie(
+                [SERVIDUMBRE_DEL_CASO] * 3, nombre="servidumbre"
+            ),
+            "Estudios Pre Factibilidad (Gasto)": horizonte.serie(
+                [ESTUDIOS_DEL_CASO] * 3, nombre="estudios"
+            ),
+            "Predios": horizonte.serie([PREDIOS_DEL_CASO] * 3, nombre="predios"),
+            "Exploraciones": horizonte.serie([EXPLORACIONES_DEL_CASO] * 3, nombre="exploraciones"),
+        },
+        capital=CapitalDeUnidad(
+            unidad="Mina de Nueve Bandas",
+            por_etapa=clasificar_por_etapa(horizonte, naturaleza, anos_activos=(0, 1, 2)),
+            por_naturaleza=naturaleza,
+        ),
+    )
+    return Caso(
+        nombre="Sintetico: hoja Otros",
+        horizonte=horizonte,
+        unidades=(unidad,),
+        terminos=TerminosComerciales(
+            precio_metal_refinado=horizonte.serie([10_000.0] * 3, nombre="precio"),
+            premio_metal_refinado=horizonte.ceros(),
+            precio_metal_en_concentrado=horizonte.ceros(),
+            factor_metal_pagable=horizonte.ceros(),
+        ),
+        datos_comunes=DatosComunes(
+            gastos_administrativos=horizonte.ceros(),
+            otros_gastos=horizonte.serie([OTROS_GASTOS_DEL_CASO] * 3, nombre="otros gastos"),
+            otros_egresos=horizonte.serie([OTROS_EGRESOS_DEL_CASO] * 3, nombre="otros egresos"),
+            fletes_lom=horizonte.serie([FLETES_LOM] * 3, nombre="fletes LOM"),
+            fletes_por_tonelada=horizonte.serie([TARIFA_DE_FLETE] * 3, nombre="tarifa de flete"),
+            gasto_de_ventas_lom=horizonte.serie(
+                [GASTO_DE_VENTAS_LOM] * 3, nombre="gasto de ventas LOM"
+            ),
+            gasto_de_ventas_por_tonelada=horizonte.serie(
+                [TARIFA_DE_GASTO_DE_VENTAS] * 3, nombre="tarifa de gasto de ventas"
+            ),
+            dias_por_cobrar=horizonte.serie([DIAS_POR_COBRAR] * 3, nombre="dias por cobrar"),
+            dias_por_pagar=horizonte.serie([DIAS_POR_PAGAR] * 3, nombre="dias por pagar"),
             tasa_igv=TASA_IGV,
             porcentaje_de_ventas_de_exportacion=PORCENTAJE_DE_VENTAS,
             porcentaje_de_compras_locales=PORCENTAJE_DE_COMPRAS,

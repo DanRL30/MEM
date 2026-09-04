@@ -117,6 +117,11 @@ def con_capital_de_trabajo() -> Corrida:
     return calcular(sinteticos.caso_de_capital_de_trabajo(), sinteticos.MAESTROS)
 
 
+@pytest.fixture(scope="module")
+def de_la_hoja_otros() -> Corrida:
+    return calcular(sinteticos.caso_de_la_hoja_otros(), sinteticos.MAESTROS)
+
+
 # Cifras del concentrado, calculadas a mano desde las constantes del caso. El
 # cobre paga la menor de sus dos deducciones -0,30 x 0,90 frente a 0,30 - 0,01-
 # y la plata pasa de gramos por tonelada a onzas troy.
@@ -399,6 +404,92 @@ class TestN1:
             for i in range(corrida.caso.horizonte.anos)
         )
         contrastar(corrida.variacion_capital_trabajo, esperada, "variacion de capital de trabajo")
+
+    def test_la_gestion_social_no_entra_en_la_bolsa_de_egresos(self) -> None:
+        """La bolsa del libro suma once conceptos y el motor sumaba doce.
+
+        Es la regla `081`. El mismo caso con y sin gestion social tiene que dar
+        la misma bolsa: mientras estuvo dentro, las dos diferian en exactamente
+        ese gasto y engordaban el saldo de cuentas por pagar y la base del IGV
+        de compras sin que ninguna prueba lo acusara.
+        """
+        con = calcular(sinteticos.caso_de_la_hoja_otros(), sinteticos.MAESTROS)
+        sin_ella = calcular(
+            sinteticos.caso_de_la_hoja_otros(gestion_social=0.0), sinteticos.MAESTROS
+        )
+
+        contrastar(con.bolsa_de_egresos, sin_ella.bolsa_de_egresos, "bolsa de egresos")
+        contrastar(
+            con.cuentas_por_pagar.saldos,
+            sin_ella.cuentas_por_pagar.saldos,
+            "saldo de cuentas por pagar",
+        )
+        # Y sigue saliendo de caja por su propia linea: si la bolsa la ignora
+        # porque el gasto desaparecio, esta comprobacion falla.
+        assert con.flujo.flujo_operativo[1] < sin_ella.flujo.flujo_operativo[1]
+
+    def test_la_regalia_va_a_un_bloque_o_al_otro_segun_el_resultado(
+        self, de_la_hoja_otros: Corrida
+    ) -> None:
+        """`Otros!33` y `!37` son la misma cifra repartida: la regla `080`.
+
+        El caso abre en perdida y cierra en ganancia, de modo que el primer
+        ejercicio va al bloque de gastos y los otros dos al de tributos. Suman
+        la regalia del ano y no la cuentan dos veces.
+        """
+        hoja = de_la_hoja_otros.otros
+        regalia = de_la_hoja_otros.impuestos.regalias.regalia_mayor
+
+        contrastar(hoja.otros_gastos.regalia, (-2_000.0, 0.0, 0.0), "regalia sin utilidad")
+        contrastar(
+            hoja.pago_de_impuestos.regalia,
+            (0.0, -20_000.0, -20_000.0),
+            "regalia con utilidad",
+        )
+        contrastar(
+            tuple(
+                hoja.otros_gastos.regalia[i] + hoja.pago_de_impuestos.regalia[i]
+                for i in range(len(regalia))
+            ),
+            tuple(-r for r in regalia),
+            "regalia repartida",
+        )
+
+    def test_la_hoja_otros_cierra_sus_totales(self, de_la_hoja_otros: Corrida) -> None:
+        """Cada banda es la suma de lo que tiene encima, sin sumandos ocultos."""
+        hoja = de_la_hoja_otros.otros
+        anos = de_la_hoja_otros.caso.horizonte.anos
+        bandas = (
+            (
+                "gasto de ventas",
+                (hoja.gasto_de_ventas.lom, hoja.gasto_de_ventas.sobre_concentrado),
+                hoja.gasto_de_ventas.total,
+            ),
+            ("fletes", (hoja.fletes.lom, hoja.fletes.sobre_concentrado), hoja.fletes.total),
+            (
+                "otros gastos",
+                (
+                    hoja.otros_gastos.donaciones,
+                    hoja.otros_gastos.servidumbre,
+                    hoja.otros_gastos.reguladores_y_fondo,
+                    hoja.otros_gastos.otros,
+                    hoja.otros_gastos.regalia,
+                ),
+                hoja.otros_gastos.total,
+            ),
+            (
+                "pago de impuestos",
+                (
+                    hoja.pago_de_impuestos.regalia,
+                    hoja.pago_de_impuestos.impuesto_especial,
+                    hoja.pago_de_impuestos.impuesto_a_la_renta,
+                ),
+                hoja.pago_de_impuestos.total,
+            ),
+            ("bolsa de egresos", hoja.compras.conceptos, hoja.compras.bolsa),
+        )
+        for nombre, filas, total in bandas:
+            contrastar(total, tuple(sum(f[i] for f in filas) for i in range(anos)), nombre)
 
     def test_cash_cost(self, simple: Corrida) -> None:
         contrastar(simple.cash_cost, (0.0, 200_000.0, 200_000.0), "cash cost")

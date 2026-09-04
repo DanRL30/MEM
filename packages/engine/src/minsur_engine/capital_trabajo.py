@@ -142,6 +142,14 @@ class BloqueDeIgv:
     compras_gravadas: Serie
     igv_de_ventas: Serie
     igv_de_compras: Serie
+    credito_o_pago: Serie
+    """`Otros!63`: la diferencia entre los dos IGV, antes de aplicar el credito.
+
+    La calculaba `credito_y_pago_de_igv` y la descartaba. Es la fila que dice si
+    el ejercicio genera credito o deuda, y sin ella el salto del acumulado al
+    pago llega sin derivacion.
+    """
+
     credito_acumulado: Serie
     pago_efectivo: Serie
 
@@ -192,6 +200,10 @@ def bloque_de_igv(
         compras_gravadas=gravadas_compras,
         igv_de_ventas=de_ventas,
         igv_de_compras=de_compras,
+        # La fila 63 se deriva aqui y no dentro de `credito_y_pago_de_igv`: esa
+        # funcion devuelve dos series y cambiarle la firma obligaria a tocar a
+        # sus dos llamadores de prueba sin que ninguno gane nada.
+        credito_o_pago=tuple(v - c for v, c in zip(de_ventas, de_compras, strict=True)),
         credito_acumulado=credito,
         pago_efectivo=pagos,
     )

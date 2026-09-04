@@ -138,6 +138,24 @@ class TestBloqueDeIgv:
         assert bloque.igv_de_ventas[0] == pytest.approx(108.0)
         assert bloque.igv_de_compras[0] == pytest.approx(72.0)
 
+    def test_el_credito_o_pago_es_la_diferencia_de_los_dos_igv(self, horizonte: Horizonte) -> None:
+        # `Otros!63`, la fila que dice si el ejercicio genera credito o deuda. Se
+        # calculaba dentro de `credito_y_pago_de_igv` y se descartaba, de modo
+        # que el salto del acumulado al pago llegaba sin derivacion.
+        bloque = bloque_de_igv(
+            horizonte,
+            ventas=horizonte.serie([0.0, 1_000.0, 1_000.0, 0.0], nombre="ventas"),
+            bolsa_de_egresos=horizonte.serie([900.0, 200.0, 200.0, 0.0], nombre="bolsa"),
+            tasa=0.18,
+            porcentaje_de_ventas=1.0,
+            porcentaje_de_compras=1.0,
+        )
+        esperado = tuple(
+            v - c for v, c in zip(bloque.igv_de_ventas, bloque.igv_de_compras, strict=True)
+        )
+        assert bloque.credito_o_pago == pytest.approx(esperado)
+        assert bloque.credito_o_pago[0] == pytest.approx(-162.0)
+
     def test_el_bloque_tiene_cifras_y_no_mueve_el_flujo(self, horizonte: Horizonte) -> None:
         # Las dos mitades de la regla 014, juntas: si se borrara el bloque
         # fallaria la primera, y si el cero se volviera un interruptor de
