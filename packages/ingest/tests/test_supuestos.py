@@ -32,7 +32,12 @@ from minsur_engine.horizonte import Horizonte
 from minsur_engine.impuestos import EscalaProgresiva, Tramo
 from minsur_engine.parametros import ParametrosCorporativos
 from minsur_ingest.plantilla import leer_comite_de_precios, leer_supuestos
-from minsur_ingest.supuestos import CON_DATO_DE_SUPUESTOS, CON_DATO_POR_UNIDAD, aplicar
+from minsur_ingest.supuestos import (
+    CON_DATO_DE_SUPUESTOS,
+    CON_DATO_POR_UNIDAD,
+    _declarada,
+    aplicar,
+)
 
 MAESTROS = DatosMaestros(
     parametros=ParametrosCorporativos(
@@ -380,6 +385,24 @@ class TestAplicarAlCaso:
         assert primera is not None
         assert primera.por_etapa["inicial"] == (100.0, 200.0, 0.0)
         assert primera.total_por_etapa() == pytest.approx(primera.total_por_naturaleza())
+
+    def test_una_fila_en_blanco_no_cuenta_como_declarada(
+        self, comite: Path, supuestos: Path
+    ) -> None:
+        # **Una fila en blanco no llega vacia: llega en ceros**, porque la
+        # lectura recorre las celdas del horizonte. Darla por declarada apagaba
+        # el calculo y dejaba el valor en cero, que en la ley pagable del cobre
+        # significa perder toda la venta del concentrado sin sintoma.
+        # Lo que decide es el contenido, no la presencia de la serie.
+        assert _declarada((0.0, 0.0, 0.0)) == ()
+        assert _declarada(()) == ()
+        assert _declarada((0.0, 0.25, 0.25)) == (0.0, 0.25, 0.25)
+
+        # Y una fila llena si se guarda, que es la otra mitad de la regla.
+        del_caso = leer_supuestos(supuestos).supuestos
+        assert del_caso is not None
+        caso = aplicar(self._caso(), del_caso, leer_comite_de_precios(comite).comite)
+        assert set(caso.unidades[0].ley_pagable_declarada) == {"Cu", "Ag"}
 
     def test_la_bandera_de_costo_directo_en_la_refineria(
         self, comite: Path, supuestos: Path

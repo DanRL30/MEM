@@ -384,7 +384,10 @@ def _terminos_del_concentrado(
                 # las condiciones del contrato, que son del caso.
                 ley_pagable=(),
                 precio=comite.cu,
-                cargo_de_refinacion=comunes.get("refinacion_cu", ()),
+                # Vacio deja que el motor lo derive de la tarifa por libra, que
+                # es la regla `021`. En blanco la fila llega en ceros, y darla
+                # por declarada apagaba el calculo y dejaba el cargo en cero.
+                cargo_de_refinacion=_declarada(comunes.get("refinacion_cu", ())),
                 deduccion_minima=comunes.get("deduccion_minima_cu", ()),
                 factor_pagable=comunes.get("factor_pagable_cu", ()),
                 tarifa_de_refinacion=comunes.get("tarifa_refinacion_cu", ()),
@@ -506,6 +509,22 @@ def _bandera(serie: Serie) -> bool:
     return bool(serie) and serie[0] == 1.0
 
 
+def _declarada(serie: Serie) -> Serie:
+    """Una serie que el usuario escribio, o vacia si no escribio nada.
+
+    **Una fila en blanco no llega vacia: llega en ceros**, porque la lectura
+    recorre las celdas del horizonte y una celda sin valor vale cero. Comprobar
+    solo que la serie exista da por declarada una fila que nadie lleno, y en los
+    campos donde vacio significa «calculalo tu» eso apaga el calculo y deja el
+    cero. Es la misma convencion que las reservas y el umbral de capital
+    inicial: se mira el contenido, no la presencia.
+
+    Con ello un cero escrito a proposito tampoco se distingue de la celda vacia,
+    que es el precio conocido de esta convencion en toda la plantilla.
+    """
+    return serie if any(serie) else ()
+
+
 def _por_metal(propios: dict[str, Serie], campos: Mapping[str, str]) -> dict[str, Serie]:
     """Series que la unidad declara para cada metal del concentrado.
 
@@ -514,7 +533,7 @@ def _por_metal(propios: dict[str, Serie], campos: Mapping[str, str]) -> dict[str
     """
     declaradas = {}
     for metal, campo in campos.items():
-        serie = propios.get(campo, ())
+        serie = _declarada(propios.get(campo, ()))
         if serie:
             declaradas[metal] = serie
     return declaradas
