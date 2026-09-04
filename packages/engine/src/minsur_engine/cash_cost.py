@@ -33,7 +33,6 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-DONACIONES = "Donaciones"
 GASTOS_ADMINISTRATIVOS = "Gastos administrativos"
 GESTION_SOCIAL = "Gestión Social"
 PREDIOS = "Predios"
@@ -51,6 +50,18 @@ línea del flujo va cada uno. Repetirlos en ambos lados los deja divergir.
 PLANILLA = "Planilla"
 GESTION_SOCIAL_DEDUCIBLE = "Gestión Social Deducible"
 """Los dos conceptos que el motor deriva y la plantilla no pide."""
+
+DONACIONES = "Donaciones"
+"""El rotulo con que el libro escribe la gestion social en la hoja `Otros`.
+
+**No es un concepto aparte y la plantilla no lo pide.** `Otros!29` y
+`Otros!48` se rotulan `Donaciones` y las dos leen `InputsOpex!175`, que se
+llama `Gestion Social`; el bloque de gastos del libro no tiene ninguna fila
+de donaciones. Hasta el 04/09/2026 la plataforma pedia las dos cosas por
+separado, porque la regla `055` dedujo el concepto de ese rotulo. El nombre
+se conserva donde el libro lo escribe -es el que el cliente reconoce- y el
+calculo pasa a ser el del libro. Es la regla `094`.
+"""
 
 
 class ErrorCashCost(ValueError):

@@ -14,6 +14,7 @@ from minsur_engine.flujos import (
     ComponentesDeInversion,
     ComponentesOperativos,
     ErrorFlujos,
+    FlujoDelCaso,
     flujo_del_caso,
 )
 from minsur_engine.horizonte import Horizonte
@@ -73,6 +74,111 @@ class TestFlujo:
     def test_un_horizonte_desalineado_es_error(self, horizonte: Horizonte) -> None:
         with pytest.raises(ErrorFlujos, match="4 anos"):
             flujo_del_caso(horizonte, [ComponentesOperativos(ventas=1.0, cash_cost=0.0)], [])
+
+
+class TestLaHojaSaleEntera:
+    """`FC NZ` publica sus veinte filas y no solo las cuatro de cierre.
+
+    De las diecisiete lineas de entrada salian cero: se componian dentro de
+    `corrida.calcular` y morian ahi, de modo que una discrepancia en el flujo no
+    se podia atribuir a la fila que la causaba.
+    """
+
+    @pytest.fixture
+    def flujo(self, horizonte: Horizonte) -> FlujoDelCaso:
+        operativos = [
+            ComponentesOperativos(
+                ventas=1_000.0,
+                cash_cost=400.0,
+                fletes=20.0,
+                gasto_de_ventas=10.0,
+                gasto_administrativo=30.0,
+                gestion_social=15.0,
+                otros_gastos=5.0,
+                participacion_trabajadores=40.0,
+                impuestos=90.0,
+                intereses=25.0,
+                otros=3.0,
+                variacion_capital_trabajo=-12.0,
+            )
+        ] * 4
+        inversiones = [
+            ComponentesDeInversion(
+                capex_inicial=200.0,
+                capex_sostenimiento=50.0,
+                estudios=8.0,
+                exploraciones=6.0,
+                predios=4.0,
+            )
+        ] * 4
+        return flujo_del_caso(
+            horizonte,
+            operativos,
+            inversiones,
+            tasa_descuento=0.10,
+            produce=(False, True, True, True),
+        )
+
+    def test_los_egresos_salen_con_el_signo_del_libro(self, flujo: FlujoDelCaso) -> None:
+        # La hoja los escribe en negativo y los suma; el motor los lleva en
+        # magnitud positiva. Si el signo no se pusiera aqui, cada total tendria
+        # que restarse a mano y dejaria de ser la suma de lo que tiene encima.
+        assert flujo.ventas[0] == pytest.approx(1_000.0)
+        assert flujo.cash_cost[0] == pytest.approx(-400.0)
+        assert flujo.participaciones[0] == pytest.approx(-40.0)
+        assert flujo.capex_inicial[0] == pytest.approx(-200.0)
+        # La variacion de capital de trabajo pasa como viene: ya lleva signo.
+        assert flujo.variacion_capital_trabajo[0] == pytest.approx(-12.0)
+
+    def test_los_tres_cierres_suman_sus_filas(self, flujo: FlujoDelCaso) -> None:
+        cierres = (
+            (flujo.ebitda_ajustado, flujo.sumandos_del_ebitda),
+            (flujo.flujo_operativo, flujo.sumandos_del_operativo),
+            (flujo.flujo_de_inversiones, flujo.sumandos_de_inversiones),
+        )
+        for total, sumandos in cierres:
+            for ano, obtenido in enumerate(total):
+                assert obtenido == pytest.approx(sum(s[ano] for s in sumandos)), f"ano {ano}"
+
+    def test_el_flujo_economico_devuelve_los_intereses(self, flujo: FlujoDelCaso) -> None:
+        """`FC NZ!35` es `27 + 33 - 25`: el economico es anterior al financiamiento.
+
+        El flujo operativo ya descontó los intereses y esta línea los devuelve.
+        Hasta el 04/09/2026 el motor los dejaba dentro, y no se veía porque los
+        intereses valen cero en todos los casos del arnés. Es la regla `095`.
+        """
+        for ano, economico in enumerate(flujo.flujo_economico):
+            esperado = (
+                flujo.flujo_operativo[ano] + flujo.flujo_de_inversiones[ano] - flujo.intereses[ano]
+            )
+            assert economico == pytest.approx(esperado), f"ano {ano}"
+        # Y con intereses el economico queda por encima del operativo mas la
+        # inversion, que es lo que delata que se han devuelto.
+        assert flujo.flujo_economico[0] > flujo.flujo_operativo[0] + flujo.flujo_de_inversiones[0]
+
+    def test_las_banderas_reproducen_las_tres_filas_vivas(self, flujo: FlujoDelCaso) -> None:
+        # El libro lleva cinco y dos estan muertas: `Periodo pre-operativo` son
+        # ceros tecleados y `Ano cierre` no lo lee ninguna celda. Regla `092`.
+        assert flujo.banderas is not None
+        assert flujo.banderas.periodo_proyecto == (0.0, 1.0, 2.0, 3.0)
+        assert flujo.banderas.periodo_con_gastos == (1.0,) * 4
+        assert flujo.banderas.periodo_operativo == (0.0, 1.0, 1.0, 1.0)
+
+    def test_el_flujo_descontado_reconstruye_el_npv(self, flujo: FlujoDelCaso) -> None:
+        # `FC NZ!40` es `39 x 35`, y su suma es la fila `41`. Que el acumulado de
+        # esa fila sea el NPV es lo que permite no emitirlo como una fila aparte.
+        for ano, descontado in enumerate(flujo.flujo_descontado):
+            esperado = flujo.factor_de_descuento[ano] * flujo.flujo_economico[ano]
+            assert descontado == pytest.approx(esperado), f"ano {ano}"
+        assert sum(flujo.flujo_descontado) == pytest.approx(npv(flujo.flujo_economico, 0.10))
+
+    def test_el_factor_del_primer_ejercicio_vale_uno(self, flujo: FlujoDelCaso) -> None:
+        # Aqui la plataforma **no** reproduce el libro, que teclea un cero en esa
+        # celda y ademas suma el NPV desde la segunda columna. Son dos candados
+        # independientes: es la regla `062`, consultada y sin respuesta, y la
+        # `090`. Con el cero, este ejercicio quedaria fuera del NPV.
+        assert flujo.factor_de_descuento[0] == pytest.approx(1.0)
+        assert flujo.factor_de_descuento[1] == pytest.approx(1.0 / 1.1)
 
 
 class TestIndicadores:

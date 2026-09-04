@@ -28,7 +28,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 
 from minsur_engine.cash_cost import (
-    DONACIONES,
     ESTUDIOS_CAPITALIZABLES,
     ESTUDIOS_DE_GASTO,
     EXPLORACIONES,
@@ -130,10 +129,15 @@ FILAS_DE_GASTOS = (
     FilaDeOpex(ESTUDIOS_DE_GASTO, MEDIDA),
     FilaDeOpex(ESTUDIOS_CAPITALIZABLES, MEDIDA),
     FilaDeOpex(EXPLORACIONES, MEDIDA),
-    # `Otros!29`. El libro la lleva en su bloque de otros gastos y no estaba en
-    # el catalogo: va al final para no desplazar lo que la plantilla ya emitia.
-    FilaDeOpex(DONACIONES, MEDIDA),
 )
+"""Los siete gastos que el usuario carga, uno por unidad.
+
+**`Donaciones` estuvo aqui y salio el 04/09/2026.** La regla `055` la dedujo
+del rotulo de `Otros!29` y el bloque `InputsOpex!173:182` no tiene esa fila:
+`Otros!29` y `Otros!48` se rotulan `Donaciones` y leen `InputsOpex!175`, que
+es `Gestion Social`. Pedirla por separado hacia que el caso declarara dos
+veces el mismo concepto. Es la regla `094`.
+"""
 
 # La tarifa con la que la refineria cobra el concentrado que no lleva costo
 # directo en su bloque. Es la fila `Costo / tmf` del libro y va aqui, en la

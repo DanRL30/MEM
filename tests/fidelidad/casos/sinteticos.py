@@ -492,9 +492,12 @@ def caso_de_capital_de_trabajo() -> Caso:
 # --- Hoja `Otros` --------------------------------------------------------------
 
 GESTION_SOCIAL_DEL_CASO = 60_000.0
-"""El gasto que el libro **no** lleva a su bolsa de egresos: la regla `081`."""
+"""El gasto que el libro lleva a su bolsa bajo el rotulo `Donaciones`.
 
-DONACIONES_DEL_CASO = 10_000.0
+`Otros!48` se rotula `Donaciones` y lee `InputsOpex!175`, que es `Gestion
+Social`. La regla `081` lo saco de la bolsa el 04/09/2026 leyendo el rotulo y
+no la formula; la `094` lo devuelve.
+"""
 SERVIDUMBRE_DEL_CASO = 30_000.0
 PREDIOS_DEL_CASO = 25_000.0
 EXPLORACIONES_DEL_CASO = 50_000.0
@@ -508,7 +511,20 @@ TARIFA_DE_FLETE = 4.0
 TARIFA_DE_GASTO_DE_VENTAS = 3.0
 
 
-def caso_de_la_hoja_otros(*, gestion_social: float = GESTION_SOCIAL_DEL_CASO) -> Caso:
+TASA_DE_PLANILLA = 0.05
+"""La planilla es una fraccion del cash cost, y el libro no la lleva al flujo.
+
+`planilla = cash cost x tasa`, y la fila `15` de `FC NZ` ya cobro el cash cost
+entero. El libro solo la teclea en `Otros!52`, dentro de la bolsa de egresos,
+que no vuelve al flujo. Es la regla `082`.
+"""
+
+
+def caso_de_la_hoja_otros(
+    *,
+    gestion_social: float = GESTION_SOCIAL_DEL_CASO,
+    tasa_de_planilla: float = TASA_DE_PLANILLA,
+) -> Caso:
     """Una mina con las nueve bandas de la hoja `Otros` llenas.
 
     **El primer ejercicio cierra en perdida y los otros dos en ganancia**, que es
@@ -540,7 +556,6 @@ def caso_de_la_hoja_otros(*, gestion_social: float = GESTION_SOCIAL_DEL_CASO) ->
                 [ADMINISTRATIVOS_DEL_CASO] * 3, nombre="administrativos"
             ),
             "Gestión Social": horizonte.serie([gestion_social] * 3, nombre="gestion social"),
-            "Donaciones": horizonte.serie([DONACIONES_DEL_CASO] * 3, nombre="donaciones"),
             "Servidumbres y usufructos": horizonte.serie(
                 [SERVIDUMBRE_DEL_CASO] * 3, nombre="servidumbre"
             ),
@@ -568,6 +583,9 @@ def caso_de_la_hoja_otros(*, gestion_social: float = GESTION_SOCIAL_DEL_CASO) ->
         ),
         datos_comunes=DatosComunes(
             gastos_administrativos=horizonte.ceros(),
+            planilla_sobre_cash_cost=horizonte.serie(
+                [tasa_de_planilla] * 3, nombre="tasa de planilla"
+            ),
             otros_gastos=horizonte.serie([OTROS_GASTOS_DEL_CASO] * 3, nombre="otros gastos"),
             otros_egresos=horizonte.serie([OTROS_EGRESOS_DEL_CASO] * 3, nombre="otros egresos"),
             fletes_lom=horizonte.serie([FLETES_LOM] * 3, nombre="fletes LOM"),

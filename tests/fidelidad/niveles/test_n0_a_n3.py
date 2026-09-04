@@ -410,28 +410,59 @@ class TestN1:
         )
         contrastar(corrida.variacion_capital_trabajo, esperada, "variacion de capital de trabajo")
 
-    def test_la_gestion_social_no_entra_en_la_bolsa_de_egresos(self) -> None:
-        """La bolsa del libro suma once conceptos y el motor sumaba doce.
+    def test_la_gestion_social_entra_en_la_bolsa_bajo_el_rotulo_donaciones(self) -> None:
+        """`Otros!48` se rotula `Donaciones` y lee `InputsOpex!175`, `Gestion Social`.
 
-        Es la regla `081`. El mismo caso con y sin gestion social tiene que dar
-        la misma bolsa: mientras estuvo dentro, las dos diferian en exactamente
-        ese gasto y engordaban el saldo de cuentas por pagar y la base del IGV
-        de compras sin que ninguna prueba lo acusara.
+        **Esta prueba afirmaba lo contrario hasta el 04/09/2026.** La regla `081`
+        saco la gestion social de la bolsa leyendo el rotulo de la fila y no su
+        formula, y el rotulo del libro engana: no hay ninguna fila de donaciones
+        en `InputsOpex`. La `094` lo corrige y la bolsa vuelve a llevarla.
         """
         con = calcular(sinteticos.caso_de_la_hoja_otros(), sinteticos.MAESTROS)
         sin_ella = calcular(
             sinteticos.caso_de_la_hoja_otros(gestion_social=0.0), sinteticos.MAESTROS
         )
 
-        contrastar(con.bolsa_de_egresos, sin_ella.bolsa_de_egresos, "bolsa de egresos")
         contrastar(
-            con.cuentas_por_pagar.saldos,
-            sin_ella.cuentas_por_pagar.saldos,
-            "saldo de cuentas por pagar",
+            con.otros.compras.donaciones,
+            (sinteticos.GESTION_SOCIAL_DEL_CASO,) * 3,
+            "la fila `Donaciones` de la bolsa",
         )
-        # Y sigue saliendo de caja por su propia linea: si la bolsa la ignora
-        # porque el gasto desaparecio, esta comprobacion falla.
+        for ano in range(3):
+            assert coincide(
+                con.bolsa_de_egresos[ano] - sin_ella.bolsa_de_egresos[ano],
+                sinteticos.GESTION_SOCIAL_DEL_CASO,
+            ), f"la bolsa no recoge la gestion social en el ano {ano}"
+        # Y sigue saliendo de caja por su propia linea del flujo operativo, que
+        # es `FC NZ!20` y lee esa misma celda.
         assert con.flujo.flujo_operativo[1] < sin_ella.flujo.flujo_operativo[1]
+
+    def test_la_planilla_no_se_cobra_dos_veces(self) -> None:
+        """`FC NZ!21` no lleva la planilla: la fila `15` ya cobro el cash cost.
+
+        `planilla = cash cost x tasa` es una fraccion de un costo que el flujo
+        ya descontó entero, y el motor la sumaba además a los otros gastos del
+        flujo operativo. El libro solo la teclea en `Otros!52`, dentro de la
+        bolsa de egresos, que no vuelve al flujo. Es la regla `082`.
+
+        Las dos mitades van juntas a propósito: si alguien la retirara también
+        de la bolsa, la penúltima comprobación fallaría.
+
+        **El flujo operativo sí se mueve, y debe hacerlo.** La planilla engorda
+        la bolsa, la bolsa es la base de las cuentas por pagar y la variación de
+        esas cuentas entra al flujo por `FC NZ!23`. Es el camino que el libro le
+        da y el que la distingue de un gasto: mueve la caja por el momento en
+        que se paga, no por su importe.
+        """
+        con = calcular(sinteticos.caso_de_la_hoja_otros(), sinteticos.MAESTROS)
+        sin_ella = calcular(
+            sinteticos.caso_de_la_hoja_otros(tasa_de_planilla=0.0), sinteticos.MAESTROS
+        )
+
+        contrastar(con.flujo.ebitda_ajustado, sin_ella.flujo.ebitda_ajustado, "EBITDA")
+        assert con.otros.compras.planilla[1] > 0.0
+        assert con.bolsa_de_egresos[1] > sin_ella.bolsa_de_egresos[1]
+        assert con.variacion_capital_trabajo != sin_ella.variacion_capital_trabajo
 
     def test_la_regalia_va_a_un_bloque_o_al_otro_segun_el_resultado(
         self, de_la_hoja_otros: Corrida

@@ -38,7 +38,6 @@ from minsur_engine.capex import (
     desglosar_por_etapa_y_naturaleza,
 )
 from minsur_engine.cash_cost import (
-    DONACIONES,
     ESTUDIOS_CAPITALIZABLES,
     ESTUDIOS_DE_GASTO,
     EXPLORACIONES,
@@ -169,7 +168,6 @@ class _Gastos:
     administrativos: Serie
     gestion_social: Serie
     gestion_social_deducible: Serie
-    donaciones: Serie
     planilla: Serie
     predios: Serie
     """`InputsOpex!176`, y nada mas. Va al flujo de inversiones."""
@@ -460,12 +458,20 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
     servidumbre_del_flujo = tuple(
         gastos.servidumbres[i] if cash_cost[i] > 0.0 else 0.0 for i in range(horizonte.anos)
     )
-    # La planilla es un gasto operativo derivado del cash cost de cada unidad, y
-    # va donde el libro la deja: con los otros gastos del flujo operativo.
+    # `FC NZ!21` es `Otros!34 - Otros!29`: la servidumbre con su bandera, los
+    # reguladores con el fondo, la fila tecleada `Otros` y la regalia de los
+    # ejercicios en perdida. **Ni la planilla ni la gestion social.**
+    #
+    # La planilla estuvo aqui hasta el 04/09/2026 y era un doble cargo: es una
+    # fraccion del cash cost -`planilla = cash cost x tasa`- que la fila `15` ya
+    # cobro entera. El libro solo la lleva a `Otros!52`, dentro de la bolsa de
+    # egresos, que no vuelve al flujo. Es la regla `082`.
+    #
+    # La gestion social tampoco: llega por la fila `20`, que lee `Otros!29`, y
+    # esa es la fila que el libro rotula `Donaciones`. Es la regla `094`.
     otros_tecleados = _serie(comunes.otros_gastos, horizonte, "otros gastos")
     otros_gastos = tuple(
-        otros_tecleados[i] + gastos.planilla[i] + gastos.donaciones[i] + servidumbre_del_flujo[i]
-        for i in range(horizonte.anos)
+        otros_tecleados[i] + servidumbre_del_flujo[i] for i in range(horizonte.anos)
     )
     # `Impuestos!16` y `!38` no leen la fila anterior: leen `Otros!49` y `!50`,
     # que son los otros egresos y la servidumbre entera, sin la bandera. Es la
@@ -514,7 +520,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         gastos_administrativos=administrativos,
         fletes=fletes,
         gasto_de_ventas=gasto_de_ventas,
-        donaciones=gastos.donaciones,
+        donaciones=gastos.gestion_social,
         otros_egresos=otros_egresos,
         servidumbre=gastos.servidumbres,
         estudios=gastos.estudios,
@@ -542,7 +548,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         gasto_de_ventas_sobre_concentrado=gasto_de_ventas_del_concentrado,
         fletes_lom=fletes_lom,
         fletes_sobre_concentrado=fletes_del_concentrado,
-        donaciones=gastos.donaciones,
+        donaciones=gastos.gestion_social,
         servidumbre_del_flujo=servidumbre_del_flujo,
         otros_gastos=otros_tecleados,
         impuestos=bloque_de_impuestos,
@@ -566,6 +572,13 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         predios=predios,
     )
 
+    # `Otros!33` y `!37`: la misma regalia repartida por el signo de la utilidad
+    # operativa. La de un ejercicio en perdida es gasto de operacion y entra por
+    # `FC NZ!21`; la de uno con utilidad es tributo y entra por la `!24`, que lee
+    # `Pago Impuestos`. Es la regla `080`, y reparte sin cambiar el total.
+    regalia_en_perdida = tuple(-x for x in hoja_otros.otros_gastos.regalia)
+    tributos_pagados = tuple(-x for x in hoja_otros.pago_de_impuestos.total)
+
     operativos = [
         ComponentesOperativos(
             ventas=ventas[i],
@@ -577,14 +590,13 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
             # Osinergmin, OEFA y el fondo de jubilacion minera van con los otros
             # gastos, no con los tributos: es donde el libro los coloca.
             otros_gastos=(
-                otros_gastos[i] + ventas[i] * reguladores[i] + resultados[i].fondo_jubilacion_minera
+                otros_gastos[i]
+                + ventas[i] * reguladores[i]
+                + resultados[i].fondo_jubilacion_minera
+                + regalia_en_perdida[i]
             ),
             participacion_trabajadores=resultados[i].participacion_trabajadores,
-            impuestos=(
-                resultados[i].regalia
-                + resultados[i].impuesto_especial_mineria
-                + resultados[i].impuesto_renta
-            ),
+            impuestos=tributos_pagados[i],
             intereses=intereses[i],
             otros=otros_flujo[i],
             variacion_capital_trabajo=variacion_wk[i],
@@ -605,7 +617,13 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         for i in range(horizonte.anos)
     ]
 
-    flujo = flujo_del_caso(horizonte, operativos, inversiones)
+    flujo = flujo_del_caso(
+        horizonte,
+        operativos,
+        inversiones,
+        tasa_descuento=parametros.tasa_descuento,
+        produce=produce,
+    )
 
     return Corrida(
         caso=caso,
@@ -1225,7 +1243,6 @@ def _gastos(caso: Caso, costo_por_unidad: dict[str, Serie]) -> _Gastos:
         # Lo que el caso declara como comun no lleva fraccion declarada, asi que
         # es deducible entero: es lo que el libro hace por defecto.
         gestion_social_deducible=sumadas(GESTION_SOCIAL_DEDUCIBLE, comun=comunes.gestion_social),
-        donaciones=sumadas(DONACIONES),
         planilla=sumadas(PLANILLA),
         predios=sumadas(PREDIOS, comun=comunes.predios),
         servidumbres=sumadas(SERVIDUMBRES),
