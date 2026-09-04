@@ -425,7 +425,12 @@ La derivacion completa, con la celda de origen de cada regla, esta en
 [refineria.py](packages/engine/src/minsur_engine/refineria.py) rehace el bloque de Pisco entero
 desde lo que producen las minas: lo alimentado por cada origen y su ley, el consolidado acotado por
 la capacidad, la ley promedio ponderada, el refinado, el excedente y su venta spot, y el `Check` del
-libro. **Ninguna de esas filas es un dato.**
+libro. **Ninguna de esas filas es un dato**, y es lo que corresponde: el libro tambien las
+calcula para sus tres proyectos -Nazareth, San Rafael Potencial y Santo Domingo alimentan Pisco
+con su propia produccion, por formula-. Solo las dos unidades en marcha, San Rafael y B2,
+importan su entrega del libro LOM externo, y por eso su alimentacion no coincide con lo que
+producen. Es la regla `096`, de la familia de la `054`: no se pide como dato, se calcula, y la
+diferencia con esas dos unidades se reporta.
 
 **Regla de oro: nada se agrupa.** El libro junta la recuperacion en `SR + B2` y `NZ + SRP`; la
 plataforma la lleva por unidad. Un proyecto nuevo no cabe en ningun grupo sin decidir a cual se
