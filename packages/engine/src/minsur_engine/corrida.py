@@ -617,11 +617,13 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         for i in range(horizonte.anos)
     ]
 
+    hundidos = _ejercicios_hundidos(caso)
     flujo = flujo_del_caso(
         horizonte,
         operativos,
         inversiones,
         tasa_descuento=parametros.tasa_descuento,
+        ejercicios_hundidos=hundidos,
         produce=produce,
     )
 
@@ -654,7 +656,7 @@ def calcular(caso: Caso, maestros: DatosMaestros) -> Corrida:
         depreciacion_financiera_por_componente=detalle_financiero,
         impuestos=bloque_de_impuestos,
         flujo=flujo,
-        indicadores=_indicadores(caso, parametros.tasa_descuento, flujo, total_capex),
+        indicadores=_indicadores(caso, parametros.tasa_descuento, flujo, total_capex, hundidos),
     )
 
 
@@ -1332,7 +1334,30 @@ def _capital_de_trabajo(
     )
 
 
-def _indicadores(caso: Caso, tasa: float, flujo: FlujoDelCaso, capex: Serie) -> Indicadores:
+def _ejercicios_hundidos(caso: Caso) -> int:
+    """Cuantos ejercicios del horizonte quedan fuera del descuento.
+
+    Vacio son cero, que es un horizonte entero contando. Un ano anterior al
+    horizonte tampoco hunde nada: lo que ocurrio antes del primer ejercicio
+    no esta en el modelo.
+    """
+    ultimo = caso.datos_comunes.ultimo_ano_hundido
+    if ultimo is None:
+        return 0
+    horizonte = caso.horizonte
+    hundidos = ultimo - horizonte.primer_ano + 1
+    if hundidos > horizonte.anos:
+        raise ErrorCorrida(
+            f"El ultimo ejercicio hundido es {ultimo} y el horizonte termina en "
+            f"{horizonte.primer_ano + horizonte.anos - 1}: no quedaria nada que "
+            "descontar."
+        )
+    return max(0, hundidos)
+
+
+def _indicadores(
+    caso: Caso, tasa: float, flujo: FlujoDelCaso, capex: Serie, hundidos: int
+) -> Indicadores:
     economico = flujo.flujo_economico
     try:
         tasa_interna: float | None = tir(economico)
@@ -1346,10 +1371,14 @@ def _indicadores(caso: Caso, tasa: float, flujo: FlujoDelCaso, capex: Serie) -> 
     intensidad = capital_intensity(sum(capex), capacidad) if capacidad > 0.0 else None
 
     return Indicadores(
-        npv=npv(economico, tasa),
+        npv=npv(economico, tasa, ejercicios_hundidos=hundidos),
+        # La TIR va sobre el horizonte entero, tambien cuando hay ejercicios
+        # hundidos: es lo que hace el libro, cuya fila `42` calcula el `IRR`
+        # sobre `H:AQ` mientras su NPV empieza en `I`. La asimetria es suya y
+        # se reporta -regla `093`-, no se corrige.
         tir=tasa_interna,
         payback=payback(economico),
-        payback_descontado=payback_descontado(economico, tasa),
+        payback_descontado=payback_descontado(economico, tasa, ejercicios_hundidos=hundidos),
         capital_intensity=intensidad,
     )
 

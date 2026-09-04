@@ -37,6 +37,7 @@ Qué se vuelve fácil, qué se vuelve difícil, qué queda bloqueado.
 | [0009](0009-resolucion-de-la-circularidad-tributaria.md) | Resolver la circularidad participación-impuestos en forma cerrada, sin iterar | aceptada | 01/09/2026 |
 | [0010](0010-convencion-de-descuento.md) | Descontar a fin de año con la convención del modelo vigente, sin mitad de año | aceptada | 03/09/2026 |
 | [0011](0011-cuando-el-motor-entrega-tir.md) | Entregar la TIR solo con desembolso inicial y raíz no negativa | aceptada | 03/09/2026 |
+| [0012](0012-el-costo-hundido-sale-del-npv.md) | El costo hundido sale del NPV y lo declara el caso | aceptada | 04/09/2026 |
 
 La numeración no sigue el orden de redacción. Los números de la tabla siguiente están reservados
 para decisiones ya identificadas, así que un ADR nuevo toma el primero libre por encima de ellas.

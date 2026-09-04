@@ -281,6 +281,7 @@ def flujo_del_caso(
     inversiones: list[ComponentesDeInversion],
     *,
     tasa_descuento: float = 0.0,
+    ejercicios_hundidos: int = 0,
     produce: Sequence[bool] = (),
 ) -> FlujoDelCaso:
     """Arma el flujo del horizonte completo, fila a fila y con el signo del libro.
@@ -301,7 +302,9 @@ def flujo_del_caso(
             f"{horizonte.anos} anos."
         )
     anos = tuple(flujo_del_ano(o, i) for o, i in zip(operativos, inversiones, strict=True))
-    factores = factores_de_descuento(tasa_descuento, horizonte.anos)
+    factores = factores_de_descuento(
+        tasa_descuento, horizonte.anos, ejercicios_hundidos=ejercicios_hundidos
+    )
     economico = tuple(a.flujo_economico for a in anos)
     return FlujoDelCaso(
         anos=anos,

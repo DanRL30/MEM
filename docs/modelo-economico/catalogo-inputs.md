@@ -264,6 +264,7 @@ sus gastos no atribuibles a una unidad:
 | Horizonte y primer ano | anos | `Horizonte` |
 | Cuentas comerciales en el capital de trabajo | `si / no` | `cuentas_de_capital_trabajo_activas` |
 | Perdidas tributarias arrastradas | `US$` | `saldo_inicial_de_perdidas` |
+| Ultimo ejercicio hundido | `ano` | dato, una sola celda | `ultimo_ano_hundido`, y es el corte del [ADR 0012](../adr/0012-el-costo-hundido-sale-del-npv.md) |
 | Inversion social | `US$/ano` | `gestion_social` |
 | Gastos administrativos | `US$/ano` | `gastos_administrativos` |
 | Otros gastos operativos | `US$/ano` | `otros_gastos`, y es la fila 32 de `Otros` |

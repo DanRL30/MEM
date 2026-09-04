@@ -914,6 +914,7 @@ CONCEPTOS_COMUNES = {
     "estudios",
     "exploraciones no atribuibles a una unidad",
     "perdidas tributarias arrastradas",
+    "ultimo ejercicio hundido",
     "cuentas comerciales en el capital de trabajo",
 }
 """Conceptos de la hoja `Caso` que la ingesta sabe consumir.
@@ -963,10 +964,23 @@ def _armar_datos_comunes(
         saldo_inicial_de_perdidas=float(
             comunes.get("perdidas tributarias arrastradas", 0.0) or 0.0
         ),
+        ultimo_ano_hundido=_ano_hundido(comunes),
         cuentas_de_capital_trabajo_activas=cabecera.banderas.get(
             "cuentas comerciales en el capital de trabajo", True
         ),
     )
+
+
+def _ano_hundido(comunes: dict[str, float]) -> int | None:
+    """El ultimo ejercicio hundido, que es un ano y no un importe.
+
+    Vacio o cero significa que no hay ninguno: un caso que abre con su
+    primera inversion no tiene nada anterior a la decision.
+    """
+    valor = comunes.get("ultimo ejercicio hundido")
+    if not valor:
+        return None
+    return int(valor)
 
 
 def _bandera(valor: object, hoja: str, celda: str, incidencias: list[Incidencia]) -> bool:

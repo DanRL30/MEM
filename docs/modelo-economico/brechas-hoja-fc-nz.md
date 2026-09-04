@@ -162,9 +162,11 @@ coinciden ejercicio a ejercicio con el libro en los tres casos contrastados -es 
   los cinco rotulos del visible rebaseados a otro ejercicio y da un NPV casi del doble bajo la misma
   etiqueta. Son dos valoraciones a fechas distintas conviviendo sin que ninguna este rotulada como
   tal: es la regla `063`, abierta, y publicar la segunda seria elegir por Finanzas.
-- **El cero del factor de descuento.** La plataforma descuenta desde el primer ejercicio y lo declara
-  en la nota de esa fila. Es la unica linea de esta hoja donde el motor no reproduce el libro, y esta
-  consultada.
+- **El cero del factor de descuento se reproduce desde el 04/09/2026.** El caso declara su ultimo
+  ejercicio hundido y esos ejercicios llevan factor cero, con lo que el NPV cierra con brecha 0,00
+  contra la fila 41. Lo decide el [ADR 0012](../adr/0012-el-costo-hundido-sale-del-npv.md), y era la
+  unica linea del contraste N3 que no cerraba. Queda una discrepancia declarada sobre la **fecha** a
+  la que se valora, que es otra cosa y sigue en consulta.
 
 ## 8. Lo que queda pendiente de Finanzas
 

@@ -462,6 +462,19 @@ class DatosComunes:
     porcentaje_de_compras_locales: float = 0.0
     """`Otros!88`. Fracción de la bolsa que forma la base del IGV de compras."""
 
+    ultimo_ano_hundido: int | None = None
+    """Último ejercicio cuyo flujo queda fuera del descuento.
+
+    El estándar corporativo fecha la evaluación en el sancionamiento del
+    proyecto y manda tratar como hundido todo lo anterior. Es del caso y no
+    del calendario: un proyecto sancionado en un año se sigue evaluando
+    contra ese año cuando se recalcula más tarde, o dos corridas de la misma
+    terna dejarían de ser comparables.
+
+    Vacío significa que no hay ejercicios hundidos y el horizonte entero
+    cuenta, que es el caso de un proyecto que abre con su primera inversión.
+    """
+
     saldo_inicial_de_perdidas: float = 0.0
     capacidad_para_intensidad: float = 0.0
     """Denominador de la intensidad de capital. Cero significa que no se calcula."""

@@ -437,6 +437,29 @@ class TestN1:
         # es `FC NZ!20` y lee esa misma celda.
         assert con.flujo.flujo_operativo[1] < sin_ella.flujo.flujo_operativo[1]
 
+    def test_un_ejercicio_hundido_sale_del_npv_y_no_del_modelo(self) -> None:
+        """Hundido es fuera del descuento, no fuera del calculo.
+
+        El flujo del ejercicio se sigue calculando entero -alimenta el capital de
+        trabajo del siguiente, arrastra perdidas, mueve las cuentas por pagar- y
+        lo unico que cambia es que su factor de descuento vale cero. Borrarlo del
+        modelo daria otro numero.
+        """
+        caso = sinteticos.caso_de_la_hoja_otros()
+        hundido = replace(caso, datos_comunes=replace(caso.datos_comunes, ultimo_ano_hundido=2027))
+        entera = calcular(caso, sinteticos.MAESTROS)
+        con_corte = calcular(hundido, sinteticos.MAESTROS)
+
+        # El flujo economico es identico: el corte no toca el calculo.
+        contrastar(con_corte.flujo.flujo_economico, entera.flujo.flujo_economico, "flujo economico")
+        # Y el NPV pierde exactamente el flujo del primer ejercicio, que llevaba
+        # factor uno. Es la identidad con la que se contrasta contra el libro.
+        assert coincide(
+            entera.indicadores.npv - con_corte.indicadores.npv,
+            entera.flujo.flujo_economico[0],
+        )
+        assert con_corte.flujo.factor_de_descuento[0] == 0.0
+
     def test_la_planilla_no_se_cobra_dos_veces(self) -> None:
         """`FC NZ!21` no lleva la planilla: la fila `15` ya cobro el cash cost.
 

@@ -181,6 +181,57 @@ class TestLaHojaSaleEntera:
         assert flujo.factor_de_descuento[1] == pytest.approx(1.0 / 1.1)
 
 
+class TestElCostoHundido:
+    """Un ejercicio hundido no cuenta para decidir, y no desplaza la curva.
+
+    El estandar corporativo fecha la evaluacion en el sancionamiento del
+    proyecto y manda dejar fuera del flujo descontado todo lo anterior. El
+    modelo de referencia lo hace escribiendo un cero en el factor de esos
+    ejercicios, y el motor lo reproduce: es la regla `062`.
+    """
+
+    FLUJO = (100.0, 110.0, 121.0, 133.1)
+
+    def test_el_ejercicio_hundido_no_entra_en_el_npv(self) -> None:
+        entero = npv(self.FLUJO, 0.10)
+        sin_el_primero = npv(self.FLUJO, 0.10, ejercicios_hundidos=1)
+        # El primer ejercicio lleva factor uno, de modo que lo que sale del NPV
+        # es su flujo sin descontar. Es la identidad que hace comprobable el
+        # corte contra el libro.
+        assert entero - sin_el_primero == pytest.approx(self.FLUJO[0])
+
+    def test_el_corte_no_desplaza_la_curva(self) -> None:
+        """Hundir no es fechar el NPV en otro ano: son dos operaciones distintas.
+
+        Fechar mueve toda la curva y capitaliza los ejercicios previos; hundir
+        solo anula los suyos. El modelo de referencia usa la segunda en la hoja
+        que publica, y la primera en un bloque que lleva oculto -regla `063`-.
+        """
+        factores = factores_de_descuento(0.10, 4, ejercicios_hundidos=1)
+        assert factores[0] == 0.0
+        assert factores[1] == pytest.approx(1.0 / 1.10)
+        assert factores[2] == pytest.approx(1.0 / 1.10**2)
+
+    def test_el_payback_descontado_hereda_el_corte_y_el_simple_no(self) -> None:
+        # El libro no publica payback en ninguno de sus casos, asi que no dice
+        # que hacer con el simple. El descontado si lo hereda: sale del mismo
+        # flujo descontado que el NPV.
+        flujo = (-100.0, 60.0, 60.0, 60.0)
+        assert payback(flujo).anos == pytest.approx(payback(flujo).anos)
+        con_corte = payback_descontado(flujo, 0.10, ejercicios_hundidos=1)
+        sin_corte = payback_descontado(flujo, 0.10)
+        assert con_corte.anos != sin_corte.anos
+
+    def test_un_corte_fuera_del_horizonte_es_error(self) -> None:
+        with pytest.raises(ErrorIndicadores, match="dentro del horizonte"):
+            factores_de_descuento(0.10, 4, ejercicios_hundidos=5)
+
+    def test_sin_corte_el_horizonte_entero_cuenta(self) -> None:
+        # El valor por defecto es el de un proyecto que abre con su primera
+        # inversion: no hay nada anterior a la decision.
+        assert npv(self.FLUJO, 0.10) == pytest.approx(npv(self.FLUJO, 0.10, ejercicios_hundidos=0))
+
+
 class TestIndicadores:
     def test_el_factor_descuenta_a_fin_de_ano(self) -> None:
         factores = factores_de_descuento(0.10, 3)

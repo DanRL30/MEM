@@ -50,18 +50,38 @@ class Payback:
     """Falso cuando el flujo nunca llega a recuperarse dentro del horizonte."""
 
 
-def factores_de_descuento(tasa: float, anos: int) -> tuple[float, ...]:
-    """Factores a fin de año, uno por ejercicio del horizonte."""
+def factores_de_descuento(
+    tasa: float, anos: int, *, ejercicios_hundidos: int = 0
+) -> tuple[float, ...]:
+    """Factores a fin de año, uno por ejercicio del horizonte.
+
+    **Un ejercicio hundido lleva factor cero.** El costo hundido es dinero
+    que existió y que no vuelve, de modo que no cuenta para decidir: el
+    estándar corporativo lo deja fuera del flujo descontado y el modelo de
+    referencia lo hace escribiendo un cero en el factor de esos ejercicios.
+
+    **La curva no se desplaza.** El exponente sigue contando desde el primer
+    ejercicio del horizonte, que es donde el modelo fecha su valor presente;
+    lo único que hace el corte es anular los ejercicios anteriores a la
+    decisión. Fechar el NPV en otro año es una operación distinta -toda la
+    curva se mueve y los ejercicios previos capitalizan- y el modelo vigente
+    no la usa en la hoja que publica.
+    """
     if tasa <= -1.0:
         raise ErrorIndicadores(f"Tasa de descuento invalida: {tasa}.")
     if anos < 0:
         raise ErrorIndicadores(f"Numero de anos negativo: {anos}.")
-    return tuple(1.0 / (1.0 + tasa) ** t for t in range(anos))
+    if not 0 <= ejercicios_hundidos <= anos:
+        raise ErrorIndicadores(
+            f"Hay {ejercicios_hundidos} ejercicios hundidos y el horizonte tiene "
+            f"{anos}. El corte tiene que caer dentro del horizonte."
+        )
+    return tuple(0.0 if t < ejercicios_hundidos else 1.0 / (1.0 + tasa) ** t for t in range(anos))
 
 
-def npv(flujo: Sequence[float], tasa: float) -> float:
+def npv(flujo: Sequence[float], tasa: float, *, ejercicios_hundidos: int = 0) -> float:
     """Valor presente neto del flujo económico, descontado a fin de año."""
-    factores = factores_de_descuento(tasa, len(flujo))
+    factores = factores_de_descuento(tasa, len(flujo), ejercicios_hundidos=ejercicios_hundidos)
     return sum(f * d for f, d in zip(flujo, factores, strict=True))
 
 
@@ -112,9 +132,17 @@ def payback(flujo: Sequence[float]) -> Payback:
     return _payback_sobre(list(flujo))
 
 
-def payback_descontado(flujo: Sequence[float], tasa: float) -> Payback:
-    """Payback sobre el flujo ya descontado a fin de año."""
-    factores = factores_de_descuento(tasa, len(flujo))
+def payback_descontado(
+    flujo: Sequence[float], tasa: float, *, ejercicios_hundidos: int = 0
+) -> Payback:
+    """Payback sobre el flujo ya descontado a fin de año.
+
+    Hereda el corte de hundido del descuento, de modo que mide desde el
+    primer ejercicio que cuenta. **El payback simple no lo hereda**: se mide
+    sobre el flujo sin descontar y el modelo de referencia no dice qué hacer
+    con él, porque no publica payback en ninguno de sus casos.
+    """
+    factores = factores_de_descuento(tasa, len(flujo), ejercicios_hundidos=ejercicios_hundidos)
     return _payback_sobre([f * d for f, d in zip(flujo, factores, strict=True)])
 
 

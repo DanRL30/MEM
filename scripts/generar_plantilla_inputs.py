@@ -67,6 +67,7 @@ DATOS_COMUNES = [
     # llenaba las dos con el mismo numero.
     ("Cuentas comerciales en el capital de trabajo", "si / no"),
     ("Perdidas tributarias arrastradas", "US$"),
+    ("Ultimo ejercicio hundido", "ano"),
     ("Costos hundidos excluidos del flujo", "US$"),
     ("Inversion social", "US$/ano"),
     ("Gastos administrativos", "US$/ano"),
