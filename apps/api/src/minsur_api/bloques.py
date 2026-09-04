@@ -55,6 +55,7 @@ from minsur_engine.depreciacion import (
     TrazaDelAgotamiento,
 )
 from minsur_engine.horizonte import Serie, anos_con_dato
+from minsur_engine.otros import BloqueDeOtros
 from minsur_engine.refineria import BloqueDeLaRefineria
 from minsur_engine.ventas import LiquidacionConcentrado
 from minsur_ingest.capex import (
@@ -1773,43 +1774,531 @@ def _bloque_de_ventas(corrida: CorridaAlmacenada, anos: int) -> BloqueDeCorrida:
     )
 
 
-def _bloque_de_otros(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
-    resultado = corrida.resultado
-    capital = [
-        _serie("Bolsa de egresos", resultado.bolsa_de_egresos, medida=DOLARES),
-        _serie(
-            "Variación del capital de trabajo", resultado.variacion_capital_trabajo, medida=DOLARES
-        ),
-        _serie("Cuentas por cobrar", resultado.cuentas_por_cobrar.saldos, medida=DOLARES),
-        _serie(
-            "Cuentas por cobrar, variación",
-            resultado.cuentas_por_cobrar.variaciones,
-            medida=DOLARES,
-        ),
-        _serie("Cuentas por pagar", resultado.cuentas_por_pagar.saldos, medida=DOLARES),
-        _serie(
-            "Cuentas por pagar, variación", resultado.cuentas_por_pagar.variaciones, medida=DOLARES
-        ),
-    ]
-    igv = [
-        _serie(_bonito(nombre), valores, medida=DOLARES, concepto=nombre)
-        for nombre, valores in _series_de(resultado.igv).items()
-    ]
-    return BloqueDeCorrida(
-        clave="otros",
-        etiqueta="Otros",
-        titulo="Bolsa de egresos, IGV y capital de trabajo",
-        hoja="Otros",
-        grupos=[
-            GrupoDelBloque(
-                titulo="",
-                secciones=[
-                    SeccionDelBloque(titulo="Capital de trabajo", series=capital),
-                    SeccionDelBloque(titulo="IGV", series=igv),
+MEDIDA_OTROS = "$k"
+"""El libro lleva esta hoja en miles y solo lo rotula en su fila de subtotal.
+
+Aqui lo lleva cada fila, porque la columna de unidad es la que deshace la
+conversion que hizo la ingesta al leer la plantilla. Hasta el 04/09/2026 la hoja
+iba en `US$` y por eso se veia mil veces mas grande que el libro.
+"""
+
+NOTA_DE_LA_REGALIA_EN_PERDIDA = (
+    "La misma regalía que el bloque de impuestos. El libro la reparte por el "
+    "signo de la utilidad operativa: aquí van los ejercicios en pérdida, donde "
+    "manda la regalía mínima sobre ventas y el libro la trata como gasto."
+)
+NOTA_DE_LA_REGALIA_TRIBUTARIA = (
+    "En los ejercicios en pérdida esta regalía no aparece aquí sino en "
+    "`Otros Gastos/ Ingresos`. Es la misma cifra, reclasificada por resultado."
+)
+NOTA_DEL_EGRESO_CONSOLIDADO = (
+    "El libro abre esta línea por destino. Aquí va consolidada: la tarifa se "
+    "aplica al concentrado alimentado del conjunto, y repartirla por unidad "
+    "daría filas que no suman su total en cuanto la refinería sature."
+)
+NOTA_DE_LA_SERVIDUMBRE = (
+    "Solo en los ejercicios con costo operativo: el libro multiplica la fila "
+    "por su bandera `Periodo con gastos`. La base imponible y la bolsa de "
+    "egresos usan el importe entero."
+)
+NOTA_DE_LA_BASE_DEL_IGV = (
+    "El libro rotula esta fila `IGV Ventas Locales` y la calcula sobre el "
+    "porcentaje de exportación. Se reproduce el cálculo y se reporta el rótulo."
+)
+NOTA_DEL_IGV_ANULADO = (
+    "El bloque se calcula entero y llega al flujo multiplicado por cero, que es "
+    "lo que escribe el libro. Sin confirmar por Finanzas."
+)
+NOTA_DE_LA_BASE_DE_LA_DEUDA = (
+    "La deuda rota sobre la bolsa de egresos completa, capital incluido, y no "
+    "sobre el costo operativo. Dejar el capital fuera mueve la variación justo "
+    "en el año de mayor desembolso."
+)
+NOTA_DE_LA_GESTION_SOCIAL = (
+    "La gestión social no está en esta bolsa: el libro no la lleva aquí. Sale "
+    "de caja por su propia línea del flujo operativo."
+)
+NOTA_DE_LAS_OTRAS_CUENTAS = (
+    "Las dos filas de arriba son saldos y esta las suma junto a dos "
+    "variaciones. Se reproduce con el signo con que el libro las escribe."
+)
+NOTA_DE_LA_BANDERA = (
+    "Uno en los ejercicios en que alguna unidad tiene datos. El libro la rotula "
+    "con el nombre de una unidad concreta y aquí se deriva de todas, que es el "
+    "criterio que fijó Finanzas. Decide en qué año se liquidan las dos cuentas."
+)
+
+
+def _cerrada_por_el_motor(
+    titulo: str | None,
+    series: list[SerieAnual],
+    etiqueta: str,
+    total: Sequence[float],
+    *,
+    nota: str | None = None,
+) -> SeccionDelBloque:
+    """Una sección cuyo cierre lo trae el motor, no lo suma la pantalla.
+
+    `_cerrada` suma las filas que tiene encima porque en `Ventas` no hay una
+    celda del motor que corresponda al total del libro. Aquí sí la hay: cada
+    banda de `Otros` cierra en un campo de `BloqueDeOtros`, y recomputarlo
+    ocultaría una divergencia entre lo que se pinta y lo que alimenta el flujo.
+    Que las filas sumen su total lo verifica una prueba, no esta función.
+    """
+    return SeccionDelBloque(
+        titulo=titulo,
+        series=[
+            *series,
+            _serie(etiqueta, total, medida=MEDIDA_OTROS, total=True, nota=nota),
+        ],
+    )
+
+
+def _grupo_del_cash_cost(hoja: BloqueDeOtros) -> GrupoDelBloque:
+    """`Cash Cost`, las filas 6 a 13, con el signo cambiado.
+
+    Es la misma cifra que cierra cada bloque de `InputsOpex` y aquí no sobra: su
+    total es el sumando `Opex` de la bolsa de egresos, que es la fila con que la
+    hoja explica de dónde sale la base de las cuentas por pagar.
+    """
+    return GrupoDelBloque(
+        titulo="Cash Cost",
+        secciones=[
+            _cerrada_por_el_motor(
+                None,
+                [
+                    _serie(f"Cash Cost {nombre}", valores, medida=MEDIDA_OTROS)
+                    for nombre, valores in hoja.cash_cost_por_unidad.items()
                 ],
+                "Total Cash Cost",
+                hoja.cash_cost,
             )
         ],
     )
+
+
+def _grupo_del_gasto_de_ventas(hoja: BloqueDeOtros) -> GrupoDelBloque:
+    """`Gasto de Ventas`, las filas 15 a 20."""
+    gasto = hoja.gasto_de_ventas
+    return GrupoDelBloque(
+        titulo="Gasto de Ventas",
+        secciones=[
+            _cerrada_por_el_motor(
+                None,
+                [
+                    _serie(
+                        "Gasto de Ventas Sn Refinado LOM",
+                        gasto.lom,
+                        medida=MEDIDA_OTROS,
+                        origen="dato",
+                    ),
+                    _serie(
+                        "Gasto de Ventas Concentrado",
+                        gasto.sobre_concentrado,
+                        medida=MEDIDA_OTROS,
+                        nota=NOTA_DEL_EGRESO_CONSOLIDADO,
+                    ),
+                ],
+                "Total Gasto de Ventas",
+                gasto.total,
+            )
+        ],
+    )
+
+
+def _grupo_de_fletes(hoja: BloqueDeOtros) -> GrupoDelBloque:
+    """`Fletes`, las filas 22 a 26."""
+    fletes = hoja.fletes
+    return GrupoDelBloque(
+        titulo="Fletes",
+        secciones=[
+            _cerrada_por_el_motor(
+                None,
+                [
+                    _serie(
+                        "Fletes Concentrado LOM",
+                        fletes.lom,
+                        medida=MEDIDA_OTROS,
+                        origen="dato",
+                    ),
+                    _serie(
+                        "Fletes Concentrado",
+                        fletes.sobre_concentrado,
+                        medida=MEDIDA_OTROS,
+                        nota=NOTA_DEL_EGRESO_CONSOLIDADO,
+                    ),
+                ],
+                "Total Fletes",
+                fletes.total,
+            )
+        ],
+    )
+
+
+def _grupo_de_otros_gastos(hoja: BloqueDeOtros) -> GrupoDelBloque:
+    """`Otros Gastos/ Ingresos`, las filas 28 a 34, con el espacio del libro.
+
+    La `Regalías` de este bloque y la `Regalias` del siguiente son la misma
+    cifra, repartida por el signo de la utilidad operativa, y los dos rótulos
+    difieren solo en la tilde. Van los dos con el suyo -las distingue la banda,
+    no la ortografía- y cada uno dice en su nota dónde está el otro.
+    """
+    gastos = hoja.otros_gastos
+    return GrupoDelBloque(
+        titulo="Otros Gastos/ Ingresos",
+        secciones=[
+            _cerrada_por_el_motor(
+                None,
+                [
+                    _serie("Donaciones", gastos.donaciones, medida=MEDIDA_OTROS, origen="dato"),
+                    _serie(
+                        "Servidumbre",
+                        gastos.servidumbre,
+                        medida=MEDIDA_OTROS,
+                        nota=NOTA_DE_LA_SERVIDUMBRE,
+                    ),
+                    _serie(
+                        "OEFA, Osinergmin, Fondo Jub.",
+                        gastos.reguladores_y_fondo,
+                        medida=MEDIDA_OTROS,
+                    ),
+                    _serie("Otros", gastos.otros, medida=MEDIDA_OTROS, origen="dato"),
+                    _serie(
+                        "Regalías",
+                        gastos.regalia,
+                        medida=MEDIDA_OTROS,
+                        nota=NOTA_DE_LA_REGALIA_EN_PERDIDA,
+                    ),
+                ],
+                "Total Otros Gastos/Ingresos",
+                gastos.total,
+            )
+        ],
+    )
+
+
+def _grupo_del_pago_de_impuestos(hoja: BloqueDeOtros) -> GrupoDelBloque:
+    """`Impuestos`, las filas 36 a 41.
+
+    No es una copia de la pestaña de impuestos: su regalía está filtrada por el
+    signo del resultado, y sin esta banda al lado de la anterior la regalía
+    parecería contada dos veces en la hoja.
+    """
+    pago = hoja.pago_de_impuestos
+    return GrupoDelBloque(
+        titulo="Impuestos",
+        secciones=[
+            _cerrada_por_el_motor(
+                None,
+                [
+                    _serie(
+                        "Regalias",
+                        pago.regalia,
+                        medida=MEDIDA_OTROS,
+                        nota=NOTA_DE_LA_REGALIA_TRIBUTARIA,
+                    ),
+                    _serie("IEM", pago.impuesto_especial, medida=MEDIDA_OTROS),
+                    _serie("IR Corriente", pago.impuesto_a_la_renta, medida=MEDIDA_OTROS),
+                ],
+                "Pago Impuestos",
+                pago.total,
+            )
+        ],
+    )
+
+
+def _grupo_de_compras(hoja: BloqueDeOtros) -> GrupoDelBloque:
+    """`Compras`, las filas 43 a 55: la bolsa de egresos y sus once conceptos.
+
+    Aquí el signo se invierte respecto de las bandas anteriores, porque esta no
+    es una salida de caja sino la base de compras del ejercicio: la que rota en
+    las cuentas por pagar y la que grava el IGV.
+    """
+    compras = hoja.compras
+    return GrupoDelBloque(
+        titulo="Compras",
+        secciones=[
+            _cerrada_por_el_motor(
+                None,
+                [
+                    _serie("Opex", compras.opex, medida=MEDIDA_OTROS),
+                    _serie(
+                        "Gastos Administrativos",
+                        compras.gastos_administrativos,
+                        medida=MEDIDA_OTROS,
+                    ),
+                    _serie("Fletes", compras.fletes, medida=MEDIDA_OTROS),
+                    _serie("Gasto de Ventas", compras.gasto_de_ventas, medida=MEDIDA_OTROS),
+                    _serie("Donaciones", compras.donaciones, medida=MEDIDA_OTROS),
+                    _serie(
+                        "Otros Egresos", compras.otros_egresos, medida=MEDIDA_OTROS, origen="dato"
+                    ),
+                    _serie("Servidumbre", compras.servidumbre, medida=MEDIDA_OTROS),
+                    _serie("Estudios", compras.estudios, medida=MEDIDA_OTROS),
+                    _serie("Planilla", compras.planilla, medida=MEDIDA_OTROS),
+                    _serie("Capex", compras.capex, medida=MEDIDA_OTROS),
+                    _serie("Exploraciones", compras.exploraciones, medida=MEDIDA_OTROS),
+                ],
+                "Bolsa Egresos",
+                compras.bolsa,
+                nota=NOTA_DE_LA_GESTION_SOCIAL,
+            )
+        ],
+    )
+
+
+def _grupo_del_igv(hoja: BloqueDeOtros) -> GrupoDelBloque:
+    """El bloque de IGV, filas 57 a 66.
+
+    **La fila 58 no se emite.** Se rotula `IGV Ventas Locales` y su fórmula es
+    `=H66`: repetiría, bajo el nombre de otro concepto, un número que la misma
+    banda trae nueve filas más abajo. El sombreado que el libro le da lo lleva
+    aquí `Variación IGV Flujo Caja`, que es la que alimenta el flujo.
+    """
+    igv = hoja.igv
+    return GrupoDelBloque(
+        titulo="Δ WK",
+        secciones=[
+            _cerrada_por_el_motor(
+                None,
+                [
+                    _serie(
+                        "Ventas",
+                        igv.ventas_gravadas,
+                        medida=MEDIDA_OTROS,
+                        nota=NOTA_DE_LA_BASE_DEL_IGV,
+                    ),
+                    _serie("Compras", igv.compras_gravadas, medida=MEDIDA_OTROS),
+                    _serie("IGV Ventas", igv.igv_de_ventas, medida=MEDIDA_OTROS),
+                    _serie("IGV Compras", igv.igv_de_compras, medida=MEDIDA_OTROS),
+                    _serie("Credito/Pago", igv.credito_o_pago, medida=MEDIDA_OTROS),
+                    _serie(
+                        "Credito acumulado",
+                        igv.credito_acumulado,
+                        medida=MEDIDA_OTROS,
+                        sin_acumulado=True,
+                    ),
+                    _serie("Pago efectivo", igv.pago_efectivo, medida=MEDIDA_OTROS),
+                ],
+                "Variación IGV Flujo Caja",
+                igv.variacion_para_el_flujo,
+                nota=NOTA_DEL_IGV_ANULADO,
+            )
+        ],
+    )
+
+
+def _grupo_de_cuentas_por_cobrar(corrida: CorridaAlmacenada, hoja: BloqueDeOtros) -> GrupoDelBloque:
+    """`Cuentas por Cobrar`, las filas 68 a 73."""
+    return GrupoDelBloque(
+        titulo="Cuentas por Cobrar",
+        secciones=[
+            SeccionDelBloque(
+                titulo=None,
+                series=[_serie("Ventas", corrida.resultado.ventas, medida=MEDIDA_OTROS)],
+            ),
+            _cerrada_por_el_motor(
+                "CxC Comerciales",
+                [
+                    _serie(
+                        "Días",
+                        hoja.dias_por_cobrar,
+                        medida="dias",
+                        origen="dato",
+                        nota=_nota_del_ano_comercial(hoja),
+                    ),
+                    _serie("CXC", hoja.por_cobrar.saldos, medida=MEDIDA_OTROS, sin_acumulado=True),
+                ],
+                "Δ Cta x Cobrar",
+                hoja.por_cobrar.variaciones,
+            ),
+        ],
+    )
+
+
+def _grupo_de_cuentas_por_pagar(hoja: BloqueDeOtros) -> GrupoDelBloque:
+    """`Cuentas por Pagar`, las filas 75 a 80.
+
+    El año comercial del libro vive en su columna `E`, fuera de la rejilla de
+    ejercicios: va como nota de la fila de días y no como fila propia, porque
+    inventarle una la pondría donde el libro no la tiene.
+    """
+    return GrupoDelBloque(
+        titulo="Cuentas por Pagar",
+        secciones=[
+            SeccionDelBloque(
+                titulo=None,
+                series=[
+                    _serie(
+                        "Total Adiciones",
+                        hoja.compras.bolsa,
+                        medida=MEDIDA_OTROS,
+                        nota=NOTA_DE_LA_BASE_DE_LA_DEUDA,
+                    )
+                ],
+            ),
+            _cerrada_por_el_motor(
+                "CxP Comerciales",
+                [
+                    _serie(
+                        "Días",
+                        hoja.dias_por_pagar,
+                        medida="dias",
+                        origen="dato",
+                        nota=_nota_del_ano_comercial(hoja),
+                    ),
+                    _serie("CxP", hoja.por_pagar.saldos, medida=MEDIDA_OTROS, sin_acumulado=True),
+                ],
+                "Δ Cta x Pagar",
+                hoja.por_pagar.variaciones,
+            ),
+        ],
+    )
+
+
+def _grupo_de_las_otras_cuentas(hoja: BloqueDeOtros) -> GrupoDelBloque:
+    """Las filas 82 a 84: las dos cuentas no comerciales y la salida al flujo."""
+    return GrupoDelBloque(
+        titulo="",
+        secciones=[
+            _cerrada_por_el_motor(
+                None,
+                [
+                    _serie(
+                        "CxC otros",
+                        hoja.otras_por_cobrar,
+                        medida=MEDIDA_OTROS,
+                        origen="dato",
+                        sin_acumulado=True,
+                    ),
+                    _serie(
+                        "CxP otros",
+                        hoja.otras_por_pagar,
+                        medida=MEDIDA_OTROS,
+                        origen="dato",
+                        sin_acumulado=True,
+                    ),
+                ],
+                "Δ WK",
+                hoja.variacion,
+            )
+        ],
+    )
+
+
+def _grupo_del_tipo_de_compra_venta(
+    corrida: CorridaAlmacenada, hoja: BloqueDeOtros
+) -> GrupoDelBloque:
+    """`Tipo de Compra/Venta`, las filas 86 a 88.
+
+    Los dos porcentajes se ponderan por la base que gravan, de modo que la
+    columna de total sea el porcentaje medio del horizonte y no la suma de
+    treinta y seis porcentajes.
+    """
+    return GrupoDelBloque(
+        titulo="Tipo de Compra/Venta",
+        secciones=_una_seccion(
+            [
+                _serie(
+                    "% Ventas de Exportación",
+                    hoja.porcentaje_de_ventas_de_exportacion,
+                    medida="%",
+                    origen="dato",
+                    peso=corrida.resultado.ventas,
+                ),
+                _serie(
+                    "% Compras locales",
+                    hoja.porcentaje_de_compras_locales,
+                    medida="%",
+                    origen="dato",
+                    peso=hoja.compras.bolsa,
+                ),
+            ]
+        ),
+    )
+
+
+def _nota_del_ano_comercial(hoja: BloqueDeOtros) -> str:
+    return (
+        f"El saldo es la base por los días entre {hoja.dias_del_ano_comercial:.0f}, el año "
+        "comercial que el libro escribe fuera de la rejilla de ejercicios."
+    )
+
+
+def _bloque_de_otros(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
+    """La hoja `Otros`, en el orden del libro.
+
+    Nueve bandas y cuatro filas sueltas: el cash cost que llega de `InputsOpex`
+    con el signo cambiado, las tres bandas de egreso, los tributos pagados, la
+    bolsa de egresos, el IGV, las dos cuentas comerciales, las dos no
+    comerciales con la variación que entra al flujo, los dos porcentajes, la
+    bandera de producción y la compra de predios.
+
+    **Dos filas del libro no se emiten.** La `40`, rotulada `xxx`, es la tercera
+    ranura reservada tras `InputsCapex!10` y `Ventas!26`; `Pago Impuestos` suma
+    sin ella, que es lo mismo que hace el libro con su cero. Y la `58`, que
+    repite bajo otro nombre la variación de IGV; el motivo está en
+    `_grupo_del_igv`.
+
+    **Los totales los trae el motor y no se recalculan aquí**, a diferencia de
+    `Ventas`: cada banda cierra en un campo de `BloqueDeOtros`, y por eso este
+    bloque no necesita el número de ejercicios que reciben los otros cinco.
+    """
+    hoja = corrida.resultado.otros
+    return BloqueDeCorrida(
+        clave="otros",
+        etiqueta="Otros",
+        titulo="Egresos, tributos pagados y capital de trabajo",
+        hoja="Otros",
+        grupos=[
+            _grupo_del_cash_cost(hoja),
+            _grupo_del_gasto_de_ventas(hoja),
+            _grupo_de_fletes(hoja),
+            _grupo_de_otros_gastos(hoja),
+            _grupo_del_pago_de_impuestos(hoja),
+            _grupo_de_compras(hoja),
+            _grupo_del_igv(hoja),
+            _grupo_de_cuentas_por_cobrar(corrida, hoja),
+            _grupo_de_cuentas_por_pagar(hoja),
+            _grupo_de_las_otras_cuentas(hoja),
+            _grupo_del_tipo_de_compra_venta(corrida, hoja),
+            GrupoDelBloque(
+                titulo="",
+                secciones=_una_seccion(
+                    [_serie("Año con producción", hoja.produce, nota=NOTA_DE_LA_BANDERA)]
+                ),
+            ),
+            GrupoDelBloque(
+                titulo="Otros Flujo de Caja",
+                secciones=_una_seccion(
+                    [_serie("Compra de Predios", hoja.predios, medida=MEDIDA_OTROS)]
+                ),
+            ),
+        ],
+    )
+
+
+TASAS_TRIBUTARIAS = frozenset(
+    {
+        "margen_operativo",
+        "tasa_efectiva_regalia",
+        "tasa_efectiva_iem",
+        "tasa_fondo_de_jubilacion",
+        "tasa_participacion",
+        "tasa_impuesto_renta",
+    }
+)
+"""Las seis filas de la hoja `Impuestos` que no son dinero.
+
+El bloque se emite por reflexion y sus cuatro sub-bloques mezclan importes con
+tasas, de modo que una sola medida para todas las filas dividiria las tasas
+entre mil al mostrarlas. Se ponderan por la venta del ejercicio: la columna de
+total es entonces la tasa media del horizonte y no la suma de treinta y seis
+porcentajes.
+"""
+
+SALDOS_TRIBUTARIOS = frozenset({"saldo_inicial", "saldo_final"})
+"""La perdida arrastrada abre y cierra en un saldo, y un saldo no se acumula."""
 
 
 def _bloque_de_impuestos(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
@@ -1817,13 +2306,25 @@ def _bloque_de_impuestos(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
 
     Ventas positivas y gastos negativos, de modo que cada total es literalmente
     la suma de las filas que tiene encima. Es lo que se contrasta.
+
+    **Va en miles, como la hoja `Otros`.** Las dos publican la misma regalia y
+    hasta el 04/09/2026 esta iba en `US$`: la misma cifra se veia mil veces mas
+    grande en una pestana que en la otra. Lo que sigue pendiente es darle la
+    forma del libro, que es lo que retirara el `_bonito` de sus etiquetas.
     """
     impuestos = corrida.resultado.impuestos
     secciones = [
         SeccionDelBloque(
             titulo=titulo,
             series=[
-                _serie(_bonito(nombre), valores, medida=DOLARES, concepto=nombre)
+                _serie(
+                    _bonito(nombre),
+                    valores,
+                    medida="%" if nombre in TASAS_TRIBUTARIAS else MEDIDA_OTROS,
+                    concepto=nombre,
+                    peso=corrida.resultado.ventas if nombre in TASAS_TRIBUTARIAS else None,
+                    sin_acumulado=nombre in SALDOS_TRIBUTARIOS,
+                )
                 for nombre, valores in _series_de(sub_bloque).items()
             ],
         )

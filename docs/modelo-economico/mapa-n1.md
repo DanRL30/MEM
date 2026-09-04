@@ -28,9 +28,11 @@ modulo responsable, de modo que una discrepancia se localiza en un archivo.
 | Costos de cierre | `capex.py` | `::test_costos_cierre` |
 | Valor residual | **No aplica.** Ver la nota 3 | |
 | Capital de trabajo | `capital_trabajo.py` | `test_n0_a_n3.py::TestN1::test_capital_de_trabajo` |
+| Egresos de la hoja `Otros` (`15:34`, `43:55`) | `otros.py` | `test_n0_a_n3.py::TestN1::test_la_hoja_otros_cierra_sus_totales` |
+| Pago de impuestos (`36:41`) | `otros.py` | `test_n0_a_n3.py::TestN1::test_la_regalia_va_a_un_bloque_o_al_otro_segun_el_resultado` |
 
-Las filas de ventas, las nueve de la hoja `Impuestos` y la de capital de trabajo citan pruebas que
-existen. Las demas apuntan a un `test_n1_bloques.py` que nunca se escribio: el contraste vive hoy en
+Las filas de ventas, las nueve de la hoja `Impuestos`, las dos de la hoja `Otros` y la de capital
+de trabajo citan pruebas que existen. Las demas apuntan a un `test_n1_bloques.py` que nunca se escribio: el contraste vive hoy en
 `tests/fidelidad/niveles/test_n0_a_n3.py`. Queda registrado y se corrige al cerrar cada bloque.
 
 **Las nueve filas de `Impuestos` sustituyen a las tres que habia** -base imponible, impuestos y
@@ -77,6 +79,7 @@ asi que el mapa de arriba se contrasta linea por linea contra ella.
 | Sustaining capital | CAPEX diferido y de sostenimiento | `capex.py` |
 | Closure costs | Costos de cierre | `capex.py` |
 | Change in working capital | Capital de trabajo | `capital_trabajo.py` |
+| Royalties and mining taxes paid | Pago de impuestos (`36:41`) | `otros.py` |
 | Residual Value | **No aplica.** Ver la nota 3 | |
 | Total capital cost | Suma de los anteriores | `capex.py` |
 | CFO, CFI, CFF, Net Cash Flow | **Nivel N2**, no N1 | `flujos.py` |

@@ -121,9 +121,12 @@ ingesta llenaba con el las dos cuentas; el libro las lleva en dos filas distinta
 - **Las tres lineas de gasto de ventas y las dos de fletes no se separan.** Su clasificacion entre
   costo operativo y deduccion del ingreso es la consulta 6 a Finanzas, emitida el 31/08/2026 y sin
   respuesta: es la nota 1 de [mapa-n1.md](mapa-n1.md).
-- **La servidumbre no se mueve** del flujo de inversiones al operativo, aunque el libro la lleve en
-  dos lineas separadas. Cambiaria la base imponible sin confirmacion. Es la regla 055.
-- **La fila 40 (`xxx`) y la 58 no se reproducen**: ranura reservada y fila de presentacion.
+- **La servidumbre si se movio**, y esta seccion decia lo contrario. La regla 055 anotaba la
+  sospecha y no la tocaba porque cambiaba la base imponible; la lectura de `Impuestos!16` el mismo
+  02/09/2026 mostro que el libro si la descuenta, y la regla 059 la cerro alineandose al modelo.
+- **La fila 40 (`xxx`) y la 58 no se reproducen**: la primera es la tercera ranura reservada del
+  libro -regla 048- y la segunda repite bajo el rotulo `IGV Ventas Locales` la variacion que la
+  misma banda trae nueve filas mas abajo, que es la regla 085.
 - **Los costos hundidos siguen sin implementarse.** Estan declarados en cuatro documentos y no
   existen en el codigo; no son de esta hoja. Lo que si cambia es que ahora, si alguien los llena,
   la ingesta lo reporta en vez de descartarlos en silencio.
@@ -144,3 +147,20 @@ que alimentan el flujo —`Ventas` y `Otros`— tienen ya su lectura fila a fila
 nuevas, de la `046` a la `056`, estan en
 [reglas-no-documentadas.md](reglas-no-documentadas.md); cuatro siguen consultadas y ninguna bloquea
 el calculo.
+
+## 9. La hoja pasa a mostrarse entera
+
+El 04/09/2026 la pestana `Otros` recibio la forma del libro: trece grupos en el orden de la hoja, en
+miles y no en dolares, con el signo de caja en las bandas 6 a 41 y el positivo en la bolsa de
+egresos. Hasta entonces emitia doce series planas en dos secciones, de las cuales seis salian por
+reflexion con la etiqueta que daba el nombre del campo.
+
+Dos defectos de presentacion se cerraron con ello. Los tres saldos -las dos cuentas y el credito
+acumulado- se acumulaban en la columna de total, que sumaba treinta y seis aperturas. Y
+`Otros!66`, la unica linea de la banda de IGV que llega al flujo, no se emitia: es una propiedad del
+bloque del motor y la reflexion solo ve campos.
+
+Siete reglas mas, de la `080` a la `086`. La `081` es la unica que cambia el motor: la bolsa de
+egresos sumaba doce conceptos donde el libro suma once, con la gestion social de mas. El Project
+Manager decidio alinearse al modelo, y como ningun caso del arnes declaraba ese gasto, el cambio
+entra con una prueba que corre el mismo caso con y sin el.

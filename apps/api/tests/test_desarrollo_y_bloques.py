@@ -1080,6 +1080,187 @@ class TestBloquesIntermedios:
         assert respuesta.status_code == 409
 
 
+class TestLaHojaOtros:
+    """La pestana `Otros`, con la forma del libro.
+
+    Es la hoja que arma la bolsa de egresos, el IGV y el capital de trabajo, y
+    la que reparte la regalia entre gasto y tributo. Hasta el 04/09/2026 emitia
+    doce series planas en dos secciones y en dolares.
+    """
+
+    def _otros(self, cliente: TestClient, plantilla: Path) -> dict[str, Any]:
+        id_caso = _crear_caso(cliente)
+        _subir(cliente, id_caso, plantilla)
+        cliente.post(f"/api/casos/{id_caso}/evaluar", headers=CABECERAS)
+        cuerpo = cliente.get(f"/api/casos/{id_caso}/corrida/bloques", headers=CABECERAS).json()
+        bloque: dict[str, Any] = next(b for b in cuerpo["bloques"] if b["clave"] == "otros")
+        return bloque
+
+    def _series(self, bloque: dict[str, Any]) -> list[dict[str, Any]]:
+        return [
+            serie
+            for grupo in bloque["grupos"]
+            for seccion in grupo["secciones"]
+            for serie in seccion["series"]
+        ]
+
+    def test_sigue_el_orden_de_las_bandas_del_libro(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        bloque = self._otros(cliente, plantilla)
+
+        assert [g["titulo"] for g in bloque["grupos"]] == [
+            "Cash Cost",
+            "Gasto de Ventas",
+            "Fletes",
+            "Otros Gastos/ Ingresos",
+            "Impuestos",
+            "Compras",
+            "Δ WK",
+            "Cuentas por Cobrar",
+            "Cuentas por Pagar",
+            "",
+            "Tipo de Compra/Venta",
+            "",
+            "Otros Flujo de Caja",
+        ]
+
+    def test_la_bolsa_lleva_los_once_conceptos_del_libro(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # El libro no lleva la gestion social en este bloque y el motor la
+        # sumaba: es la regla `081`. Doce filas de concepto serian esa regresion.
+        bloque = self._otros(cliente, plantilla)
+        compras = next(g for g in bloque["grupos"] if g["titulo"] == "Compras")
+        etiquetas = [s["etiqueta"] for s in compras["secciones"][0]["series"]]
+
+        assert etiquetas == [
+            "Opex",
+            "Gastos Administrativos",
+            "Fletes",
+            "Gasto de Ventas",
+            "Donaciones",
+            "Otros Egresos",
+            "Servidumbre",
+            "Estudios",
+            "Planilla",
+            "Capex",
+            "Exploraciones",
+            "Bolsa Egresos",
+        ]
+        assert "Gestión Social" not in etiquetas
+
+    def test_la_hoja_se_muestra_en_miles(self, cliente: TestClient, plantilla: Path) -> None:
+        # El libro la lleva en `$k` y la ingesta convierte a dolares al leer. La
+        # pantalla deshace esa conversion por la unidad de medida, de modo que
+        # rotularla `US$` mostraba la hoja mil veces mas grande.
+        bloque = self._otros(cliente, plantilla)
+        medidas = {serie["medida"] for serie in self._series(bloque)}
+
+        assert medidas == {"$k", "%", "dias", ""}
+
+    def test_los_saldos_no_llevan_acumulado(self, cliente: TestClient, plantilla: Path) -> None:
+        # Sumar los saldos de apertura de treinta y seis ejercicios da una cifra
+        # que no significa nada. Las cinco filas de saldo lo declaran.
+        bloque = self._otros(cliente, plantilla)
+        saldos = {"CXC", "CxP", "Credito acumulado", "CxC otros", "CxP otros"}
+        por_etiqueta = {s["etiqueta"]: s for s in self._series(bloque)}
+
+        assert saldos <= set(por_etiqueta)
+        for etiqueta in saldos:
+            assert por_etiqueta[etiqueta]["acumulado"] is None, etiqueta
+
+    def test_la_regalia_aparece_en_los_dos_bloques_con_su_rotulo(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # `Otros!33` y `!37` son la misma cifra repartida por el signo de la
+        # utilidad operativa, y los dos rotulos del libro difieren solo en la
+        # tilde. Cada uno lleva la nota que dice donde esta el otro.
+        bloque = self._otros(cliente, plantilla)
+        gastos = next(g for g in bloque["grupos"] if g["titulo"] == "Otros Gastos/ Ingresos")
+        tributos = next(g for g in bloque["grupos"] if g["titulo"] == "Impuestos")
+
+        con_tilde = next(s for s in gastos["secciones"][0]["series"] if s["etiqueta"] == "Regalías")
+        sin_tilde = next(
+            s for s in tributos["secciones"][0]["series"] if s["etiqueta"] == "Regalias"
+        )
+        assert con_tilde["nota"]
+        assert sin_tilde["nota"]
+
+    def test_las_dos_filas_de_presentacion_no_se_emiten(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # La `40`, rotulada `xxx`, es la tercera ranura reservada del libro. La
+        # `58` repite bajo el nombre `IGV Ventas Locales` la variacion que la
+        # misma banda trae nueve filas mas abajo.
+        etiquetas = [s["etiqueta"] for s in self._series(self._otros(cliente, plantilla))]
+
+        assert "xxx" not in etiquetas
+        assert "IGV Ventas Locales" not in etiquetas
+        assert "Variación IGV Flujo Caja" in etiquetas
+
+    def test_el_igv_se_ve_entero_y_llega_al_flujo_en_cero(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # Las dos mitades de la regla `014`. La variacion es un `@property` del
+        # motor y por eso no salia cuando el bloque se emitia por reflexion.
+        bloque = self._otros(cliente, plantilla)
+        igv = next(g for g in bloque["grupos"] if g["titulo"] == "Δ WK")
+        por_etiqueta = {s["etiqueta"]: s for s in igv["secciones"][0]["series"]}
+
+        assert "Credito/Pago" in por_etiqueta
+        variacion = por_etiqueta["Variación IGV Flujo Caja"]
+        assert all(v == 0.0 for v in variacion["valores"])
+        assert variacion["nota"]
+
+    def test_cada_banda_cierra_en_la_suma_de_sus_filas(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # El total lo trae el motor y la pantalla no lo recalcula: si las filas
+        # que se pintan no lo suman, lo que se ve y lo que alimenta el flujo se
+        # han separado sin que nada lo acuse.
+        bloque = self._otros(cliente, plantilla)
+        cerradas = 0
+        for grupo in bloque["grupos"]:
+            for seccion in grupo["secciones"]:
+                series = seccion["series"]
+                if not series[-1]["total"]:
+                    continue
+                cerradas += 1
+                for i, obtenido in enumerate(series[-1]["valores"]):
+                    esperado = sum(s["valores"][i] for s in series[:-1])
+                    assert obtenido == pytest.approx(esperado), f"{grupo['titulo']}, ano {i}"
+        # Las diez bandas que cierran: seis de egreso y tributo, el IGV, las dos
+        # cuentas comerciales y las no comerciales.
+        assert cerradas == 10
+
+
+class TestLaEscalaDeLaHojaImpuestos:
+    def test_el_dinero_va_en_miles_y_las_tasas_en_por_ciento(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # `Otros` e `Impuestos` publican la misma regalia. Con esta hoja en
+        # dolares, la cifra se veia mil veces mas grande en una que en otra.
+        id_caso = _crear_caso(cliente)
+        _subir(cliente, id_caso, plantilla)
+        cliente.post(f"/api/casos/{id_caso}/evaluar", headers=CABECERAS)
+        cuerpo = cliente.get(f"/api/casos/{id_caso}/corrida/bloques", headers=CABECERAS).json()
+        bloque = next(b for b in cuerpo["bloques"] if b["clave"] == "impuestos")
+        por_concepto = {
+            serie["concepto"]: serie
+            for grupo in bloque["grupos"]
+            for seccion in grupo["secciones"]
+            for serie in seccion["series"]
+        }
+
+        assert por_concepto["regalia_mayor"]["medida"] == "$k"
+        assert por_concepto["tasa_impuesto_renta"]["medida"] == "%"
+        assert por_concepto["margen_operativo"]["medida"] == "%"
+        # La perdida arrastrada abre y cierra en un saldo, y un saldo no se suma.
+        assert por_concepto["saldo_inicial"]["acumulado"] is None
+        assert por_concepto["saldo_final"]["acumulado"] is None
+
+
 class TestLaTirNoFingeUnCero:
     def test_un_caso_sin_desembolso_declara_que_no_tiene_tir(
         self, cliente: TestClient, plantilla: Path
