@@ -15,6 +15,7 @@ importa para el contraste estructural:
     polimetálico        dos minas que liquidan concentrado de cobre con plata
     capital de trabajo  una mina con parada intermedia y cuentas que rotan
     hoja `Otros`        una mina con las nueve bandas de egreso llenas
+    bloque tributario   una mina de margen alto, con escalas progresivas
 
 Los casos certificados con datos reales son otra cosa: viven en el tenant de
 MINSUR, se referencian por manifiesto en `fixtures/certificados/` y sus pruebas
@@ -582,5 +583,89 @@ def caso_de_la_hoja_otros(*, gestion_social: float = GESTION_SOCIAL_DEL_CASO) ->
             tasa_igv=TASA_IGV,
             porcentaje_de_ventas_de_exportacion=PORCENTAJE_DE_VENTAS,
             porcentaje_de_compras_locales=PORCENTAJE_DE_COMPRAS,
+        ),
+    )
+
+
+# --- Bloque tributario ---------------------------------------------------------
+
+# Escalas de verdad progresivas, con tramos anchos y tasas redondas para que la
+# tasa efectiva se pueda calcular a mano. Las del servicio tienen dieciseis y
+# diecisiete tramos; aqui lo que se ejercita es la rama, no la tabla.
+ESCALA_PROGRESIVA = EscalaProgresiva(
+    tramos=(
+        Tramo(0.0, 0.10, 0.02),
+        Tramo(0.10, 0.20, 0.04),
+        Tramo(0.20, 10.0, 0.10),
+    )
+)
+IEM_PROGRESIVO = EscalaProgresiva(
+    tramos=(
+        Tramo(0.0, 0.10, 0.01),
+        Tramo(0.10, 10.0, 0.03),
+    )
+)
+
+MAESTROS_PROGRESIVOS = DatosMaestros(
+    parametros=PARAMETROS,
+    tasas_tributarias=MAESTROS.tasas_tributarias,
+    tasas_financieras=MAESTROS.tasas_financieras,
+    escala_regalia=ESCALA_PROGRESIVA,
+    escala_iem=IEM_PROGRESIVO,
+)
+"""Los mismos parametros con las dos escalas progresivas.
+
+Van aparte y no sustituyen a `MAESTROS` porque los seis casos anteriores anclan
+con cifras calculadas a mano -la participacion de 46 400, la renta de 156 556,5,
+el EBITDA de 750 700- que cambiarian con otra escala sin que el cambio fuera
+suyo.
+"""
+
+SALDO_INICIAL_DE_PERDIDAS = 1_000_000.0
+"""Un saldo de apertura mayor que la mitad de la imponible del primer ejercicio.
+
+Es lo que separa las dos ramas del limite del 50 %: con este saldo manda el
+limite y no el saldo entero. Ningun otro caso del arnes declara uno, pese a que
+`Impuestos!H64` es la unica constante del libro que es un dato.
+"""
+
+
+def caso_del_bloque_tributario() -> Caso:
+    """Una mina de margen alto que arrastra perdidas desde antes del horizonte.
+
+    Tres cosas que ningun otro caso ejercita. **La rama progresiva de la regalia
+    gana a la minima sobre ventas**, porque con la escala plana al 1 % del resto
+    del arnes las dos empatan y manda siempre la minima. **El impuesto especial
+    deja de ser cero.** Y **el saldo inicial de perdidas topa contra el limite
+    del 50 %**, que es la rama que solo estaba probada llamando a `resolver`.
+
+    Sin capital: lo que se mira aqui es la hoja tributaria, y una depreciacion
+    que corre estrecharia el margen sin aportar nada a lo que se verifica.
+    """
+    horizonte = Horizonte(primer_ano=2027, anos=3)
+    unidad = UnidadProductiva(
+        nombre="Mina de Margen Alto",
+        tipo="mina",
+        produccion=ProduccionDeUnidad(
+            mineral_tratado=horizonte.serie([1_000.0] * 3, nombre="tratado"),
+            mineral_extraido=horizonte.serie([1_000.0] * 3, nombre="extraido"),
+            concentrado_producido=horizonte.ceros(),
+            metal_refinado_vendido=horizonte.serie([200.0] * 3, nombre="refinado"),
+        ),
+        costos={"Mina": horizonte.serie([400_000.0] * 3, nombre="mina")},
+    )
+    return Caso(
+        nombre="Sintetico: bloque tributario",
+        horizonte=horizonte,
+        unidades=(unidad,),
+        terminos=TerminosComerciales(
+            precio_metal_refinado=horizonte.serie([10_000.0] * 3, nombre="precio"),
+            premio_metal_refinado=horizonte.ceros(),
+            precio_metal_en_concentrado=horizonte.ceros(),
+            factor_metal_pagable=horizonte.ceros(),
+        ),
+        datos_comunes=DatosComunes(
+            gastos_administrativos=horizonte.ceros(),
+            saldo_inicial_de_perdidas=SALDO_INICIAL_DE_PERDIDAS,
         ),
     )

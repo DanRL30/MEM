@@ -122,6 +122,11 @@ def de_la_hoja_otros() -> Corrida:
     return calcular(sinteticos.caso_de_la_hoja_otros(), sinteticos.MAESTROS)
 
 
+@pytest.fixture(scope="module")
+def tributario() -> Corrida:
+    return calcular(sinteticos.caso_del_bloque_tributario(), sinteticos.MAESTROS_PROGRESIVOS)
+
+
 # Cifras del concentrado, calculadas a mano desde las constantes del caso. El
 # cobre paga la menor de sus dos deducciones -0,30 x 0,90 frente a 0,30 - 0,01-
 # y la plata pasa de gramos por tonelada a onzas troy.
@@ -576,6 +581,59 @@ class TestN1:
             assert coincide(bloque.regalias.tasa_efectiva_regalia[ano], esperado), (
                 f"tasa efectiva de regalia, ano {ano}"
             )
+
+    def test_la_rama_progresiva_de_la_regalia_gana_a_la_minima(self, tributario: Corrida) -> None:
+        """`Impuestos!25` toma la mayor de las dos, y con margen alto es la progresiva.
+
+        En los otros seis casos del arnes la escala es plana al 1 % y empata con
+        la regalia minima sobre ventas, de modo que **la rama progresiva no gana
+        nunca** y no la ejercita nadie. Aqui el margen ronda el 80 % y la TEA
+        sube al 8 %.
+        """
+        regalias = tributario.impuestos.regalias
+        for ano in range(tributario.caso.horizonte.anos):
+            sobre_margen = regalias.regalia_sobre_margen[ano]
+            sobre_ventas = regalias.regalia_sobre_ventas[ano]
+            assert sobre_margen > sobre_ventas, f"la progresiva no gana en el ano {ano}"
+            assert coincide(regalias.regalia_mayor[ano], sobre_margen), f"regalia, ano {ano}"
+
+    def test_el_impuesto_especial_deja_de_ser_cero(self, tributario: Corrida) -> None:
+        # Con `SIN_IEM` -un tramo al 0 %- las diecisiete filas de su tabla y sus
+        # dos filas de la hoja valen cero en todo el arbol salvo en las pruebas
+        # del propio modulo. Aqui la escala tiene tasa y la via se recorre.
+        regalias = tributario.impuestos.regalias
+        assert all(x > 0.0 for x in regalias.impuesto_especial)
+
+        for ano, margen in enumerate(regalias.margen_operativo):
+            aportado = sum(fila.aporte[ano] for fila in tributario.impuestos.tramos_de_iem)
+            esperada = 0.0 if margen == 0.0 else aportado / margen
+            assert coincide(regalias.tasa_efectiva_iem[ano], esperada), f"TEA del IEM, ano {ano}"
+            assert coincide(
+                regalias.impuesto_especial[ano],
+                regalias.tasa_efectiva_iem[ano] * regalias.utilidad_operativa[ano],
+            ), f"IEM, ano {ano}"
+
+    def test_un_saldo_de_apertura_topa_contra_la_mitad_de_la_imponible(
+        self, tributario: Corrida
+    ) -> None:
+        """`Impuestos!48`, sus dos ramas en un solo horizonte.
+
+        El caso abre con un saldo mayor que la mitad de la imponible, de modo que
+        el primer ejercicio deduce el limite y el segundo lo que queda. **Ningun
+        otro caso del arnes declara un saldo de apertura**, pese a que `H64` es la
+        unica constante del libro que es un dato.
+        """
+        renta = tributario.impuestos.renta
+        perdida = tributario.impuestos.perdida_tributaria
+
+        assert perdida.saldo_inicial[0] == pytest.approx(sinteticos.SALDO_INICIAL_DE_PERDIDAS)
+        # Primer ejercicio: manda el limite, la mitad de la imponible.
+        assert coincide(renta.deduccion_por_perdidas[0], -renta.utilidad_imponible[0] * 0.5)
+        # Segundo: el saldo que queda es menor que el limite y se deduce entero.
+        assert coincide(renta.deduccion_por_perdidas[1], -perdida.saldo_inicial[1])
+        assert perdida.saldo_inicial[1] < renta.utilidad_imponible[1] * 0.5
+        # Y el ciclo cierra: lo deducido es lo que abria el horizonte.
+        assert coincide(-sum(renta.deduccion_por_perdidas), perdida.saldo_inicial[0])
 
     def test_la_utilidad_operativa_cierra_el_lazo_del_fondo(self, simple: Corrida) -> None:
         # El fondo de jubilacion es gasto de la utilidad operativa que lo

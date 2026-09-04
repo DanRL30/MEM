@@ -16,11 +16,19 @@ maestros con la que se calculó, así que cualquier resultado obtenido con este
 juego queda marcado como tal en su terna, en el historial y en la pantalla. No
 hay forma de mirar un número calculado aquí y creerlo oficial.
 
-**Las escalas son planas y evidentemente falsas.** La regalía minera real tiene
-dieciséis tramos y el impuesto especial diecisiete. Reproducirlas de memoria
-daría cifras plausibles y equivocadas, que es el peor resultado posible: nadie
-las revisaría. Un tramo único al 1 % y un impuesto especial en cero se delatan
-a la primera lectura.
+**Las escalas son las de la norma publicada, no una reconstrucción.** Hasta el
+04/09/2026 fueron planas -un tramo al 1 % y un impuesto especial en cero-, con
+el argumento de que reproducirlas de memoria daría cifras plausibles y
+equivocadas. El argumento sigue siendo bueno y por eso no se reproducen de
+memoria: se transcriben de la Ley 29788 y de la Ley 29789, que son públicas, y
+coinciden con las que el modelo de referencia lleva en sus dos tablas de
+tramos. Lo que las escalas planas hacían imposible era ver la hoja: con la
+regalía al 1 % empatada con la mínima sobre ventas, la rama progresiva no gana
+nunca, y con el impuesto especial en cero sus diecisiete tramos y sus dos
+filas salen vacíos en toda pantalla y en toda prueba.
+
+**Siguen siendo provisionales.** Los límites y las tasas son dato maestro que
+MINSUR confirma bajo `R-32`, y la versión `DEV-0` marca cada corrida que los usó.
 
 **Los ocho parámetros son los de referencia del alcance**, los mismos que la
 documentación del servicio publica como lectura. No son un hallazgo ni una
@@ -38,15 +46,70 @@ from minsur_engine.parametros import ParametrosCorporativos
 VERSION = "DEV-0"
 """Identificador que viaja en la terna de toda corrida calculada en local."""
 
-# El límite superior es el margen operativo en tanto por uno; diez cubre
-# cualquier margen concebible y evita que la escala se quede corta.
+# El limite superior es el margen operativo en tanto por uno; diez cubre
+# cualquier margen concebible y evita que la escala se quede corta. Es como se
+# escribe el tramo abierto por arriba del libro, que alli es el texto `>80%` y
+# `>85%`: la regla `058`.
 _TOPE_DE_MARGEN = 10.0
 
-ESCALA_REGALIA_PLANA = EscalaProgresiva(tramos=(Tramo(0.0, _TOPE_DE_MARGEN, 0.01),))
-"""Regalía al mínimo legal en un solo tramo. La escala real tiene dieciséis."""
+# Los tramos de las dos escalas, como pares de -limite superior del margen, tasa
+# marginal-. Se escriben uno a uno y no se derivan de una progresion aritmetica:
+# el ultimo tramo de las dos rompe el paso, y una tabla explicita se coteja
+# contra la norma de un vistazo, que es lo que hay que poder hacer con ella.
+TRAMOS_DE_REGALIA = (
+    (0.10, 0.0100),
+    (0.15, 0.0175),
+    (0.20, 0.0250),
+    (0.25, 0.0325),
+    (0.30, 0.0400),
+    (0.35, 0.0475),
+    (0.40, 0.0550),
+    (0.45, 0.0625),
+    (0.50, 0.0700),
+    (0.55, 0.0775),
+    (0.60, 0.0850),
+    (0.65, 0.0925),
+    (0.70, 0.1000),
+    (0.75, 0.1075),
+    (0.80, 0.1150),
+    (_TOPE_DE_MARGEN, 0.1200),
+)
+"""Regalia minera, Ley 29788: dieciseis tramos sobre el margen operativo."""
 
-ESCALA_IEM_NULA = EscalaProgresiva(tramos=(Tramo(0.0, _TOPE_DE_MARGEN, 0.0),))
-"""Impuesto especial a la minería en cero. La escala real tiene diecisiete."""
+TRAMOS_DE_IEM = (
+    (0.10, 0.0200),
+    (0.15, 0.0240),
+    (0.20, 0.0280),
+    (0.25, 0.0320),
+    (0.30, 0.0360),
+    (0.35, 0.0400),
+    (0.40, 0.0440),
+    (0.45, 0.0480),
+    (0.50, 0.0520),
+    (0.55, 0.0560),
+    (0.60, 0.0600),
+    (0.65, 0.0640),
+    (0.70, 0.0680),
+    (0.75, 0.0720),
+    (0.80, 0.0760),
+    (0.85, 0.0800),
+    (_TOPE_DE_MARGEN, 0.0840),
+)
+"""Impuesto especial a la mineria, Ley 29789: diecisiete tramos."""
+
+
+def _escala(tramos: tuple[tuple[float, float], ...]) -> EscalaProgresiva:
+    """Encadena los tramos: el limite superior de uno abre el siguiente."""
+    desde = 0.0
+    construidos = []
+    for hasta, tasa in tramos:
+        construidos.append(Tramo(desde, hasta, tasa))
+        desde = hasta
+    return EscalaProgresiva(tramos=tuple(construidos))
+
+
+ESCALA_REGALIA = _escala(TRAMOS_DE_REGALIA)
+ESCALA_IEM = _escala(TRAMOS_DE_IEM)
 
 PARAMETROS = ParametrosCorporativos(
     version_datos_maestros=VERSION,
@@ -73,6 +136,6 @@ MAESTROS = DatosMaestros(
     parametros=PARAMETROS,
     tasas_tributarias=TASAS,
     tasas_financieras=TASAS,
-    escala_regalia=ESCALA_REGALIA_PLANA,
-    escala_iem=ESCALA_IEM_NULA,
+    escala_regalia=ESCALA_REGALIA,
+    escala_iem=ESCALA_IEM,
 )
