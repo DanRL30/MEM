@@ -184,3 +184,33 @@ asimetria del libro y se reproduce.
    **no esta incrustado**: es `ParametrosCorporativos.limite_arrastre_de_perdidas`, dato maestro
    versionado como las demas tasas, con el 0,5 del libro por defecto. Si la norma lo cambia, basta
    una version nueva de datos maestros y las corridas anteriores conservan la suya.
+
+## 9. La hoja pasa a mostrarse entera
+
+El 04/09/2026 la pestana `Impuestos` recibio la forma del libro: cuatro bandas de negocio en el
+orden de la hoja, con sus rotulos literales, y las dos escalas progresivas en sendas secciones
+plegables, cerradas al abrir como el libro las tiene agrupadas. Hasta entonces emitia cincuenta y
+cuatro series planas por reflexion, con la etiqueta que daba el nombre del campo.
+
+**Aqui no se toco el motor.** Es la diferencia con la hoja `Otros`, donde trece filas se calculaban
+dentro de `corrida.calcular` y morian ahi: la auditoria de esta hoja, del 02/09/2026, ya habia hecho
+ese trabajo. Lo que faltaba era mostrarlo, y lo que lo impedia era la reflexion, que recorre
+`dataclasses.fields` y no ve ni las propiedades ni las tuplas de dataclases. Por eso no salian las
+treinta y tres filas de tramo -que eran justo la brecha que esta seccion 7 declaraba- ni las cuatro
+propiedades de agrupacion, y por eso la pantalla no marcaba ni un solo total.
+
+**Los seis cierres no suman lo que tienen encima.** La `47` suma la `41` -que ya es un total- mas
+las cinco filas intermedias, de modo que sumar la banda entera contaria dos veces la primera. Cada
+total se verifica contra los sumandos que declara el motor, y esa es la diferencia estructural con
+`Otros`, cuyas bandas son planas y cierran una sola vez.
+
+**Las escalas de desarrollo dejaron de ser planas.** Con la regalia a un tramo del 1 %, empatada con
+la minima sobre ventas, la rama progresiva no ganaba nunca; con el impuesto especial en cero, sus
+diecisiete tramos y sus dos filas salian vacios en toda pantalla y en toda prueba de la API. Entran
+las escalas de la Ley 29788 y de la Ley 29789, publicas y coincidentes con las del modelo, marcadas
+provisionales hasta `R-32`. Y entra un caso sintetico con escalas propias que ejercita las tres
+ramas que no tocaba nadie fuera de `test_impuestos.py`: la progresiva, el impuesto especial y el
+saldo de perdidas de apertura contra el limite del 50 %.
+
+Tres reglas nuevas, de la `087` a la `089`. La `087` pone numero al limite del 50 %, que esta
+seccion 8 ya describia como pendiente de Finanzas sin tener fila en el registro.

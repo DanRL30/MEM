@@ -30,7 +30,7 @@ dos pantallas mostrarían cosas distintas del mismo caso.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import fields as campos_de
+from dataclasses import dataclass, fields as campos_de
 from typing import Any
 
 from minsur_engine.capex import (
@@ -55,6 +55,7 @@ from minsur_engine.depreciacion import (
     TrazaDelAgotamiento,
 )
 from minsur_engine.horizonte import Serie, anos_con_dato
+from minsur_engine.impuestos import AporteDeTramo
 from minsur_engine.otros import BloqueDeOtros
 from minsur_engine.refineria import BloqueDeLaRefineria
 from minsur_engine.ventas import LiquidacionConcentrado
@@ -2278,69 +2279,331 @@ def _bloque_de_otros(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
     )
 
 
-TASAS_TRIBUTARIAS = frozenset(
-    {
-        "margen_operativo",
-        "tasa_efectiva_regalia",
-        "tasa_efectiva_iem",
-        "tasa_fondo_de_jubilacion",
-        "tasa_participacion",
-        "tasa_impuesto_renta",
-    }
-)
-"""Las seis filas de la hoja `Impuestos` que no son dinero.
+# --- Impuestos ----------------------------------------------------------------
 
-El bloque se emite por reflexion y sus cuatro sub-bloques mezclan importes con
-tasas, de modo que una sola medida para todas las filas dividiria las tasas
-entre mil al mostrarlas. Se ponderan por la venta del ejercicio: la columna de
-total es entonces la tasa media del horizonte y no la suma de treinta y seis
-porcentajes.
+NOTA_DE_LA_VENTA_REPETIDA = (
+    "Las dos bases abren con la misma celda del libro pese a los dos rótulos: no "
+    "existe una venta neta que el modelo calcule aparte."
+)
+NOTA_DEL_LAZO = (
+    "Es la única fila que realimenta: el fondo de jubilación se descuenta de la "
+    "misma utilidad operativa con la que se calcula. El libro cierra ese ciclo "
+    "iterando; la plataforma lo resuelve en forma cerrada."
+)
+NOTA_DE_LA_GESTION_SOCIAL = (
+    "El libro escribe este concepto con dos grafías, una por base. Se reproducen "
+    "las dos: es la misma fila de `InputsOpex` en los dos casos."
+)
+NOTA_DE_LA_REGALIA_MAYOR = (
+    "La mayor entre la progresiva sobre el margen y la mínima sobre las ventas. "
+    "Vuelve a aparecer, negada, en la base de renta, y una tercera vez en la hoja "
+    "`Otros`, repartida por el signo del resultado."
+)
+NOTA_DEL_IMPUESTO_ESPECIAL = (
+    "Vuelve a aparecer negado en la base de renta. Es la misma cifra: el libro la "
+    "escribe positiva donde la calcula y negativa donde la descuenta."
+)
+NOTA_DE_LAS_FILAS_FINANCIERAS = (
+    "El libro declara la fila y la deja vacía en los treinta y seis ejercicios. Se "
+    "muestra en cero y no se implementa: no hay parámetro registrado ni "
+    "confirmación de Finanzas sobre si aplica al alcance."
+)
+NOTA_DE_LA_IMPONIBLE_REPETIDA = (
+    "Es la misma celda que `Utilidad luego de deducción`, cuatro filas más arriba. "
+    "El libro la repite para abrir el bloque del impuesto."
+)
+NOTA_DE_LA_TASA_MAESTRA = (
+    "Dato maestro que mantiene y confirma MINSUR, no un input del caso. El libro "
+    "la escribe una vez y la copia a los treinta y seis ejercicios."
+)
+NOTA_DE_LA_ERRATA_DEL_FONDO = (
+    "El rótulo es el del libro, con su errata. El mismo concepto aparece en la hoja "
+    "con tres grafías distintas: `Fondo de jubilación minero` en la base de "
+    "regalías y `Fondo de Jubilación Minera` en las otras dos. Es dato maestro."
+)
+NOTA_DEL_FONDO_NEGADO = (
+    "La misma cifra que el bloque de renta calcula en positivo. Aquí se descuenta, "
+    "y desde aquí realimenta la utilidad operativa de la primera banda."
+)
+NOTA_DE_LA_PARTICIPACION_NEGADA = (
+    "La misma cifra que el bloque de renta calcula en positivo. Aquí se descuenta. "
+    "No realimenta: cuelga del final de la cadena y nadie la vuelve a leer."
+)
+NOTA_DE_LA_DEDUCCION = (
+    "El libro limita la deducción a la mitad de la utilidad imponible, con el "
+    "porcentaje escrito dentro de la fórmula y no en ninguna celda. Se reproduce y "
+    "está consultado a Finanzas."
+)
+NOTA_DEL_SALDO_INICIAL = (
+    "El saldo del primer ejercicio es la única constante de la hoja que es un dato "
+    "del caso. De ahí en adelante arrastra el saldo final del anterior."
+)
+NOTA_DE_LA_PERDIDA_DEL_EJERCICIO = (
+    "El libro la mide sobre la utilidad **después** de la deducción, no sobre la "
+    "imponible. Coinciden siempre, porque la deducción vale cero cuando el "
+    "ejercicio cierra en pérdida, pero la fila del libro es la de después."
+)
+NOTA_DE_LA_PERDIDA_A_AMORTIZAR = (
+    "Es la `Deducción por pérdidas acumuladas` escrita al revés, con las dos ramas "
+    "de la condición cruzadas. Da el mismo número y el motor lo calcula una vez."
+)
+NOTA_DE_LOS_TRAMOS = (
+    "El aporte de cada tramo al margen del ejercicio. La suma de la banda dividida "
+    "entre el margen es la tasa efectiva, y esa cancelación del margen contra sí "
+    "mismo es lo que permite resolver el ciclo sin iterar."
+)
+
+
+@dataclass(frozen=True)
+class _FilaTributaria:
+    """Una fila de la hoja `Impuestos`: su rótulo del libro y su campo del motor.
+
+    La hoja **no genera plantilla y no la generará**: es la única de cálculo por
+    año que no pide nada al usuario, de modo que no hay catálogo de ingesta del
+    que tomar el vocabulario. Estas cuatro tablas son ese catálogo, y por eso van
+    declaradas y no escritas dentro de cada llamada: el orden y el rótulo se
+    cotejan contra el libro de un vistazo.
+    """
+
+    etiqueta: str
+    campo: str
+    medida: str = MEDIDA_OTROS
+    total: bool = False
+    dato: bool = False
+    sin_acumulado: bool = False
+    nota: str | None = None
+
+
+FILAS_DE_REGALIAS = (
+    _FilaTributaria("Ventas Totales", "ventas_totales", nota=NOTA_DE_LA_VENTA_REPETIDA),
+    _FilaTributaria("Costo de Producción", "costo_de_produccion"),
+    _FilaTributaria("Fletes", "fletes"),
+    _FilaTributaria("Gastos de Ventas", "gastos_de_ventas"),
+    _FilaTributaria("Gastos Administrativos", "gastos_administrativos"),
+    _FilaTributaria("Gasto estudios", "gasto_estudios"),
+    _FilaTributaria("Depreciación Financiera", "depreciacion_financiera"),
+    _FilaTributaria(
+        "Gestión Social deducible", "gestion_social_deducible", nota=NOTA_DE_LA_GESTION_SOCIAL
+    ),
+    _FilaTributaria("Otros Gastos / Ingresos", "otros_gastos"),
+    _FilaTributaria("Osinergmin", "osinergmin"),
+    _FilaTributaria("OEFA", "oefa"),
+    _FilaTributaria("Fondo de jubilación minero", "fondo_de_jubilacion", nota=NOTA_DEL_LAZO),
+    _FilaTributaria("Utilidad Operativa", "utilidad_operativa", total=True),
+    _FilaTributaria("Margen Operativo", "margen_operativo", medida="%"),
+    _FilaTributaria("TEA de Regalía", "tasa_efectiva_regalia", medida="%"),
+    _FilaTributaria("Regalía calculada sobre Margen Operativo", "regalia_sobre_margen"),
+    _FilaTributaria("Regalía calculada sobre Ventas", "regalia_sobre_ventas"),
+    _FilaTributaria("Regalía mayor", "regalia_mayor", nota=NOTA_DE_LA_REGALIA_MAYOR),
+    _FilaTributaria("TEA de Impuesto Especial a la Minería", "tasa_efectiva_iem", medida="%"),
+    _FilaTributaria(
+        "Impuesto Especial a la Minería", "impuesto_especial", nota=NOTA_DEL_IMPUESTO_ESPECIAL
+    ),
+)
+"""`Impuestos!8:27`. La `20` cierra las doce que tiene encima."""
+
+FILAS_DE_RENTA = (
+    _FilaTributaria("Ventas Netas", "ventas_netas", nota=NOTA_DE_LA_VENTA_REPETIDA),
+    _FilaTributaria("Costo de Producción", "costo_de_produccion"),
+    _FilaTributaria("Fletes", "fletes"),
+    _FilaTributaria("Gastos de Ventas", "gastos_de_ventas"),
+    _FilaTributaria("Gastos Administrativos", "gastos_administrativos"),
+    _FilaTributaria("Gasto estudios", "gasto_estudios"),
+    _FilaTributaria("Depreciación Tributaria", "depreciacion_tributaria"),
+    _FilaTributaria(
+        "Gestión Social Deducible", "gestion_social_deducible", nota=NOTA_DE_LA_GESTION_SOCIAL
+    ),
+    _FilaTributaria("Otros Gastos / Ingresos", "otros_gastos"),
+    _FilaTributaria("Osinergmin", "osinergmin"),
+    _FilaTributaria("OEFA", "oefa"),
+    _FilaTributaria("Utilidad Operativa", "utilidad_operativa", total=True),
+    _FilaTributaria("Regalías Mineras", "regalias_mineras"),
+    _FilaTributaria("Gastos de Exploración", "gastos_de_exploracion"),
+    _FilaTributaria(
+        "Ingresos Financieros", "ingresos_financieros", nota=NOTA_DE_LAS_FILAS_FINANCIERAS
+    ),
+    _FilaTributaria("Gastos Financieros", "gastos_financieros", nota=NOTA_DE_LAS_FILAS_FINANCIERAS),
+    _FilaTributaria("Impuesto Especial a la Minería", "impuesto_especial"),
+    _FilaTributaria("Utilidad Imponible", "utilidad_imponible", total=True),
+    _FilaTributaria(
+        "Deducción por pérdidas acumuladas", "deduccion_por_perdidas", nota=NOTA_DE_LA_DEDUCCION
+    ),
+    _FilaTributaria("Utilidad luego de deducción", "utilidad_luego_de_deduccion", total=True),
+    _FilaTributaria(
+        "Tasa Fondo de Jubiliación Minera",
+        "tasa_fondo_de_jubilacion",
+        medida="%",
+        dato=True,
+        nota=NOTA_DE_LA_ERRATA_DEL_FONDO,
+    ),
+    _FilaTributaria("Fondo de Jubilación Minera", "fondo_de_jubilacion"),
+    _FilaTributaria(
+        "Tasa Participación Trabajadores",
+        "tasa_participacion",
+        medida="%",
+        dato=True,
+        nota=NOTA_DE_LA_TASA_MAESTRA,
+    ),
+    _FilaTributaria("Participación Trabajadores", "participacion_trabajadores"),
+)
+"""`Impuestos!30:53`. Tres cierres: la `41`, la `47` y la `49`.
+
+La `47` no suma las filas que tiene encima dentro de la banda: suma la `41` -que
+ya es un total- y las cinco que van entre las dos. Es la razón por la que esta
+hoja no puede usar `_cerrada_por_el_motor` y sus totales se verifican contra los
+sumandos que declara el motor.
 """
 
-SALDOS_TRIBUTARIOS = frozenset({"saldo_inicial", "saldo_final"})
-"""La perdida arrastrada abre y cierra en un saldo, y un saldo no se acumula."""
+FILAS_DEL_IMPUESTO = (
+    _FilaTributaria("Utilidad Imponible", "utilidad_imponible", nota=NOTA_DE_LA_IMPONIBLE_REPETIDA),
+    _FilaTributaria(
+        "Fondo de Jubilación Minera", "fondo_de_jubilacion", nota=NOTA_DEL_FONDO_NEGADO
+    ),
+    _FilaTributaria(
+        "Participación Trabajadores",
+        "participacion_trabajadores",
+        nota=NOTA_DE_LA_PARTICIPACION_NEGADA,
+    ),
+    _FilaTributaria(
+        "Utilidad luego de participaciones", "utilidad_luego_de_participaciones", total=True
+    ),
+    _FilaTributaria(
+        "Tasa Impuesto a la Renta",
+        "tasa_impuesto_renta",
+        medida="%",
+        dato=True,
+        nota=NOTA_DE_LA_TASA_MAESTRA,
+    ),
+    _FilaTributaria("Impuesto a la Renta", "impuesto_a_la_renta"),
+)
+"""`Impuestos!56:61`. La `59` cierra las tres que tiene encima."""
+
+FILAS_DE_LA_PERDIDA = (
+    _FilaTributaria(
+        "Saldo Inicial", "saldo_inicial", sin_acumulado=True, nota=NOTA_DEL_SALDO_INICIAL
+    ),
+    _FilaTributaria(
+        "Pérdida de ejercicio", "perdida_de_ejercicio", nota=NOTA_DE_LA_PERDIDA_DEL_EJERCICIO
+    ),
+    _FilaTributaria(
+        "Pérdida a amortizar", "perdida_a_amortizar", nota=NOTA_DE_LA_PERDIDA_A_AMORTIZAR
+    ),
+    _FilaTributaria("Saldo Final", "saldo_final", total=True, sin_acumulado=True),
+)
+"""`Impuestos!64:67`. Abre y cierra en un saldo, y un saldo no se acumula."""
+
+
+def _banda_tributaria(
+    titulo: str, filas: Sequence[_FilaTributaria], sub_bloque: Any, ventas: Serie
+) -> GrupoDelBloque:
+    """Una banda de la hoja, con sus filas en el orden del libro.
+
+    Las tasas se ponderan por la venta del ejercicio, de modo que su columna de
+    total sea la tasa media del horizonte y no la suma de treinta y seis
+    porcentajes.
+    """
+    return GrupoDelBloque(
+        titulo=titulo,
+        secciones=_una_seccion(
+            [
+                _serie(
+                    fila.etiqueta,
+                    getattr(sub_bloque, fila.campo),
+                    medida=fila.medida,
+                    concepto=fila.campo,
+                    origen="dato" if fila.dato else "calculada",
+                    total=fila.total,
+                    peso=ventas if fila.medida == "%" else None,
+                    sin_acumulado=fila.sin_acumulado,
+                    nota=fila.nota,
+                )
+                for fila in filas
+            ]
+        ),
+    )
+
+
+def _porcentaje(fraccion: float, decimales: int) -> str:
+    """Un margen o una tasa, con la coma decimal del cliente."""
+    return f"{fraccion * 100:.{decimales}f}".replace(".", ",") + " %"
+
+
+def _tabla_de_tramos(titulo: str, tramos: Sequence[AporteDeTramo]) -> SeccionDelBloque:
+    """Una de las dos escalas progresivas, plegada como en el libro.
+
+    **No lleva fila de cierre, y es deliberado.** Plegada, una sección muestra
+    solo sus filas de total, de modo que sin ninguna la tabla colapsa a su
+    título: es exactamente lo que hace el libro, que las lleva agrupadas y
+    ocultas. La suma de los aportes tampoco es una fila de la hoja -vive dentro
+    de la fórmula de la tasa efectiva- y no se inventa una.
+
+    El intervalo y la tasa marginal van en el rótulo y no en una columna de
+    código: esa columna se activa para el bloque entero en cuanto una serie la
+    lleva, y quedaría vacía en las cuarenta y cinco filas de negocio.
+    """
+    ultimo = len(tramos) - 1
+    series: list[SerieAnual] = []
+    for posicion, tramo in enumerate(tramos):
+        desde = _porcentaje(tramo.limite_inferior, 0)
+        tasa = _porcentaje(tramo.tasa, 2)
+        # El ultimo tramo del libro no tiene tope numerico: su limite es el texto
+        # `>80%` y la comparacion contra un texto es siempre falsa en Excel, de
+        # modo que se comporta como abierto por arriba.
+        etiqueta = (
+            f"Más de {desde} al {tasa}"
+            if posicion == ultimo
+            else f"{desde} - {_porcentaje(tramo.limite_superior, 0)} al {tasa}"
+        )
+        series.append(_serie(etiqueta, tramo.aporte, medida="%", nota=NOTA_DE_LOS_TRAMOS))
+    return SeccionDelBloque(titulo=titulo, series=series, plegable=True)
 
 
 def _bloque_de_impuestos(corrida: CorridaAlmacenada) -> BloqueDeCorrida:
-    """La hoja entera, con el signo del libro.
+    """La hoja `Impuestos`, en el orden del libro y con su signo.
 
-    Ventas positivas y gastos negativos, de modo que cada total es literalmente
-    la suma de las filas que tiene encima. Es lo que se contrasta.
+    Cuatro bandas de negocio y las dos escalas progresivas. Antes eran cincuenta
+    y cuatro series planas emitidas por reflexión, con la etiqueta que daba el
+    nombre del campo, sin un solo total marcado y sin las treinta y tres filas de
+    tramo, que la reflexión no puede ver porque son dataclases y no series.
 
-    **Va en miles, como la hoja `Otros`.** Las dos publican la misma regalia y
-    hasta el 04/09/2026 esta iba en `US$`: la misma cifra se veia mil veces mas
-    grande en una pestana que en la otra. Lo que sigue pendiente es darle la
-    forma del libro, que es lo que retirara el `_bonito` de sus etiquetas.
+    **El mismo concepto sale con signo distinto según la banda**, y así lo
+    escribe el libro: el fondo de jubilación se descuenta en la base de regalías,
+    se calcula en positivo en la de renta y se vuelve a descontar en la del
+    impuesto. Cada una de esas filas lleva la nota que dice dónde está su gemela.
+
+    **Los seis totales no cierran sobre todo lo que tienen encima.** La `47` suma
+    la `41` -que ya es un total- más las cinco filas intermedias, de modo que
+    sumar la banda entera contaría dos veces la `41`. Cada total cierra sobre los
+    sumandos que declara el motor, y eso es lo que verifica su prueba.
+
+    **Los totales no se recalculan aquí.** Ninguna fila de esta pantalla se
+    deriva: `impuestos.py` publica la hoja entera desde la auditoría del
+    02/09/2026, incluidas las dos tablas de tramos.
     """
     impuestos = corrida.resultado.impuestos
-    secciones = [
-        SeccionDelBloque(
-            titulo=titulo,
-            series=[
-                _serie(
-                    _bonito(nombre),
-                    valores,
-                    medida="%" if nombre in TASAS_TRIBUTARIAS else MEDIDA_OTROS,
-                    concepto=nombre,
-                    peso=corrida.resultado.ventas if nombre in TASAS_TRIBUTARIAS else None,
-                    sin_acumulado=nombre in SALDOS_TRIBUTARIOS,
-                )
-                for nombre, valores in _series_de(sub_bloque).items()
-            ],
-        )
-        for titulo, sub_bloque in (
-            ("Regalías e IEM", impuestos.regalias),
-            ("Renta", impuestos.renta),
-            ("Impuesto a la renta", impuestos.impuesto_a_la_renta),
-            ("Pérdida tributaria", impuestos.perdida_tributaria),
-        )
-    ]
+    ventas = corrida.resultado.ventas
     return BloqueDeCorrida(
         clave="impuestos",
         etiqueta="Impuestos",
-        titulo="Regalías, renta e impuesto",
+        titulo="Regalías, impuesto especial, renta y pérdida arrastrada",
         hoja="Impuestos",
-        grupos=[GrupoDelBloque(titulo="", secciones=secciones)],
+        grupos=[
+            _banda_tributaria("Regalías e IEM", FILAS_DE_REGALIAS, impuestos.regalias, ventas),
+            _banda_tributaria("Renta", FILAS_DE_RENTA, impuestos.renta, ventas),
+            _banda_tributaria(
+                "Impuesto a la Renta", FILAS_DEL_IMPUESTO, impuestos.impuesto_a_la_renta, ventas
+            ),
+            _banda_tributaria(
+                "Pérdida Tributaria", FILAS_DE_LA_PERDIDA, impuestos.perdida_tributaria, ventas
+            ),
+            GrupoDelBloque(
+                titulo="",
+                secciones=[
+                    _tabla_de_tramos("Tabla Regalías", impuestos.tramos_de_regalia),
+                    _tabla_de_tramos("Tabla IEM", impuestos.tramos_de_iem),
+                ],
+            ),
+        ],
     )
 
 

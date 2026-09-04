@@ -1235,6 +1235,207 @@ class TestLaHojaOtros:
         assert cerradas == 10
 
 
+class TestLaHojaImpuestos:
+    """La pestana `Impuestos`, con la forma del libro.
+
+    Cuatro bandas de negocio y las dos escalas progresivas. Hasta el 04/09/2026
+    emitia cincuenta y cuatro series planas por reflexion, sin un solo total
+    marcado y sin las treinta y tres filas de tramo, que la reflexion no ve
+    porque son dataclases y no series de numeros.
+    """
+
+    def _impuestos(self, cliente: TestClient, plantilla: Path) -> dict[str, Any]:
+        id_caso = _crear_caso(cliente)
+        _subir(cliente, id_caso, plantilla)
+        cliente.post(f"/api/casos/{id_caso}/evaluar", headers=CABECERAS)
+        cuerpo = cliente.get(f"/api/casos/{id_caso}/corrida/bloques", headers=CABECERAS).json()
+        bloque: dict[str, Any] = next(b for b in cuerpo["bloques"] if b["clave"] == "impuestos")
+        return bloque
+
+    def _banda(self, bloque: dict[str, Any], titulo: str) -> list[dict[str, Any]]:
+        grupo = next(g for g in bloque["grupos"] if g["titulo"] == titulo)
+        series: list[dict[str, Any]] = grupo["secciones"][0]["series"]
+        return series
+
+    def _series(self, bloque: dict[str, Any]) -> list[dict[str, Any]]:
+        return [
+            serie
+            for grupo in bloque["grupos"]
+            for seccion in grupo["secciones"]
+            for serie in seccion["series"]
+        ]
+
+    def test_sigue_el_orden_de_las_bandas_del_libro(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        bloque = self._impuestos(cliente, plantilla)
+
+        assert [g["titulo"] for g in bloque["grupos"]] == [
+            "Regalías e IEM",
+            "Renta",
+            "Impuesto a la Renta",
+            "Pérdida Tributaria",
+            "",
+        ]
+
+    def test_lleva_los_rotulos_del_libro_y_no_los_del_campo(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # Antes salian de `_bonito`, que capitaliza el nombre del campo:
+        # `Regalia sobre margen` en vez de `Regalía calculada sobre Margen
+        # Operativo`. La hoja no genera plantilla, de modo que no hay catalogo
+        # de ingesta del que tomar el vocabulario y las cuatro tablas del bloque
+        # son ese catalogo.
+        etiquetas = [s["etiqueta"] for s in self._series(self._impuestos(cliente, plantilla))]
+
+        assert "Regalía calculada sobre Margen Operativo" in etiquetas
+        assert "Utilidad luego de deducción" in etiquetas
+        assert "Regalia sobre margen" not in etiquetas
+        assert "Utilidad luego de deduccion" not in etiquetas
+
+    def test_reproduce_las_tres_grafias_del_fondo_y_las_dos_de_la_gestion_social(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # El libro escribe el mismo concepto de tres maneras, una de ellas con
+        # una errata -`Jubiliación`, con una `i` de mas-. Se reproducen literales
+        # y cada una lleva la nota que dice donde estan las otras.
+        etiquetas = [s["etiqueta"] for s in self._series(self._impuestos(cliente, plantilla))]
+
+        assert "Fondo de jubilación minero" in etiquetas
+        assert "Fondo de Jubilación Minera" in etiquetas
+        assert "Tasa Fondo de Jubiliación Minera" in etiquetas
+        assert "Gestión Social deducible" in etiquetas
+        assert "Gestión Social Deducible" in etiquetas
+
+    def test_las_dos_bases_abren_con_la_misma_celda_y_dos_rotulos(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # `Ventas Totales` y `Ventas Netas` son la misma celda del libro pese a
+        # los dos nombres. Se muestran las dos, con la nota que lo dice.
+        bloque = self._impuestos(cliente, plantilla)
+        totales = self._banda(bloque, "Regalías e IEM")[0]
+        netas = self._banda(bloque, "Renta")[0]
+
+        assert totales["etiqueta"] == "Ventas Totales"
+        assert netas["etiqueta"] == "Ventas Netas"
+        assert totales["valores"] == netas["valores"]
+        assert totales["nota"] and netas["nota"]
+
+    def test_cada_total_cierra_sobre_los_sumandos_del_libro(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        """Los seis cierres, cada uno sobre lo que el libro dice que suma.
+
+        **No sobre todo lo que tienen encima.** `Utilidad Imponible` suma
+        `Utilidad Operativa` -que ya es un total- mas las cinco filas que van
+        entre las dos, de modo que sumar la banda entera contaria dos veces la
+        primera. Es la diferencia estructural con la hoja `Otros`.
+        """
+        bloque = self._impuestos(cliente, plantilla)
+        cierres = (
+            ("Regalías e IEM", 12, 0, 12),
+            ("Renta", 11, 0, 11),
+            ("Renta", 17, 11, 17),
+            ("Renta", 19, 17, 19),
+            ("Impuesto a la Renta", 3, 0, 3),
+            ("Pérdida Tributaria", 3, 0, 3),
+        )
+        for banda, total, desde, hasta in cierres:
+            series = self._banda(bloque, banda)
+            cierre = series[total]
+            assert cierre["total"], f"{banda}: la fila {total} deberia cerrar"
+            for i, obtenido in enumerate(cierre["valores"]):
+                esperado = sum(s["valores"][i] for s in series[desde:hasta])
+                assert obtenido == pytest.approx(esperado), (
+                    f"{banda} / {cierre['etiqueta']}, ano {i}"
+                )
+
+    def test_las_dos_escalas_van_plegadas_y_sin_fila_de_cierre(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # El libro las lleva agrupadas y ocultas. Plegada, una seccion muestra
+        # solo sus filas de total, de modo que sin ninguna la tabla colapsa a su
+        # titulo, que es lo que hace el libro con su outline.
+        bloque = self._impuestos(cliente, plantilla)
+        tramos = next(g for g in bloque["grupos"] if g["titulo"] == "")
+
+        assert [s["titulo"] for s in tramos["secciones"]] == ["Tabla Regalías", "Tabla IEM"]
+        for seccion in tramos["secciones"]:
+            assert seccion["plegable"]
+            assert not any(serie["total"] for serie in seccion["series"])
+        assert len(tramos["secciones"][0]["series"]) == 16
+        assert len(tramos["secciones"][1]["series"]) == 17
+
+    def test_el_ultimo_tramo_de_cada_escala_va_abierto_por_arriba(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # En el libro su limite es el texto `>80%`, y una comparacion contra un
+        # texto es siempre falsa en Excel: asi es como escribe un tramo sin tope.
+        bloque = self._impuestos(cliente, plantilla)
+        tramos = next(g for g in bloque["grupos"] if g["titulo"] == "")
+
+        for seccion in tramos["secciones"]:
+            assert seccion["series"][-1]["etiqueta"].startswith("Más de ")
+            assert not seccion["series"][0]["etiqueta"].startswith("Más de ")
+
+    def test_las_filas_financieras_se_declaran_y_valen_cero(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # El libro las deja vacias en las treinta y seis columnas y las suma
+        # igual. Omitirlas desplazaria una banda que se contrasta por fila.
+        bloque = self._impuestos(cliente, plantilla)
+        por_etiqueta = {s["etiqueta"]: s for s in self._banda(bloque, "Renta")}
+
+        for etiqueta in ("Ingresos Financieros", "Gastos Financieros"):
+            fila = por_etiqueta[etiqueta]
+            assert all(v == 0.0 for v in fila["valores"])
+            assert fila["nota"]
+
+    def test_las_medidas_separan_el_dinero_de_las_tasas(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # Los cuatro sub-bloques mezclan importes con seis tasas, y una sola
+        # medida para todas dividiria las tasas entre mil al mostrarlas.
+        bloque = self._impuestos(cliente, plantilla)
+        medidas = {serie["medida"] for serie in self._series(bloque)}
+        por_concepto = {s["concepto"]: s for s in self._series(bloque) if s["concepto"]}
+
+        assert medidas == {"$k", "%"}
+        assert por_concepto["margen_operativo"]["medida"] == "%"
+        assert por_concepto["tasa_impuesto_renta"]["medida"] == "%"
+        assert por_concepto["regalia_mayor"]["medida"] == "$k"
+
+    def test_los_saldos_de_la_perdida_no_llevan_acumulado(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # La banda abre y cierra en un saldo, y sumar treinta y seis aperturas da
+        # una cifra que no significa nada.
+        bloque = self._impuestos(cliente, plantilla)
+        por_etiqueta = {s["etiqueta"]: s for s in self._banda(bloque, "Pérdida Tributaria")}
+
+        assert por_etiqueta["Saldo Inicial"]["acumulado"] is None
+        assert por_etiqueta["Saldo Final"]["acumulado"] is None
+        assert por_etiqueta["Pérdida de ejercicio"]["acumulado"] is not None
+
+    def test_las_filas_que_se_repiten_negadas_lo_dicen(
+        self, cliente: TestClient, plantilla: Path
+    ) -> None:
+        # El mismo concepto sale con signo distinto segun la banda, y asi lo
+        # escribe el libro: el fondo se descuenta en la base de regalias, se
+        # calcula en positivo en la de renta y se vuelve a descontar en la del
+        # impuesto. Cada una dice donde esta su gemela.
+        bloque = self._impuestos(cliente, plantilla)
+        regalias = {s["etiqueta"]: s for s in self._banda(bloque, "Regalías e IEM")}
+        impuesto = {s["etiqueta"]: s for s in self._banda(bloque, "Impuesto a la Renta")}
+
+        assert regalias["Regalía mayor"]["nota"]
+        assert regalias["Impuesto Especial a la Minería"]["nota"]
+        assert regalias["Fondo de jubilación minero"]["nota"]
+        assert impuesto["Fondo de Jubilación Minera"]["nota"]
+        assert impuesto["Participación Trabajadores"]["nota"]
+        assert impuesto["Utilidad Imponible"]["nota"]
+
+
 class TestLaEscalaDeLaHojaImpuestos:
     def test_el_dinero_va_en_miles_y_las_tasas_en_por_ciento(
         self, cliente: TestClient, plantilla: Path

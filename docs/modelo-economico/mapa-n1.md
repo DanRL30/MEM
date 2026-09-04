@@ -16,9 +16,9 @@ modulo responsable, de modo que una discrepancia se localiza en un archivo.
 | Base de regalias, fila a fila (`8:19`) | `impuestos.py` | `test_n0_a_n3.py::TestN1::test_las_sumas_de_la_hoja_de_impuestos_cierran` |
 | Margen operativo y las dos TEA (`21`, `22`, `26`) | `impuestos.py` | `::test_los_aportes_por_tramo_reconstruyen_la_tasa_efectiva` |
 | Aporte de cada tramo de las dos escalas (`72:87`, `92:108`) | `impuestos.py` | `::test_los_aportes_por_tramo_reconstruyen_la_tasa_efectiva` |
-| Las tres regalias y el IEM (`23:25`, `27`) | `impuestos.py` | `test_impuestos.py::TestRegalia` |
+| Las tres regalias y el IEM (`23:25`, `27`) | `impuestos.py` | `::test_la_rama_progresiva_de_la_regalia_gana_a_la_minima` y `::test_el_impuesto_especial_deja_de_ser_cero` |
 | Base imponible, fila a fila (`30:47`) | `impuestos.py` | `::test_las_sumas_de_la_hoja_de_impuestos_cierran` |
-| Deduccion por perdidas y su arrastre (`48`, `64:67`) | `impuestos.py` | `::test_el_saldo_de_perdidas_rueda_entre_ejercicios` |
+| Deduccion por perdidas y su arrastre (`48`, `64:67`) | `impuestos.py` | `::test_el_saldo_de_perdidas_rueda_entre_ejercicios` y `::test_un_saldo_de_apertura_topa_contra_la_mitad_de_la_imponible` |
 | Fondo de jubilacion y participacion (`51`, `53`) | `impuestos.py` | `::test_participacion_de_trabajadores` |
 | Impuesto a la renta (`56:61`) | `impuestos.py` | `::test_impuesto_a_la_renta` |
 | Osinergmin y OEFA (`17`, `18`) | `impuestos.py` | `::test_las_sumas_de_la_hoja_de_impuestos_cierran` |

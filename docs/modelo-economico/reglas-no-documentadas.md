@@ -102,6 +102,9 @@ que es lo que el motor necesita.
 | 084 | `Otros!AR` y `!AR37` | La columna de total es `SUM(I:AQ)` y **excluye el primer ejercicio del horizonte**. `AR37`, ademas, contiene el texto literal `c` en vez de una formula | Arrastre de presentacion: la columna no alimenta el flujo y ninguna hoja la lee. La plataforma totaliza el horizonte entero, que es lo que la columna dice ser | Derivada del libro | 04/09/2026 | |
 | 085 | `Otros!58` frente a la `!66` | La fila que abre el bloque `Delta WK` se rotula `IGV Ventas Locales` y su formula es `=H66`, la variacion de IGV que llega al flujo. La hoja la sombrea | Fila de presentacion con rotulo que engana, de la familia de la `051`: repite bajo el nombre de otro concepto un numero que la misma banda trae nueve filas mas abajo. **No se reproduce**; el sombreado lo lleva la fila `66`, que es la que alimenta el flujo | Derivada del libro | 04/09/2026 | `bloques.py` |
 | 086 | `Otros!90` | La bandera `Ano con produccion` lleva en su rotulo el nombre de una unidad concreta, y multiplica las filas 73 y 80 | El libro la escribe para la unidad que gobierna su caso. La plataforma la deriva de todas las unidades con dato -el criterio que Finanzas fijo el 01/09/2026- y la rotula sin nombre propio: un proyecto que hoy no existe no cabe en el rotulo del libro. Refina la regla `053` | Derivada del libro | 04/09/2026 | `corrida.py` |
+| 087 | `Impuestos!48` y `!66` | El limite del arrastre de perdidas es un `50%` escrito dentro de las dos formulas y repetido en las 36 columnas: son 68 de las 69 constantes de la hoja, y la unica que no lo es -`H64`- si es un dato. El estandar corporativo no lo menciona | Es un parametro tributario disfrazado de constante de formula. En la plataforma **no esta incrustado**: vive en `ParametrosCorporativos.limite_arrastre_de_perdidas`, dato maestro versionado, con el 0,5 del libro por defecto. Falta que Finanzas confirme que es el vigente; es la consulta 4 del 02/09/2026, sin respuesta | | | `impuestos.py`, `parametros.py` |
+| 088 | `Impuestos!19`, `!50`, `!51`, `!57`, `!15` y `!37` | El fondo de jubilacion se rotula de tres maneras en la misma hoja: `Fondo de jubilacion minero` en la base de regalias, `Fondo de Jubilacion Minera` en las otras dos bandas y **`Tasa Fondo de Jubiliacion Minera` -con una `i` de mas- en la fila de la tasa**. La gestion social deducible lleva dos, una por base | Erratas y capitalizacion inconsistente del libro, de la familia de la `080`, que reparte `Regalias` con tilde y sin ella. **Se reproducen literales**: la etiqueta es lo que el usuario tiene aprendido del modelo y normalizarla la separaria del libro contra el que se coteja. Cada fila lleva una nota que dice donde estan sus gemelas | Project Manager | 04/09/2026 | `bloques.py` |
+| 089 | `Impuestos!H60` frente a `!H24`, `!H50` y `!H52` | La tasa de impuesto a la renta es la unica de las cinco entradas de `Control` que se toma con **referencia relativa** -`=Control!G16` y no `=Control!$G$16`-, y ademas se propaga encadenada de un ejercicio al siguiente -`I60=H60`, `J60=I60`- en vez de anclar cada ano a `Control` | Fragilidad de construccion, no de metodo. Insertar una fila en `Control` desplaza solo esa tasa, y romper una celda de la cadena deja colgados todos los ejercicios posteriores. La plataforma no la hereda: las cinco tasas son dato maestro y rigen el horizonte entero. Se reporta | Derivada del libro | 04/09/2026 | `parametros.py` |
 
 ## Detalle de las que no caben en una fila
 
@@ -225,12 +228,18 @@ la 040 salieron de leer la hoja de depreciacion el mismo dia y estan implementad
 omision del libro que la plataforma **no reproduce**, por decision expresa. La 024 nacio como tipo 3 y MINSUR la confirmo el
 mismo dia como deliberada, de modo que paso a tipo 2. La 015 es la única donde el motor **no** reproduce el libro, porque las dos
 hojas del libro se contradicen entre sí: sigue a `FC NZ`, que es la hoja del caso. Seis quedaron confirmadas por Finanzas el 01/09/2026; siguen abiertas la 003 (unidades de
-medida), la 004 (tramos tributarios), la 007 (valores guardados sin recalcular), la 027 (fraccion
+medida), la 007 (valores guardados sin recalcular), la 027 (fraccion
 deducible de la gestion social), la 033 (el rango del ajuste de capex), la 044 (la penalidad sin
 multiplicar), la 045 (la ley pagable de la plata), la 050 (saldos sumados con variaciones), la 051
 (el rotulo del IGV de ventas) y la 056 (el saldo que abre antes de producir). Las tres que salieron
 el 02/09/2026 de leer la hoja `Impuestos` -la 057, la 058 y la 059- son de tipo 2 y estan
 implementadas.
+
+**La 004 no es un caso de si o no, y contarla entre las abiertas la describia mal.** Su
+aritmetica esta derivada del libro, reproducida en `impuestos.py` y verificada tramo a tramo;
+lo que no esta confirmado es la **vigencia normativa** de las dos escalas, que son dato
+maestro bajo `R-32` y las mantiene MINSUR. Se implementa y se sigue esperando esa
+confirmacion, que es lo mismo que ocurre con las ocho tasas de `ParametrosCorporativos`.
 
 **Siete mas salieron el 04/09/2026 de dar a la hoja `Otros` la forma del libro**, de la `080` a la
 `086`. Cuatro son derivables de la formula y se implementan citandolas: la ranura de presentacion de
@@ -305,3 +314,9 @@ la recuperación media da 288. Está fijado en
 Reproducir el agrupamiento sigue siendo posible sin tocar el motor: basta con dar
 el mismo valor de recuperación a las unidades de un grupo.
 
+**Tres mas salieron el 04/09/2026 de dar a la hoja `Impuestos` la forma del libro**, de la `087` a
+la `089`. La `088` es la decision del Project Manager sobre los rotulos: el libro escribe el fondo
+de jubilacion de tres maneras, una de ellas con errata, y se reproducen las tres. La `089` es una
+fragilidad de construccion del libro que la plataforma no hereda. Y la `087` pone numero a algo que
+llevaba desde el 02/09/2026 descrito en las brechas y emitido como consulta 4 a Finanzas sin tener
+fila propia en este registro: el limite del 50 % de arrastre de perdidas.
