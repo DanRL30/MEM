@@ -101,14 +101,24 @@ FILAS_DE_CASH_COST = (
     FilaDeOpex("Refinería", MEDIDA),
     FilaDeOpex("Planta de subproductos", MEDIDA),
     FilaDeOpex("Mantenimiento de fundición y refinería", MEDIDA),
+    # `InputsOpex!75`, y es un concepto de costo de la refineria, no la fila
+    # derivada del bloque de gastos. Va al final para no desplazar lo que la
+    # plantilla ya emitia. Es la regla `098`.
+    FilaDeOpex("Planillas", MEDIDA),
 )
 """Los conceptos de costo que el usuario carga, uno por unidad.
 
-Tres conceptos del libro quedan fuera por decision del 02/09/2026. Dos son de
-Santo Domingo —servicios de mina y preconcentrado de terceros— y el tercero es
-la planilla, que **no es un dato**: se deriva del cash cost de la unidad por la
-tasa de los supuestos, igual que la parte deducible de la gestion social se
-deriva de esta.
+Dos conceptos del libro quedan fuera por decision del 02/09/2026, los dos de
+Santo Domingo: servicios de mina y preconcentrado de terceros.
+
+**La planilla de la refineria si entra, y hasta el 04/09/2026 no lo hacia.**
+Quedaba fuera con el argumento de que se deriva del cash cost por la tasa de
+los supuestos, y ese argumento es de otra fila: la `Planilla` del bloque de
+gastos -`InputsOpex!131`, `!142`, `!155` y `!166`-, que es la regla `026`. La
+de aqui es `InputsOpex!75`, dentro del bloque de cash cost de Pisco, y viene
+importada del libro LOM externo. Sin ella salian cortos el total de la
+refineria, el consolidado y el `Total Cash Cost` que alimenta el flujo. Es la
+regla `098`.
 
 Lo que una unidad tenga y no este aqui entra por la cola de conceptos propios,
 que para eso existe. Ahi va tambien el `Covid` de la refineria, que es una
